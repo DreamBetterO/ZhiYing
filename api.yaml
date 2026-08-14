@@ -1,0 +1,26 @@
+qwen:
+  provider: dashscope_openai_compatible
+  enabled: false
+  enabled_env: CLOUD_LLM_ENABLED
+  api_key_env: QWEN_API_KEY
+  base_url_env: QWEN_BASE_URL
+  model_chain_env: QWEN_MODEL_CHAIN
+  default_base_url: https://ws-e1wkkzn2116yp0ii.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+  default_models:
+  - qwen3.7-plus
+  - kimi-k2.6
+  - glm-5.2
+  budget:
+    max_calls_per_video: 5
+    max_input_chars: 60000
+    max_output_tokens: 5000
+    rich_max_output_tokens: 6000
+  max_calls_env: QWEN_MAX_CALLS_PER_VIDEO
+  max_input_chars_env: QWEN_MAX_INPUT_CHARS
+  max_output_tokens_env: QWEN_MAX_OUTPUT_TOKENS
+cloud_asr:
+  provider: dashscope
+  enabled: false
+  enabled_env: CLOUD_ASR_ENABLED
+  model_env: FUN_ASR_MODEL
+  default_model: fun-asr-flash-2026-06-15

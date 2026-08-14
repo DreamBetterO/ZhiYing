@@ -1,0 +1,89 @@
+from __future__ import annotations
+
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+from video_study.asr import _initial_prompt, apply_terminology_corrections, transcribe
+
+
+def sample_transcript(text: str = "心房才动伴随房才") -> dict:
+    return {
+        "schema_version": 1,
+        "segments": [{
+            "segment_id": "seg_00001",
+            "start_seconds": 1.25,
+            "end_seconds": 3.5,
+            "text": text,
+            "avg_logprob": -0.1,
+            "no_speech_prob": 0.0,
+        }],
+    }
+
+
+class TerminologyCorrectionTests(unittest.TestCase):
+    def test_initial_prompt_combines_hotwords_and_video_title_without_duplicates(self) -> None:
+        prompt = _initial_prompt({"hotwords": ["医学", "心房颤动", "医学"]}, "房颤教学")
+
+        self.assertEqual(prompt, "医学，心房颤动，房颤教学")
+
+    def test_correction_is_non_cascading_and_preserves_traceability(self) -> None:
+        settings = {"terminology_replacements": {"心房才动": "心房颤动", "房才": "房颤", "房颤": "其他"}}
+        corrected, changed = apply_terminology_corrections(sample_transcript(), settings)
+
+        self.assertTrue(changed)
+        segment = corrected["segments"][0]
+        self.assertEqual(segment["text"], "心房颤动伴随房颤")
+        self.assertEqual(segment["raw_text"], "心房才动伴随房才")
+        self.assertEqual(segment["start_seconds"], 1.25)
+        self.assertEqual(corrected["terminology_correction"]["replacement_count"], 2)
+
+    def test_removing_rules_restores_raw_asr_text(self) -> None:
+        corrected, _ = apply_terminology_corrections(
+            sample_transcript(), {"terminology_replacements": {"房才": "房颤"}}
+        )
+        restored, changed = apply_terminology_corrections(corrected, {"terminology_replacements": {}})
+
+        self.assertTrue(changed)
+        self.assertEqual(restored["segments"][0]["text"], "心房才动伴随房才")
+        self.assertNotIn("raw_text", restored["segments"][0])
+        self.assertNotIn("terminology_correction", restored)
+
+    def test_cached_json_is_corrected_and_missing_srt_is_rebuilt(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            output_json = root / "transcript.json"
+            output_srt = root / "transcript.srt"
+            output_json.write_text(json.dumps(sample_transcript(), ensure_ascii=False), encoding="utf-8")
+
+            result = transcribe(
+                root / "unused.flac",
+                output_json,
+                output_srt,
+                root / "unused-model",
+                {"terminology_replacements": {"房才": "房颤"}},
+            )
+
+            self.assertEqual(result["segments"][0]["text"], "心房颤动伴随房颤")
+            self.assertIn("心房颤动伴随房颤", output_srt.read_text(encoding="utf-8-sig"))
+
+    def test_cloud_refine_can_preserve_cached_asr_engine(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            output_json = root / "transcript.json"
+            cached = sample_transcript("已有转写")
+            cached["engine"] = "faster-whisper"
+            output_json.write_text(json.dumps(cached, ensure_ascii=False), encoding="utf-8")
+
+            result = transcribe(
+                root / "unused.flac", output_json, root / "transcript.srt", root / "unused-model",
+                {"engine": "qwen3-asr-0.6b", "_preserve_cached_engine": True},
+            )
+
+            self.assertEqual(result["engine"], "faster-whisper")
+            self.assertEqual(result["segments"][0]["text"], "已有转写")
+
+
+if __name__ == "__main__":
+    unittest.main()

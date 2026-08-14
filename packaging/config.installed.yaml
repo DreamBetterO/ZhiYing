@@ -1,0 +1,41 @@
+paths:
+  input_dir: "%USERPROFILE%/Documents/知影/Resource"
+  workspace_dir: "%USERPROFILE%/Documents/知影/workspace"
+  output_dir: "%USERPROFILE%/Documents/知影/output"
+  model_dir: _internal/models/faster-whisper-small
+api_config: api.yaml
+asr:
+  engine: faster-whisper
+  model_id: Systran/faster-whisper-small
+  device: auto
+  compute_type: int8_float16
+  language: zh
+  beam_size: 5
+  qwen_runtime_python: models/qwen3-asr-runtime/Scripts/python.exe
+  qwen_runtime_dir: models/qwen3-asr-runtime/Lib/site-packages
+  qwen_model_dir: models/qwen3-asr-0.6b
+  qwen_runner: _internal/scripts/qwen_asr_runner.py
+  qwen_chunk_seconds: 60
+  hotwords: []
+  terminology_replacements: {}
+frames:
+  sample_interval_seconds: 10
+  max_candidates: 600
+  max_keyframes: 8
+  scene_change_threshold: 0.025
+  min_content_entropy: 2.4
+  content_start_padding_seconds: 30
+  min_keyframe_gap_seconds: 480
+  max_width: 1280
+render:
+  source_link_base: video-study://play
+  include_full_transcript: false
+  offline_section_seconds: 300
+  offline_points_per_section: 2
+desktop:
+  speech_models:
+  - faster-whisper
+  content_level: 推荐
+  watermark:
+    text: powed by Fx
+    opacity: 0.14

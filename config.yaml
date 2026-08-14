@@ -1,0 +1,54 @@
+paths:
+  input_dir: Resource
+  workspace_dir: workspace
+  output_dir: output
+  model_dir: models/faster-whisper-small
+api_config: api.yaml
+asr:
+  engine: faster-whisper
+  model_id: Systran/faster-whisper-small
+  device: auto
+  compute_type: int8_float16
+  language: zh
+  beam_size: 5
+  qwen_runtime_python: D:/Anaconda/envs/envs/ImageT10/python.exe
+  qwen_runtime_dir: models/qwen3-asr-runtime
+  qwen_model_dir: models/qwen3-asr-0.6b-hf
+  qwen_runner: scripts/qwen_asr_runner.py
+  qwen_chunk_seconds: 60
+  hotwords:
+  - 医学
+  - 解剖
+  - 生理
+  - 病理
+  terminology_replacements:
+    残嫩: 缠论
+    残认: 缠论
+    查认: 缠论
+    职业障位者: 职业交易者
+    真实种式: 真实走势
+    还言市场: 还原市场
+    总是分类: 走势分类
+    本贞: 本质
+frames:
+  sample_interval_seconds: 10
+  max_candidates: 600
+  max_keyframes: 8
+  scene_change_threshold: 0.025
+  min_content_entropy: 2.4
+  content_start_padding_seconds: 30
+  min_keyframe_gap_seconds: 480
+  max_width: 1280
+render:
+  source_link_base: video-study://play
+  include_full_transcript: false
+  offline_section_seconds: 300
+  offline_points_per_section: 2
+desktop:
+  speech_models:
+  - faster-whisper
+  - qwen3-asr-0.6b
+  content_level: 丰富
+  watermark:
+    text: powed by Fx
+    opacity: 0.14

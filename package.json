@@ -1,0 +1,8 @@
+{
+  "name": "video-study-docx-renderer",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "docx": "^9.5.1"
+  }
+}

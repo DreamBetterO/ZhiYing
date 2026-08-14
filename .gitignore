@@ -1,0 +1,44 @@
+# Secrets and machine-local settings
+.env
+.env.*
+!.env.example
+QwenAPI*.txt
+
+# User data and resumable pipeline artifacts
+Resource/
+视频/
+models/
+workspace/
+output/
+
+# Build, release and temporary artifacts
+build/
+dist/
+pack/
+tmp/
+*.log
+*.pid
+
+# Python environments and caches
+.venv/
+venv/
+*.egg-info/
+*.py[cod]
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node dependencies and caches
+node_modules/
+.npm-cache/
+
+# Editor and operating-system noise
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
+~$*
