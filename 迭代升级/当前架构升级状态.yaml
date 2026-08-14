@@ -1,0 +1,13 @@
+change_id: architecture-decoupling-pipeline-kernel
+phase: P11
+status: complete
+blockers: []
+next: "V4.0 已交付；后续仅处理用户新反馈或用户批准的新命名版本"
+latest_validation:
+  P9: "278 tests passed；退役路径和无效开关已删除；0 cloud requests"
+  P10: "27 documentation/architecture/desktop tests passed；只读诊断通过；VLM adapter 已归位 execution/adapters"
+  P11: "125 warnings-as-errors + 283 full tests passed；CODELY 导航已与 V4.0 对齐；JSON/MD/DOCX/PDF、10 页视觉 QA、协议与桌面启动通过"
+boundaries:
+  cloud_requests: 0
+  secrets_read: false
+  web_surface_added: false

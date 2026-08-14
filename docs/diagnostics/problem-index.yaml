@@ -1,0 +1,31 @@
+schema_version: 1
+errors:
+  - {prefix: SOURCE, owner: video_study.execution.steps.coarse, first_artifact: source.manifest, tests: [tests/test_coarse_pipeline.py], safe_rerun_from: source.probe}
+  - {prefix: AUDIO, owner: video_study.execution.steps.coarse, first_artifact: audio.flac, tests: [tests/test_coarse_pipeline.py], safe_rerun_from: audio.extract}
+  - {prefix: TRANSCRIPT_DECODE, owner: video_study.execution.steps.coarse, first_artifact: transcript.raw, tests: [tests/test_fine_pipeline.py], safe_rerun_from: transcript.decode}
+  - {prefix: TRANSCRIPT_NORMALIZE, owner: video_study.execution.steps.coarse, first_artifact: transcript.normalized, tests: [tests/test_fine_pipeline.py], safe_rerun_from: transcript.normalize}
+  - {prefix: FRAMES_CANDIDATES, owner: video_study.execution.steps.coarse, first_artifact: frames.candidates, tests: [tests/test_fine_pipeline.py], safe_rerun_from: frames.candidates}
+  - {prefix: FRAMES_SELECT, owner: video_study.execution.steps.coarse, first_artifact: frames.selected, tests: [tests/test_fine_pipeline.py], safe_rerun_from: frames.select}
+  - {prefix: KNOWLEDGE_PLAN, owner: video_study.execution.steps.knowledge, first_artifact: knowledge.plan, tests: [tests/test_knowledge_planning.py], safe_rerun_from: knowledge.plan}
+  - {prefix: VISUAL_JOBS, owner: video_study.execution.steps.knowledge, first_artifact: visual.jobs, tests: [tests/test_visual_retrieval.py], safe_rerun_from: visual.jobs}
+  - {prefix: VISUAL_EVIDENCE, owner: video_study.execution.steps.knowledge, first_artifact: visual.evidence, tests: [tests/test_visual_retrieval.py, tests/test_vision_providers.py], safe_rerun_from: visual.evidence}
+  - {prefix: FRAME_SEMANTICS, owner: video_study.execution.steps.knowledge, first_artifact: frames.semantics, tests: [tests/test_visuals.py], safe_rerun_from: frames.semantics}
+  - {prefix: COURSE_IR, owner: video_study.execution.steps.knowledge, first_artifact: knowledge.course_ir, tests: [tests/test_cloud_payload.py], safe_rerun_from: knowledge.course_ir}
+  - {prefix: KNOWLEDGE_UNITS, owner: video_study.execution.steps.knowledge, first_artifact: knowledge.units, tests: [tests/test_knowledge_organizer.py, tests/test_cloud_payload.py], safe_rerun_from: knowledge.units}
+  - {prefix: KNOWLEDGE_SELFCHECK, owner: video_study.execution.steps.knowledge, first_artifact: knowledge.selfcheck, tests: [tests/test_knowledge_selfcheck.py], safe_rerun_from: knowledge.selfcheck}
+  - {prefix: DOCUMENT_ASSEMBLE, owner: video_study.execution.steps.knowledge, first_artifact: document.v2, tests: [tests/test_knowledge_adapter.py, tests/test_render_content_blocks.py], safe_rerun_from: document.assemble}
+  - {prefix: RENDER, owner: video_study.execution.steps.coarse, first_artifact: document.v2, tests: [tests/test_coarse_pipeline.py, tests/test_pdf_conversion.py], safe_rerun_from: render.bundle}
+  - {prefix: RUN_CANCELLED, owner: video_study.execution.runner, first_artifact: state/pipeline-state.json, tests: [tests/test_pipeline_runner.py], safe_rerun_from: failed_step}
+cache_reasons:
+  CACHE_HIT: "产物及指纹有效，无需重跑"
+  LEGACY_ADOPTED: "旧 Workspace 已单向认领，无需模型初始化"
+  NO_RECORD: "无 Step 缓存记录，从该 Step 执行"
+  FORCED: "用户显式强制该 Step"
+  STEP_VERSION_CHANGED: "实现版本变化，从该 Step 局部重跑"
+  CONTRACT_CHANGED: "Artifact 合同变化，从该 Step 局部重跑"
+  UPSTREAM_CHANGED: "上游 Artifact 变化，从该 Step 向下游重跑"
+  CONFIG_CHANGED: "声明的配置指纹变化，从该 Step 向下游重跑"
+  CAPABILITY_INSUFFICIENT: "缓存能力低于本次请求（如 offline→cloud）"
+  OUTPUT_MISSING: "缓存记录存在但产物缺失"
+  OUTPUT_CORRUPT: "产物摘要或结构校验失败"
+  PREVIOUS_RUN_INCOMPLETE: "缓存记录不完整或损坏"

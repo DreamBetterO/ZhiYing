@@ -7,17 +7,23 @@ import sys
 from pathlib import Path
 
 from .config import load_config
-from .envfile import import_qwen_txt
 from .media import check_tools, discover_videos, probe_video
 from .pipeline import run_all
-from .runtime import add_bundled_tools_to_path, default_config_path, is_frozen
+from .runtime import add_project_tools_to_path, default_config_path
+
+
+def _cloud_authorization(settings: dict):
+    from .application.processing import resolve_cloud_authorization
+    from .config import AppConfig
+    return resolve_cloud_authorization(AppConfig(Path.cwd(), {"qwen": settings}))
 
 
 def main() -> None:
-    add_bundled_tools_to_path()
-    if is_frozen() and len(sys.argv) == 1:
-        sys.argv.append("desktop")
-    default_config = str(default_config_path()) if is_frozen() else "config.yaml"
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+    add_project_tools_to_path()
+    default_config = str(default_config_path())
     parser = argparse.ArgumentParser(description="教学视频转可溯源复习文档")
     sub = parser.add_subparsers(dest="command", required=True)
     doctor = sub.add_parser("doctor", help="检查环境和输入视频")
@@ -27,22 +33,17 @@ def main() -> None:
     run.add_argument("--video")
     run.add_argument("--force", action="store_true")
     run.add_argument("--force-asr", action="store_true", help="只强制重跑 ASR，复用已有音频和关键帧")
-    run.add_argument("--force-summary", action="store_true")
+    run.add_argument(
+        "--force-summary", action="store_true",
+        help="重算知识文档；不会隐式开启云端，请配合 --cloud-summary 明确授权",
+    )
     run.add_argument("--cloud-summary", action=argparse.BooleanOptionalAction, default=None, help="明确启用或禁用云端总结")
     desktop = sub.add_parser("desktop", help="启动原生桌面软件")
     desktop.add_argument("--config", default=default_config)
     play_url = sub.add_parser("play-url", help="处理 Word/PDF 本地来源链接")
     play_url.add_argument("--config", default=default_config)
     play_url.add_argument("url")
-    import_env = sub.add_parser("import-env", help="从 QwenAPI.txt 安全生成 .env")
-    import_env.add_argument("--source", default="QwenAPI.txt")
-    import_env.add_argument("--output", default=".env")
-    import_env.add_argument("--force", action="store_true")
     args = parser.parse_args()
-    if args.command == "import-env":
-        result = import_qwen_txt(Path(args.source).resolve(), Path(args.output).resolve(), args.force)
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-        return
     config = load_config(args.config)
 
     if args.command == "doctor":
@@ -81,12 +82,23 @@ def main() -> None:
         }
         print(json.dumps(report, ensure_ascii=False, indent=2))
     elif args.command == "run":
+        qwen_settings = None
+        qwen = config.raw.get("qwen", {})
+        configured_default = bool(qwen.get("enabled", False))
+        cloud_enabled = (
+            bool(args.cloud_summary)
+            if args.cloud_summary is not None
+            else os.getenv(qwen.get("enabled_env", "CLOUD_LLM_ENABLED"), str(configured_default)).lower() == "true"
+        )
+        if cloud_enabled:
+            qwen_settings = _cloud_authorization(qwen).legacy_settings(qwen)
         results = run_all(
             config,
             video=args.video,
             force=args.force,
             force_summary=args.force_summary,
             cloud_summary=args.cloud_summary,
+            qwen_settings=qwen_settings,
             force_asr=args.force_asr,
         )
         print(json.dumps([{key: str(value) for key, value in item.items()} for item in results], ensure_ascii=False, indent=2))

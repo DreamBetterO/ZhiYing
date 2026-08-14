@@ -3,19 +3,22 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from video_study.summarize import (
-    _normalize_document,
-    _validate_qwen_payload,
-    build_cloud_source,
-    build_cloud_source_blocks,
-    build_document,
-    merge_transcript_segments,
-)
+from video_study.knowledge.document import _normalize_document, _source_rows_unchanged
+from video_study.knowledge.offline_document import build_offline_document
+from video_study.knowledge.source_blocks import build_cloud_source, build_cloud_source_blocks
+from video_study.transcript import merge_transcript_segments
 from video_study.render import render_markdown
 
 
 class OfflineSummaryTests(unittest.TestCase):
+    def test_cache_frame_comparison_ignores_render_derived_dimensions(self) -> None:
+        source = [{"image_id": "frame_001", "path": "frame.jpg", "timestamp_seconds": 12.0}]
+        cached = [{**source[0], "width": 1280, "height": 720}]
+        self.assertTrue(_source_rows_unchanged(cached, source))
+        self.assertFalse(_source_rows_unchanged(cached, [{**source[0], "timestamp_seconds": 13.0}]))
+
     def test_fragmented_asr_is_merged_and_reduced_to_traceable_points(self) -> None:
         texts = [
             "同学们今天开始上课",
@@ -50,12 +53,10 @@ class OfflineSummaryTests(unittest.TestCase):
         }]}
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            document = build_document(
+            document = build_offline_document(
                 manifest,
                 transcript,
                 frames,
-                Path(temp_dir) / "document.json",
-                {"enabled": False},
                 {
                     "source_link_base": "video-study://play",
                     "offline_section_seconds": 300,
@@ -68,7 +69,7 @@ class OfflineSummaryTests(unittest.TestCase):
         self.assertEqual(len(document["sections"]), 2)
         self.assertLess(len(points), len(segments))
         self.assertTrue(any("心房颤动" in point["statement"] for point in points))
-        self.assertTrue(all(point["source_segment_ids"] for point in points))
+        self.assertTrue(all(point["source_refs"]["segment_ids"] for point in points))
         self.assertEqual(document["sections"][0]["figures"], [])
         self.assertEqual(document["sections"][1]["figures"][0]["image_id"], "frame_001")
 
@@ -104,35 +105,6 @@ class OfflineSummaryTests(unittest.TestCase):
         _, source_blocks = build_cloud_source_blocks({"segments": rows})
         self.assertEqual(source_blocks["block_0001"][0], "seg_00001")
         self.assertGreater(len(source_blocks["block_0001"]), 1)
-
-    def test_cloud_payload_requires_material_structure_and_sources(self) -> None:
-        valid = {
-            "document_title": "视频内容方法导读",
-            "overview": "本视频介绍一套方法的核心定义、应用主线以及学习时需要关注的关键关系。",
-            "sections": [{
-                "title": "核心方法",
-                "summary": "说明方法的定义与目标。",
-                "knowledge_points": [{
-                    "statement": "方法的核心目标",
-                    "explanation": "通过结构化观察减少主观判断。",
-                    "source_block_ids": ["block_0001"],
-                }],
-            }],
-        }
-        _validate_qwen_payload(valid, {"block_0001": ["seg_00001"]})
-        invalid = {**valid, "overview": ""}
-        with self.assertRaisesRegex(ValueError, "overview"):
-            _validate_qwen_payload(invalid)
-
-        guessed = {
-            **valid,
-            "sections": [{
-                **valid["sections"][0],
-                "summary": "目标是实现持续盈利（疑似原词）常态化。",
-            }],
-        }
-        with self.assertRaisesRegex(ValueError, "括号猜词"):
-            _validate_qwen_payload(guessed, {"block_0001": ["seg_00001"]})
 
     def test_figures_are_linked_to_nearest_knowledge_point_with_conservative_caption(self) -> None:
         manifest = {"video_id": "demo", "title": "课程", "source_path": "demo.mp4", "duration_seconds": 120}

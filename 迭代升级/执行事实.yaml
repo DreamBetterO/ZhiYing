@@ -1,0 +1,533 @@
+purpose: "供执行 Agent 按需检索；不是用户版本时间线"
+schema_version: 1
+
+architecture:
+  knowledge_layer:
+    - schema
+    - planning
+    - organizer
+    - course_ir
+    - cloud_payload
+    - visual_retrieval
+    - selfcheck
+    - adapter
+    - prompts
+  execution_layer:
+    - context
+    - contracts
+    - artifacts
+    - cache
+    - ports
+    - registry
+    - runner
+    - steps
+  document_flow: "15-step DAG -> Canonical Document v2 -> Markdown -> Word -> PDF"
+  compatibility: "旧 Workspace 和 Document v1 仅单向只读认领；生产只写 v2"
+  cloud_entrypoints:
+    - plan_cloud
+    - organize_cloud
+    - aggregate_documents
+
+known_edges:
+  short_video_frame_padding:
+    symptom: "视频接近或短于 content_start_padding_seconds 时，候选可能被全部过滤并触发空列表错误"
+    current_workaround: "短视频测试将 padding 设为 0"
+    proper_fix: "候选过滤前检测 content_start >= duration 或空候选，并安全回退到有效时间范围"
+  shared_manifest_concurrency:
+    symptom: "同一任务并发写 manifest 可能出现 PermissionError"
+    guidance: "相同任务目录串行处理；不要用并发掩盖写入竞争"
+
+validation_guidance:
+  - "优先复用已有 ASR、帧和知识缓存，不无理由重跑长视频"
+  - "无云端授权时使用 fixture/fake provider 验证程序链路，不伪装成真实模型质量验证"
+
+v2_2_verified:
+  time: "2026-08-10 17:49:44 +08:00"
+  status: "已验证"
+  scope:
+    - "内容详略与图文教学等级解耦"
+    - "课程视觉画像、知识点视觉契约、VisualEvidence 仲裁"
+    - "本地 Qwen3-VL opt-in provider、OCR/VLM fallback"
+    - "visual_group 在 Markdown、Word、PDF 中就近渲染"
+  implementation_notes:
+    visual_evidence_cache_version: 5
+    visual_source_version: "2.2"
+    local_vlm_default: "disabled"
+    local_vlm_enable_path: "config.yaml -> visual_evidence.local_vlm_enabled: true"
+    local_vlm_runtime: "D:/Anaconda/envs/envs/ImageT10/python.exe + models/qwen3-asr-runtime"
+    local_vlm_model_dir: "models/qwen3-vl-2b-instruct"
+    local_vlm_runner: "scripts/qwen_vl_runner.py"
+  fixes_after_real_vlm:
+    - "将 local_vlm_runtime_python、local_vlm_runtime_dir、local_vlm_runner 纳入 VisualEvidence 缓存签名"
+    - "修正 qwen_vl_runner 的 JSON prompt，移除会被模型复制的占位字段"
+    - "过滤把成功条件原文复述为 visible_evidence 的 VLM 输出"
+    - "当 visual_answer 明确包含图像/标注/箭头/K线等画面线索时，可作为备用可见证据"
+  validation:
+    full_sample_flow_without_vlm:
+      videos:
+        - "视频/test/test4-1.mp4"
+        - "视频/test/test4-2.mp4"
+      elapsed_seconds_total: 349.503
+      elapsed_seconds:
+        test4_1: 211.556
+        test4_2: 137.946
+      cloud_tokens: 0
+      outputs:
+        - "output/test4-1-da2230dd85c7/test4-1.md"
+        - "output/test4-1-da2230dd85c7/test4-1.docx"
+        - "output/test4-1-da2230dd85c7/test4-1.pdf"
+        - "output/test4-2-c380e216e27c/test4-2.md"
+        - "output/test4-2-c380e216e27c/test4-2.docx"
+        - "output/test4-2-c380e216e27c/test4-2.pdf"
+    local_vlm_smoke:
+      command: ".venv/Scripts/python.exe workspace/qa/v2.2/run_vlm_smoke.py --questions-per-case 1 --max-candidates 8 --compare-candidates 4"
+      cloud_tokens: 0
+      elapsed_seconds_total: 68.908
+      gpu_peak_utilization_percent: 97
+      gpu_peak_memory_mib: 7071
+      selected_count:
+        test4_1_plan_012: 1
+        test4_2_plan_002: 1
+      visual_group_count:
+        test4_1: 1
+        test4_2: 1
+      outputs:
+        - "workspace/qa/v2.2/vlm-smoke/test4-1-da2230dd85c7/document.md"
+        - "workspace/qa/v2.2/vlm-smoke/test4-1-da2230dd85c7/document.docx"
+        - "workspace/qa/v2.2/vlm-smoke/test4-1-da2230dd85c7/document.pdf"
+        - "workspace/qa/v2.2/vlm-smoke/test4-2-c380e216e27c/document.md"
+        - "workspace/qa/v2.2/vlm-smoke/test4-2-c380e216e27c/document.docx"
+        - "workspace/qa/v2.2/vlm-smoke/test4-2-c380e216e27c/document.pdf"
+    document_render_qa:
+      project_pdf_pages:
+        test4_1: 7
+        test4_2: 7
+      word_export_pdf_pages:
+        test4_1: 9
+        test4_2: 9
+      result: "contact sheet 视觉检查未见图片重叠、文字覆盖、异常空白页；video-study:// 链接保留"
+    automated_checks:
+      unittest: "159 tests passed"
+      compileall: "passed"
+      node_check_render_docx: "passed"
+      yaml_parse: "passed"
+      pip_check: "No broken requirements found"
+      git_diff_check: "passed; only CRLF warning"
+  limitations:
+    - "本地 Qwen3-VL 当前是短生命周期子进程；每个视觉问题会重新加载模型，资源友好但速度慢"
+    - "detail pass 在个别图片上仍可能生成非法 JSON；当前策略为不采用失败细节结果并返回 no_match"
+    - "烟测未启用 OCR；小字和密集界面质量仍建议通过 OCR + VLM 组合继续验证"
+    - "默认配置仍不启用本地 VLM，不会静默消耗云端或 GPU 资源"
+
+followup_audit_2026_08_11:
+  sample: "视频/test/test4-2.mp4"
+  fixes:
+    - "短视频的内容起始留白超过全部候选帧时，关键帧选择回退到实际可用时间轴，避免空列表 max()"
+    - "faster-whisper 与 Qwen ASR 的新结果/缓存结果统一把片段时间夹到真实视频时长内，并同步重建 JSON/SRT"
+    - "视觉哈希与近似 SSIM 改用灰度字节读取，消除 Pillow getdata 弃用警告且不改变算法"
+  validation:
+    unittest: "162 tests passed with DeprecationWarning treated as error"
+    forced_offline_sample_seconds: 343.2
+    cached_rebuild_seconds: 4.8
+    artifact_integrity: "581 个转写片段、24 个知识点、2 张关键帧、5 个 manifest 阶段和 24 个 video-study:// 链接通过一致性审计"
+    pdf_render: "9 页逐页检查通过；时间修复后仅末页来源结束时间变化"
+    desktop_ui: "DPI 感知实机启动，1402x996 初始窗口主要控件完整可见并正常关闭"
+  environment_notes:
+    - "当前 faster-whisper CUDA 缺 cublas64_12.dll，会回退 CPU"
+    - "当前未发现 soffice；DOCX 通过 OOXML/链接结构检查，PDF 使用 reportlab_fallback 并完成逐页视觉检查"
+
+cloud_budget_audit_2026_08_11:
+  sample: "视频/test/test4-2.mp4"
+  authorization_scope:
+    payload: "压缩转写与来源块 ID；不上传视频、截图或密钥"
+    model_chain:
+      - "glm-5.2"
+      - "qwen3.7-plus"
+      - "kimi-k2.6"
+    baseline_runs: 1
+    optimized_retests: 1
+    max_requests_per_video: 5
+  baseline:
+    elapsed_seconds: 107.6
+    successful_requests: 2
+    planning_usage:
+      prompt_tokens: 3964
+      completion_tokens: 2771
+      total_tokens: 6735
+    organizing_usage:
+      prompt_tokens: 8555
+      completion_tokens: 3769
+      total_tokens: 12324
+    actual_total_tokens: 19059
+    old_document_reported_tokens: 12324
+    plan_units: 8
+    unit_count: 8
+    finding: "最终 document 只保留整理阶段 usage/attempts，少算规划阶段；max_calls_per_video 未跨规划、整理和分章回退共享"
+  fixes:
+    - "新增单视频 CloudRequestBudget；规划、整理、旧总结和聚合在发送前占用请求额度，语义失败但已返回的响应也累计 Tokens"
+    - "document 合并 planning/organizing 阶段模型、尝试与 usage；model_attempts 增加 stage，cloud_budget 记录已用/剩余请求"
+    - "规划提示词改用短 source_block_ids，本地映射回真实 segment；规划输出独立限制为 3200 Tokens"
+    - "规划与整理增加请求字符上限、真实来源引用、唯一 plan_id 和逐项覆盖校验；整理语义不合格时先走候选模型回退"
+    - "CLI 未显式指定档位时继承 desktop.content_level，和桌面默认行为一致"
+    - "桌面授权框明确正常路径通常为规划 1 次加整理 1 次、全流程共享上限、分阶段输出上限与重试消耗"
+    - "列表类型 content_blocks 即使模型把内容放入 text 也会归一化为 items；Markdown、Word、PDF 三端均有容错"
+    - "桌面 Token 表头缩短以避免高 DPI 裁切；云端连接失败文案明确本地整理不受影响"
+  optimized_retest:
+    elapsed_seconds: 100.6
+    request_budget_used: 4
+    request_budget_max: 5
+    attempts:
+      planning_connection_errors: 3
+      organizing_success: 1
+    planning_mode: "三模型均 connection error 后确定性回退离线规划；未返回推理 usage"
+    organizing_model: "glm-5.2"
+    usage:
+      prompt_tokens: 10410
+      completion_tokens: 5088
+      total_tokens: 15498
+    token_change_vs_true_baseline_percent: -18.7
+    plan_units: 24
+    unit_count: 24
+    unique_titles: 24
+    invalid_source_refs: 0
+    local_play_links: 24
+    content_block_origins:
+      audio_backed: 37
+      model_aid: 0
+      external_fact: 0
+    selfcheck_errors: 0
+    transcript_tail_seconds: 954.168
+  artifact_validation:
+    json_markdown_word_pdf: "通过；最终产物由同一 document.json 本地重渲染，未追加云调用"
+    pdf: "reportlab_fallback，6 页经 Poppler 全部逐页检查，无裁切、重叠、乱码；修复 rule_list/text 后正文可见"
+    docx: "ZIP/OOXML 完整，115 个段落、24 个 hyperlink、24 个 video-study:// 关系；本机缺 soffice，未完成 Word PNG 视觉渲染"
+    desktop_ui: "144 DPI 下实机挂载；主操作区、内容档位、图文档位和产物按钮可见；Computer Use 初始化 EPERM 后使用 PrintWindow 回退截图"
+    qa_root: "workspace/qa/cloud-optimization-2026-08-11"
+  final_validation:
+    unittest: "169 tests passed with warnings treated as errors"
+    compileall: "passed"
+    node_check_render_docx: "passed"
+    yaml_parse: "passed"
+    pip_check: "No broken requirements found"
+    git_diff_check: "passed; only CRLF warning"
+  boundaries:
+    - "未改写云端生成正文进行主观美化；修复仅涉及结构、预算、校验、兼容渲染和既有 UI 布局"
+    - "未写入迭代记录与问题.md；等待用户明确批准新的命名版本"
+    - "未经新授权不要重复云端复测；本次规划网络错误已由离线规划加云端整理的可恢复路径覆盖"
+
+visual_recovery_audit_2026_08_11:
+  sample: "视频/test/test4-2.mp4"
+  status: "完整链路通过；等待用户验收，不写用户版本时间线"
+  user_reported_scope:
+    - "最终产物缺少图片"
+    - "长阶段缺少滚动过程日志"
+    - "失败降级与完成通知不足"
+    - "GPU 使用状态缺少反馈"
+    - "取消任务过慢"
+  cloud_run:
+    endpoint_type: "用户明确授权的阿里云 OpenAI-compatible 端点"
+    payload: "压缩转写、来源块 ID 与结构化 JSON；未上传视频、截图或密钥"
+    model: "glm-5.2"
+    request_budget_used: 5
+    request_budget_max: 5
+    usage:
+      prompt_tokens: 6691
+      completion_tokens: 3633
+      total_tokens: 10324
+    later_cloud_requests: 0
+    cache_policy: "视觉与渲染修复只刷新本地派生结果，复用云端计划、成功正文和 token 记录"
+  root_causes:
+    missing_image:
+      - "原配置关闭本地视觉能力，OCR 亦不可用，视觉问题只能 no_match"
+      - "VLM 候选 ID/JSON 输出、成功条件轻微抄写错字和字段内部矛盾导致有效帧被拒绝"
+      - "云端新视觉问题改变缓存签名后触发本地 VLM；旧 runner 两轮各 384 token 且没有单轮时间上限，最终耗尽 180 秒外层预算"
+    stale_cache: "adapter 原地添加 width/height，导致磁盘源帧与文档 figures 恒不相等，知识缓存被误判失效"
+    reader_leakage: "候选别名 C 与 chapter_xxx/云端预算错误进入图片说明和课程复习"
+  fixes:
+    visual:
+      - "local_vlm_enabled 改为 auto；预检回报 RTX 4060/GPU 或明确降级"
+      - "runner 单轮最多 256 token、55 秒；取消第二次模型纠错，改为不臆造事实的确定性 JSON 字段修复"
+      - "结果文件完整落盘后不等待可能卡住的 CUDA 解释器析构；外层同时监测完成文件"
+      - "候选 A/B/C/D 仅映射到本轮允许 ID；轻微条件抄写错字受限映射回合同原文"
+      - "像素事实已明确覆盖实体与关系时，可解决 criteria_met/criteria_missing 的字段矛盾"
+      - "候选别名不进入读者字段；图注改用已验证 visible_evidence"
+      - "瞬时视觉失败可单独恢复；云端计划、正文、usage 和 attempts 均复用"
+    cache_and_fallback:
+      - "源帧缓存比较忽略 width/height 派生字段，adapter 不再原地修改 frames"
+      - "预算耗尽章节仅做确定性转写去填充、相邻去重、标点合并和长度控制；不以 AI 主观改写正文"
+      - "运行错误只保留在事件/降级通知，不写入读者 open_questions"
+      - "--force-summary 帮助明确其不会隐式开启云端；显式 --cloud-summary 才授权云端"
+    desktop:
+      - "新增最近 500 行自动滚动日志、12 秒无事件检测与 15 秒心跳"
+      - "任务表增加计算设备列，事件显示 ASR CPU/GPU、视觉 GPU 与设备名"
+      - "失败、降级完成和取消分别通知；取消会终止网络/ASR/VLM/渲染子进程树"
+      - "视觉、规划和组织阶段使用中文标签；运行态取消按钮保持可用"
+  final_result:
+    mode: "cloud_summary"
+    visual_selected: "1/1"
+    selected_frame: "candidate_00017.jpg @ 00:02:40"
+    gpu: "NVIDIA GeForce RTX 4060 Laptop GPU"
+    compute_summary: "ASR 缓存（原CPU） · 视觉 GPU"
+    local_vlm_recovery_seconds: 18
+    cloud_usage_unchanged_after_recovery: true
+  cancellation_validation:
+    asr_shutdown_latency_seconds: 0.109
+    vlm_shutdown_latency_seconds: 0.906
+  artifact_validation:
+    document_json: "cloud_summary、glm-5.2、10324 tokens、1 个已绑定视觉证据、1 个 visual_group、1 个图片来源链接"
+    markdown: "真实帧与 7 个 video-study:// 链接；内部候选别名/预算错误扫描通过"
+    docx: "ZIP/OOXML 结构通过；2 个嵌入图片对象、7 个 video-study:// 链接"
+    pdf: "reportlab_fallback；5 页、7 个 video-study:// 链接，Poppler 全页渲染并逐页视觉检查"
+    word_visual_qa_limit: "本机未检测到 LibreOffice；Word 仅完成 OOXML/图片/链接结构检查"
+    ui: "真实 Tk 窗口截图确认中文阶段、计算设备、自动滚动日志和可用取消按钮"
+  validation:
+    unittest: "183 tests passed with warnings treated as errors"
+    targeted_tests: "视觉、缓存、adapter、organizer、pipeline、渲染相关测试通过"
+    localplay: "3 tests passed"
+    secret_handling: "未输出任何本机密钥文件内容"
+    qa_roots:
+      - "workspace/qa/cloud-optimization-2026-08-11"
+      - "workspace/qa/cancel-latency-2026-08-11"
+      - "workspace/qa/2026-08-11-test4-2/final-render-v5"
+  boundaries:
+    - "未使用 Agent 生成能力美化视频帧或课程正文"
+    - "未增加 Web UI、HTTP 服务、端口或 serve 命令"
+    - "未写入迭代记录与问题.md；等待用户明确批准命名版本"
+
+ui_pdf_refinement_2026_08_11:
+  status: "implemented_and_locally_tested"
+  user_requests:
+    - "恢复上一版日志位置与颜色，改为两行滚动日志；启动时不显示无必要的页面滚动条"
+    - "PDF 优先由本机 Word 转换，转换方式不作为 error/warning"
+    - "移除控制讲义详略和知识点密度文案"
+    - "知影名称右侧增加小号版本显示"
+  implementation:
+    ui:
+      - "移除独立深色日志卡片，在原状态行位置保留两行浅色 Text 日志实体及最近 500 行"
+      - "日志按最后两个逻辑行确定性定位；阶段、GPU、降级、失败与取消事件继续写入"
+      - "外层页面滚动条按内容溢出自动显示；任务表格自身滚动条保持不变"
+      - "显示 v0.2.0，并让包版本与 pyproject 版本一致"
+    pdf:
+      - "Windows 直接尝试隐藏调用 Microsoft Word ExportAsFixedFormat，单次上限 60 秒且可取消"
+      - "Word 不可用、失败或超时时静默使用内置 PDF 渲染；用户取消仍向上层传播"
+      - "移除 LibreOffice/soffice 检测和 pdf_renderer_fallback 警告事件"
+  validation:
+    cloud_requests: 0
+    cloud_tokens: 0
+    local_word_conversion: "test4-2.docx -> test4-2.pdf 成功，mode=local_word，32.38 秒，497296 bytes"
+    ui_screenshot: "真实 Tk 窗口确认 v0.2.0、原位置浅色日志、无外层页面滚动条；截图保存在 cloud-optimization-2026-08-11/ui-process-state-current.png"
+    unittest: "187 tests passed with warnings treated as errors"
+  boundaries:
+    - "未修改用户版本时间线；等待用户批准命名版本"
+    - "未发起新的云端请求"
+
+vlm_warning_audit_2026_08_11:
+  status: "root_cause_confirmed_and_fixed"
+  root_cause:
+    - "visual_question_no_match 无条件使用 warning，导致证据门槛拒绝也进入任务 degradations"
+    - "知识流水线在 0 个视觉问题通过门槛时无条件再发 visual_evidence_missing warning"
+    - "桌面层把全部 runtime warning 聚合为完成降级弹窗，因此一次正常 no_match 会被用户看到为 VLM 降级"
+  observed_local_evidence:
+    evidence_total: 5
+    selected: 2
+    expected_no_match: 3
+    real_vlm_failures: 0
+    historical_warning_codes:
+      visual_question_no_match: 2
+  classification:
+    expected_info:
+      - "vlm_rejected"
+      - "vlm_criteria_rejected"
+      - "vlm_no_candidate"
+      - "fallback_no_candidate / fallback_no_pixel_evidence / OCR 证据不足"
+      - "global_scene_arbitration"
+    real_warning:
+      - "vlm_provider_error"
+      - "vlm_oom_no_match"
+      - "vlm_detail_failed 且无法保留已核实证据"
+      - "vlm_invalid_candidate_id"
+  implementation:
+    - "逐问题 no_match 改为 info，并记录 inference_failed 诊断字段"
+    - "0/N 证据通过时仅提示按证据门槛不配图，不再触发降级弹窗"
+    - "真实推理失败无论是否有其他图片选中，任务级只汇总一次 visual_inference_degraded warning"
+    - "粗选证据已完整时的细节复核失败改为 recovered info"
+    - "瞬时失败重试后若只剩正常 no_match，不再报告重试降级"
+  validation:
+    cloud_requests: 0
+    cloud_tokens: 0
+    local_cache_reclassification: "3 个历史正常 no_match 均不再告警；真实 VLM 失败为 0"
+    targeted_tests: "正常 no_match 无 warning；模拟 provider_error 仅一个汇总 warning"
+  boundaries:
+    - "未放宽图片证据门槛，未为了消除警告而强行配图"
+    - "未隐藏真实 VLM 调用失败、OOM、协议错误或不可恢复的细节推理失败"
+    - "未修改用户版本时间线"
+
+v3_0_delivery_2026_08_12:
+  status: "implemented_and_locally_validated"
+  product_version: "0.3.0"
+  defaults:
+    content_ir_enabled: true
+    near_duplicate_action: "report_only"
+    visual_execution_mode: "session"
+    cloud_payload_mode: "course_ir"
+    document_schema_version: 2
+    eta_mode: "task"
+  implementation:
+    course_ir:
+      - "共享 SourceBlock 构造；Claim 具有稳定来源、类型、origin 与唯一 primary owner"
+      - "exact duplicate 与可证明 containment 自动删除；near duplicate 只写报告，边界、否定、数字与例外差异保留"
+    visual:
+      - "视觉问题在调用前收敛为每单元最多一个 primary question；15–45 分钟视频 compare 上限 8，detail 上限 2，每次最多 4 图"
+      - "Qwen3-VL runner 使用每视频单会话、一次加载、micro_batch_size=1、原子 job 文件和单 job 一次重启"
+      - "场景在推理前预占；正常 no-match 为 info，真实推理故障最多汇总一个 warning"
+    cloud_payload:
+      - "默认发送紧凑 CourseIR 投影；不含本地路径、图片像素、Markdown、PDF、Word 或完整 document.json"
+      - "请求前按字符和输出预算完成全部分批；响应严格限制 source/unit/claim/visual ID 集合"
+      - "payload 构造、预算或校验失败停止云端并保留本地产物，不回退 legacy 大 prompt"
+    document:
+      - "默认 Schema v2；content_blocks 是持久化正文唯一事实源，旧字段只在临时 legacy view 中派生"
+      - "v1 artifact 只读迁移；Markdown、Word、PDF、聚合、缓存恢复和 video-study:// 时间回看保持兼容"
+    eta:
+      - "ProgressEvent 覆盖 ASR 音频秒、候选帧、VLM cold/compare/detail、云 planning/organizing batch 与 Markdown/Word/PDF"
+      - "最近 5 项中位数、最多 20 条脱敏历史；无样本显示估算中，monotonic deadline 每秒倒计时，缓存状态隔离"
+      - "删除百分比线性 ETA；auto 显式分为 local_prepare 与 cloud_refine，取消立即清空"
+  cache_versions:
+    knowledge_generator: 15
+    knowledge_pipeline: 7
+    local_derivative: 6
+    course_ir: 1
+    organizer: 8
+    planning: 8
+    visual_evidence: 11
+    visual_source: "3.0"
+    cloud_payload: 1
+    document_schema: 2
+    eta_history: 1
+  validation:
+    stage_tests: "P0–P5 各指定离线模块均通过；P5 为 20/20"
+    final_unittest: "首次全量 222 项中 220 通过、2 项因 visual_source_version 遗留硬编码失败；修正后直接影响模块 26/26 通过，未违反次数预算重跑全量"
+    compileall: "最终验收命令已执行；后续版本常量修正由直接影响模块导入测试覆盖"
+    node_check_render_docx: "最终验收命令已执行"
+    pip_check: "最终验收命令已执行；P5 后与 VLM 预检前均无依赖破坏"
+    git_diff_check: "通过；仅有既有 CRLF 提示"
+    cached_rerender:
+      source: "workspace/test4-1-da2230dd85c7/knowledge/document.json"
+      result: "只读迁移到 Schema v2 后完成一次 JSON -> Markdown -> Word -> PDF；未重跑 ASR、抽帧、VLM 或云端"
+      pdf_mode: "built_in"
+      artifact_root: "output/v3-acceptance-cached"
+      pdf_visual_qa: "13 页经 Poppler 全部逐页检查，无裁切、重叠、缺字、图片溢出或页眉页脚错位"
+      docx_visual_qa_limit: "本机缺 LibreOffice，标准 DOCX->PNG 工具不可用；同一 DOCX 经 Word 内置转换所得 PDF 已完成全页视觉 QA"
+    local_vlm:
+      preflight: "model_complete=true；CUDA 可用；torch 2.7.1+cu128；transformers 5.14.1"
+      elapsed_seconds: 94.875
+      model_load_count: 1
+      compare_completed: 8
+      detail_completed: 0
+      selected_count: 6
+      expected_no_match_count: 13
+      failure_count: 0
+      cache_written: true
+    cloud_requests: 0
+    cloud_tokens: 0
+  boundaries:
+    - "未读取或输出 .env；未发起云端请求"
+    - "未增加 Web UI、本机 HTTP 服务、端口或 serve 命令"
+    - "保持 JSON -> Markdown -> Word -> PDF、时间戳和 video-study://"
+    - "未向迭代记录与问题.md 追加 V3.0 实施或验证条目"
+
+vlm_lifecycle_eta_followup_2026_08_12:
+  status: "implemented_and_offline_validated"
+  trigger:
+    - "用户指出 VLM 虽避免每题重载，但任务/批次生命周期仍不合理"
+    - "用户实测 VLM 降级项仍频繁出现"
+    - "用户指出 ETA 核心问题是任务注册过晚、缓存判断过早和历史分桶不足，且应先稳定模型生命周期"
+  root_causes:
+    vlm_lifecycle:
+      - "视觉循环开始前无条件 start_session；即使所有 job 命中逐任务缓存或没有合法候选，也会 cold load"
+      - "provider preflight 在逐任务缓存判定前执行；缓存路径仍承担不必要的本地运行时检查"
+      - "同一批次出现 OOM/会话故障后，后续 job 仍继续调用并生成重复故障结果"
+    warnings:
+      - "总体视觉缓存中的历史失败证据会被知识流水线再次识别为本轮失败并汇总 warning"
+      - "旧 workspace runtime-events 中存在修复前逐题 warning；它们是历史产物，不代表新路径仍逐题告警"
+    eta:
+      - "视觉 compare 以一个累计事件覆盖全部 job，动态任务集合不可独立修正"
+      - "ASR/frames 以文件存在性猜测缓存；frames 未使用选择配置与图片完整性校验后的权威结果"
+      - "历史全局最多 20 条，VLM cold/warm、模型、执行模式、缓存状态和渲染路径互相挤占"
+  implementation:
+    vlm_lifecycle:
+      - "先检查总体缓存和逐任务缓存；首个未缓存且存在合法候选的 job 才创建 provider、执行 preflight 和 cold load"
+      - "provider 由视觉批次拥有并在 finally 关闭；运行元数据记录 provider_initialized、session_started/closed、model_load_count 与 restart_count"
+      - "OOM 或 session/provider failure 经过当前 job 的既有低预算重试后触发批次熔断；后续 job 标为 vlm_batch_skipped，不继续调用模型"
+    warnings:
+      - "运行状态单独记录 current_failure_sources；知识流水线只汇总本轮新发生的真实推理故障"
+      - "总体缓存或逐任务缓存中的历史失败不再重复触发本轮 warning；正常 no_match、无候选、场景占用和批次跳过保持 info"
+      - "单视频单批次真实故障仍保留一条 visual_inference_degraded warning，不隐藏 OOM、协议错误或会话退出"
+    eta_task_graph:
+      - "视频开始时注册 audio、ASR、frames 与 Markdown/Word/PDF 基础任务；视觉 job 和云 batch 在集合形成后以独立 task_id 动态注册"
+      - "缓存状态改为 unknown/hit/miss/not_applicable；unknown 不生成伪 ETA，执行组件用权威结果更新状态"
+      - "新增 ASR 只读缓存探针，复用 transcribe 的 engine gate；frames 从完整 selection/path 校验后返回权威 cache_hit"
+      - "VLM preflight、cold load、compare、detail 分开上报；compare/detail 以 job/question ID 独立追踪"
+      - "ETA history schema 升级为 2；按 stage、unit kind、模型/执行模式 bucket、缓存状态、硬件、内容档位分桶，每桶保留最近 20 条，总上限 400 条"
+  validation:
+    targeted_unittest: "72 tests passed with warnings treated as errors"
+    covered:
+      - "总体/逐任务缓存路径不初始化 provider、不 preflight、不 cold load"
+      - "批次故障只调用首个失败 job 的一次正常调用加一次 OOM 低预算重试，后续 job 不再调用"
+      - "历史 VLM failure cache 不产生新 warning；本轮真实 failure 仍恰好一个汇总 warning"
+      - "独立动态 task 不互相覆盖；unknown 状态在权威 miss/hit 到达前不伪造 ETA"
+      - "不同 VLM bucket 各自保留最近 20 条，不再被全局 20 条互相挤占"
+    compileall: "passed"
+    git_diff_check: "passed；仅既有 CRLF 提示"
+    real_vlm_rerun: false
+    cloud_requests: 0
+    cloud_tokens: 0
+  boundaries:
+    - "产品版本仍为 0.3.0；用户尚未批准新的命名升级版本"
+    - "未修改迭代记录与问题.md"
+    - "未读取或输出 .env，未增加 Web UI、HTTP 服务、端口或 serve 命令"
+v4_0_architecture_delivery_2026_08_13:
+  status: "implemented_and_validated"
+  product_version: "0.4.0"
+  architecture:
+    - "15 步 StepRegistry/PipelineRunner 成为唯一生产编排；pipeline.py 仅保留公开兼容门面"
+    - "ArtifactStore、WorkspaceCache、JSONL run state、选择性失效、原子提交与 Workspace lease 统一执行合同"
+    - "Media/Speech/Vision/Cloud/Document ports 惰性组合；VLM 子进程适配器归位 execution/adapters"
+    - "知识 DAG 使用 LessonPlan、VisualEvidence、CourseIR、KnowledgeUnit、自检与 Canonical Document v2"
+    - "Application Service/DTO/Handle、无 Tk Controller、Tk View 与设置边界完成分层"
+  removed:
+    - "summarize.py、knowledge/pipeline.py、profiling/selection 及旧 prompts/tests"
+    - "legacy cloud payload/_qwen_summary、VLM per_call、legacy ETA、Document v1 写模式、runtime-events.json 新写路径"
+    - "无意义迁移开关、v2_to_legacy_view 与 demo distribution metadata"
+  retained_read_compatibility:
+    - "LegacyArtifactAdapter 和 v1_to_v2 只用于旧 Workspace/Document 单向只读认领"
+    - "历史 runtime-events.json 不主动删除；生产不再写入"
+  agent_navigation:
+    - "module-boundaries.yaml、pipeline-steps.yaml、problem-index.yaml 与只读 diagnose_workspace.py"
+    - "合同测试逐字段校验 Step、owner、error prefix、Artifact、接口与测试路径"
+    - "CODELY.md、MEMORY.md 与 AI执行入口统一声明 V4.0/0.4.0，并只描述现行分层和生产路径"
+  validation:
+    warnings_as_errors: "125 tests passed"
+    final_unittest: "283 tests passed"
+    compileall: passed
+    node_check_render_docx: passed
+    pip_check: "No broken requirements found"
+    git_diff_check: "passed；仅既有 LF/CRLF warning"
+    cached_render:
+      source: "workspace/test4-1-da2230dd85c7/knowledge/document.json"
+      result: "Document v2 -> Markdown -> Word -> PDF 均非空；未初始化 ASR/VLM/cloud"
+      pdf_mode: "built_in"
+      pdf_pages: 10
+      pdf_visual_qa: "逐页检查通过；无裁切、重叠、黑块、图片溢出或页码异常"
+    desktop_smoke: "空列表真实进程启动稳定，按精确 PID 关闭；P8 可视布局验收继续有效"
+    protocol: "video-study:// 解析真实中文视频路径与时间戳；ffplay 接收精确 seek；无网页"
+    completion_reaudit:
+      - "重新逐项对照 P0–P11、架构合同、当前代码、迁移清理和交付导航；修正 CODELY.md 的陈旧 V3.0 基线与已删除文件说明"
+      - "Document v2 含 54 个内容块；Markdown 4 个本地回看链接；DOCX 5 个嵌入图片和 4 个协议链接；PDF 10 页和 4 个协议链接"
+      - "现有 V3.0 Workspace 由只读诊断识别，无模型、云端或 Workspace 写入"
+    cloud_requests: 0
+    cloud_tokens: 0
+  boundaries:
+    - "未读取或输出 .env；未下载或重装模型"
+    - "未增加 Web UI、HTTP 服务、端口或 serve 命令"
+    - "保持 JSON -> Markdown -> Word -> PDF、时间戳和 video-study://"
+    - "未追加或改写迭代记录与问题.md 的 V4.0 用户批准记录"

@@ -1,0 +1,50 @@
+schema_version: 1
+modules:
+  - id: application
+    owner: video_study.application.processing
+    public_interfaces: [video_study.application.processing:ProcessingService, video_study.application.requests:ProcessingRequest, video_study.application.requests:ProcessingHandle]
+    allowed_dependencies: [execution, aggregate, config]
+    forbidden_dependencies: [tkinter, knowledge, openai, subprocess]
+    artifacts: []
+    steps: []
+    tests: [tests/test_processing_service.py]
+  - id: desktop
+    owner: video_study.desktop.controller
+    public_interfaces: [video_study.desktop.controller:DesktopController, video_study.desktop.view:DesktopView]
+    allowed_dependencies: [application, desktop.models, desktop.settings]
+    forbidden_dependencies: [knowledge, providers, execution.runner, subprocess, openai]
+    artifacts: []
+    steps: []
+    tests: [tests/test_desktop_controller.py, tests/test_desktop_settings.py, tests/test_desktop.py]
+  - id: execution
+    owner: video_study.execution.runner
+    public_interfaces: [video_study.execution.context:ProcessingContext, video_study.execution.contracts:PipelineStep, video_study.execution.runner:PipelineRunner, video_study.execution.registry:StepRegistry, video_study.execution.artifacts:ArtifactStore, video_study.execution.cache:WorkspaceCache]
+    allowed_dependencies: [execution, progress]
+    forbidden_dependencies: [tkinter, openai, subprocess]
+    artifacts: [source.manifest, audio.flac, transcript.raw, transcript.normalized, transcript.srt, frames.candidates, frames.selected, knowledge.plan, visual.jobs, visual.evidence, frames.semantics, knowledge.course_ir, knowledge.units, knowledge.selfcheck, document.v2]
+    steps: [source.probe, audio.extract, transcript.decode, transcript.normalize, frames.candidates, frames.select, knowledge.plan, visual.jobs, visual.evidence, frames.semantics, knowledge.course_ir, knowledge.units, knowledge.selfcheck, document.assemble, render.bundle]
+    tests: [tests/test_execution_context.py, tests/test_execution_registry.py, tests/test_pipeline_runner.py, tests/test_workspace_artifacts.py, tests/test_workspace_cache.py]
+  - id: knowledge
+    owner: video_study.knowledge.planning
+    public_interfaces: [video_study.knowledge.planning:build_lesson_plan, video_study.knowledge.course_ir:build_course_ir, video_study.knowledge.organizer:build_units, video_study.knowledge.adapter:units_to_document]
+    allowed_dependencies: [knowledge, transcript, execution.task_groups]
+    forbidden_dependencies: [desktop, pipeline, summarize, tkinter, subprocess, openai]
+    artifacts: [knowledge.plan, visual.jobs, visual.evidence, frames.semantics, knowledge.course_ir, knowledge.units, knowledge.selfcheck, document.v2]
+    steps: [knowledge.plan, visual.jobs, visual.evidence, frames.semantics, knowledge.course_ir, knowledge.units, knowledge.selfcheck, document.assemble]
+    tests: [tests/test_knowledge_planning.py, tests/test_cloud_payload.py, tests/test_knowledge_organizer.py, tests/test_knowledge_adapter.py]
+  - id: middleware
+    owner: video_study.execution.ports
+    public_interfaces: [video_study.execution.ports:MediaPort, video_study.execution.ports:SpeechPort, video_study.execution.ports:VisionPort, video_study.execution.ports:CloudJsonPort, video_study.execution.ports:DocumentPort]
+    allowed_dependencies: [execution.contracts]
+    forbidden_dependencies: [desktop, tkinter]
+    artifacts: []
+    steps: []
+    tests: [tests/test_execution_ports.py]
+  - id: rendering
+    owner: video_study.render
+    public_interfaces: [video_study.render:DocumentAdapter, video_study.render:render_markdown, video_study.render:render_pdf_fallback]
+    allowed_dependencies: [document.v2, localplay]
+    forbidden_dependencies: [desktop, providers, knowledge.planning, openai]
+    artifacts: [document.v2]
+    steps: [render.bundle]
+    tests: [tests/test_render_content_blocks.py, tests/test_pdf_conversion.py]

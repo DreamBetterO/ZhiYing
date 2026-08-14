@@ -9,7 +9,8 @@ import sys
 from pathlib import Path
 
 from .utils import now_iso, quick_fingerprint, run, run_cancellable, safe_name, write_json
-from .runtime import find_tool, is_frozen, resource_root
+from .runtime import find_tool
+from .execution.artifacts import SOURCE_MANIFEST, WorkspaceLayout
 
 
 _CUDA_DLL_HANDLES: list[object] = []
@@ -21,8 +22,6 @@ def prepare_cuda_runtime() -> list[str]:
     if os.name != "nt" or not hasattr(os, "add_dll_directory"):
         return []
     prefixes = [Path(sys.prefix)]
-    if is_frozen():
-        prefixes.append(resource_root())
     conda_prefix = os.getenv("CONDA_PREFIX")
     if conda_prefix and Path(conda_prefix) not in prefixes:
         prefixes.append(Path(conda_prefix))
@@ -35,11 +34,16 @@ def prepare_cuda_runtime() -> list[str]:
     # PyTorch wheel 通常自带完整 CUDA 运行时。此时不要再混入 Conda bin，
     # 否则可能同时加载 libomp.dll 和 libiomp5md.dll，导致进程中止。
     candidates = list(configured)
-    for prefix in prefixes:
-        torch_lib = prefix / "Lib" / "site-packages" / "torch" / "lib"
-        candidates.append(torch_lib)
-        if not all((torch_lib / name).is_file() for name in required):
-            candidates.append(prefix / "Library" / "bin")
+    configured_complete = bool(configured) and all(
+        any((directory / name).is_file() for directory in configured)
+        for name in required
+    )
+    if not configured_complete:
+        for prefix in prefixes:
+            torch_lib = prefix / "Lib" / "site-packages" / "torch" / "lib"
+            candidates.append(torch_lib)
+            if not all((torch_lib / name).is_file() for name in required):
+                candidates.append(prefix / "Library" / "bin")
     added: list[str] = []
     for directory in dict.fromkeys(candidates):
         if not directory.is_dir():
@@ -87,8 +91,9 @@ def probe_video(video: Path) -> dict:
 def create_manifest(video: Path, work_root: Path) -> tuple[Path, dict]:
     fingerprint = quick_fingerprint(video)
     video_id = f"{safe_name(video.stem, 48)}-{fingerprint}"
-    work_dir = work_root / video_id
-    manifest_path = work_dir / "manifest.json"
+    layout = WorkspaceLayout(work_root, video_id)
+    work_dir = layout.video_root
+    manifest_path = layout.artifact_paths(SOURCE_MANIFEST)[0]
     probe = probe_video(video)
     duration = float(probe.get("format", {}).get("duration", 0.0))
     manifest = {
@@ -129,7 +134,7 @@ def extract_audio(video: Path, output: Path, force: bool = False, cancel_check=N
 
 def check_tools() -> dict[str, str | bool]:
     result: dict[str, str | bool] = {}
-    for command in ("ffmpeg", "ffprobe", "node", "npm", "soffice"):
+    for command in ("ffmpeg", "ffprobe", "node", "npm"):
         result[command] = find_tool(command) or False
     try:
         gpu = subprocess.run(
@@ -166,3 +171,27 @@ def check_asr_cuda_runtime(gpu_visible: bool = True) -> dict[str, object]:
         "reason": "" if not missing else "GPU 可见，但 faster-whisper 所需 CUDA 动态库不可加载",
         "dll_dirs": dll_dirs,
     }
+
+
+class MediaAdapter:
+    """把现有媒体函数暴露为 execution MediaPort，不改变算法实现。"""
+
+    def probe(self, video: Path) -> dict:
+        return probe_video(video)
+
+    def extract_audio(self, video: Path, output: Path, *, cancel_check) -> Path:
+        return extract_audio(video, output, force=True, cancel_check=cancel_check)
+
+    def extract_frame_candidates(
+        self,
+        video: Path,
+        output_dir: Path,
+        options: dict,
+        *,
+        cancel_check,
+    ) -> dict:
+        from .frames import sample_frame_candidates
+        duration = float(options.get("duration_seconds", 0.0))
+        return sample_frame_candidates(
+            video, output_dir, duration, dict(options), cancel_check=cancel_check,
+        )

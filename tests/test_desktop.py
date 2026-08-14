@@ -3,24 +3,38 @@ from tempfile import TemporaryDirectory
 
 import yaml
 
+from video_study import __version__
 from video_study.config import AppConfig
 from video_study.desktop import (
     QueueItem,
     STAGE_LABELS,
-    cached_result_for_video,
-    clear_workspace_cache,
+    cloud_authorization_message,
     config_with_content_level,
+    config_with_visual_teaching_level,
     format_duration,
+    format_eta,
     qwen_asr_ready,
     save_desktop_settings,
     save_api_credentials,
     validate_desktop_settings,
+    validate_speech_models,
     blended_hex,
     watermark_options,
 )
+from video_study.desktop.view import PRIMARY_UI_ACTIONS
 
 
 class DesktopLogicTests(unittest.TestCase):
+    def test_primary_ui_keeps_all_product_actions_mounted(self) -> None:
+        self.assertEqual(set(PRIMARY_UI_ACTIONS), {
+            "add", "toggle_all", "move_up", "move_down", "remove", "delete_generated", "clear_cache",
+            "local", "cloud", "cancel", "aggregate", "open_output", "open_video",
+            "open_markdown", "open_docx", "open_pdf", "open_aggregate", "settings",
+        })
+
+    def test_ui_version_matches_package_version(self) -> None:
+        self.assertEqual(__version__, "0.4.0")
+
     def test_qwen_model_is_only_offered_when_runtime_and_weights_are_complete(self) -> None:
         from pathlib import Path
         with TemporaryDirectory() as directory:
@@ -46,6 +60,7 @@ class DesktopLogicTests(unittest.TestCase):
             self.assertFalse(qwen_asr_ready(config))
 
     def test_clear_workspace_cache_keeps_output_and_workspace_directory(self) -> None:
+        from video_study.application.processing import DefaultProcessingService
         from pathlib import Path
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -58,18 +73,19 @@ class DesktopLogicTests(unittest.TestCase):
             (output / "lesson.pdf").write_bytes(b"document")
             config = AppConfig(root, {"paths": {"workspace_dir": "workspace"}})
 
-            self.assertEqual(clear_workspace_cache(config), 2)
+            self.assertEqual(DefaultProcessingService(config).clear_workspace(), 2)
             self.assertTrue(workspace.is_dir())
             self.assertEqual(list(workspace.iterdir()), [])
             self.assertTrue((output / "lesson.pdf").is_file())
 
     def test_clear_workspace_cache_rejects_project_root(self) -> None:
+        from video_study.application.processing import DefaultProcessingService
         from pathlib import Path
         with TemporaryDirectory() as directory:
             root = Path(directory)
             config = AppConfig(root, {"paths": {"workspace_dir": "."}})
             with self.assertRaises(ValueError):
-                clear_workspace_cache(config)
+                DefaultProcessingService(config).clear_workspace()
 
     def test_watermark_is_configurable_and_opacity_is_bounded(self) -> None:
         from pathlib import Path
@@ -81,6 +97,28 @@ class DesktopLogicTests(unittest.TestCase):
         self.assertEqual(format_duration(None), "—")
         self.assertEqual(format_duration(65.9), "01:05")
         self.assertEqual(format_duration(3661), "1:01:01")
+        self.assertEqual(format_eta(None, True), "估算中")
+        self.assertEqual(format_eta(None, False), "—")
+
+    def test_cloud_authorization_describes_shared_pipeline_budget(self) -> None:
+        message = cloud_authorization_message({
+            "_runtime_base_url": "https://example.com/v1",
+            "_runtime_models": ["model-a", "model-b", "model-c"],
+            "budget": {
+                "max_calls_per_video": 5,
+                "max_input_chars": 60000,
+                "planning_max_output_tokens": 3200,
+                "max_output_tokens": 6000,
+            },
+        }, aggregate=False)
+        self.assertIn("全流程共享最多 5 次请求", message)
+        self.assertIn("规划 1 次 + 整理 1 次", message)
+        self.assertIn("3,200 Tokens", message)
+        self.assertIn("6,000 Tokens", message)
+        self.assertIn("https://example.com/v1", message)
+
+    def test_local_speech_validation_does_not_require_cloud_settings(self) -> None:
+        self.assertEqual(validate_speech_models("faster-whisper"), ["faster-whisper"])
 
     def test_new_queue_item_starts_queued_without_artifacts(self) -> None:
         from pathlib import Path
@@ -109,7 +147,7 @@ class DesktopLogicTests(unittest.TestCase):
             self.assertEqual(main["desktop"]["speech_models"], ["qwen3-asr-0.6b"])
             self.assertNotIn("key", (root / "api.yaml").read_text(encoding="utf-8").lower())
 
-    def test_content_level_changes_only_summary_and_frame_density(self) -> None:
+    def test_content_level_does_not_change_visual_budget(self) -> None:
         from pathlib import Path
         raw = {
             "asr": {"engine": "faster-whisper"},
@@ -122,8 +160,8 @@ class DesktopLogicTests(unittest.TestCase):
         recommended = config_with_content_level(config, "推荐")
         rich = config_with_content_level(config, "丰富")
         self.assertEqual(compact.raw["asr"], rich.raw["asr"])
-        self.assertEqual(compact.raw["frames"]["max_keyframes"], 4)
-        self.assertEqual(rich.raw["frames"]["max_keyframes"], 12)
+        self.assertEqual(compact.raw["frames"]["max_keyframes"], 8)
+        self.assertEqual(rich.raw["frames"]["max_keyframes"], 8)
         self.assertEqual(compact.raw["qwen"]["content_level"], "精简")
         self.assertEqual(rich.raw["qwen"]["content_level"], "丰富")
         self.assertEqual(compact.raw["qwen"]["budget"]["max_output_tokens"], 3500)
@@ -132,6 +170,18 @@ class DesktopLogicTests(unittest.TestCase):
         self.assertEqual(compact.raw["qwen"]["timeout_seconds"], 90)
         self.assertEqual(rich.raw["qwen"]["timeout_seconds"], 240)
         self.assertEqual(raw["frames"]["max_keyframes"], 8)
+
+    def test_visual_teaching_level_is_independent(self) -> None:
+        from pathlib import Path
+        config = AppConfig(Path("."), {
+            "frames": {"max_keyframes": 8},
+            "visual_teaching": {"level": "auto"},
+            "desktop": {},
+        })
+        enhanced = config_with_visual_teaching_level(config, "增强")
+        self.assertEqual(enhanced.raw["visual_teaching"]["level"], "enhanced")
+        self.assertEqual(enhanced.raw["frames"]["max_keyframes"], 8)
+        self.assertEqual(config.raw["visual_teaching"]["level"], "auto")
 
     def test_api_key_is_persisted_only_to_local_env_file(self) -> None:
         from pathlib import Path
@@ -146,6 +196,7 @@ class DesktopLogicTests(unittest.TestCase):
             self.assertNotIn("temporary-secret", str(config.raw))
 
     def test_selected_video_can_recover_cached_render_result(self) -> None:
+        from video_study.application.processing import DefaultProcessingService
         from pathlib import Path
         with TemporaryDirectory() as directory:
             root = Path(directory); video = root / "lesson.mp4"; video.write_bytes(b"video")
@@ -158,6 +209,6 @@ class DesktopLogicTests(unittest.TestCase):
             (work / "manifest.json").write_text(__import__("json").dumps(manifest), encoding="utf-8")
             (work / "knowledge" / "document.json").write_text('{"mode":"cloud_summary"}', encoding="utf-8")
             config = AppConfig(root, {"paths": {"workspace_dir": "workspace"}})
-            result = cached_result_for_video(config, video)
-            self.assertEqual(result["video_id"], "lesson-id")
-            self.assertEqual(result["mode"], "cloud_summary")
+            result = DefaultProcessingService(config).cached_result(video)
+            self.assertEqual(result.video_id, "lesson-id")
+            self.assertEqual(result.mode, "cloud_summary")

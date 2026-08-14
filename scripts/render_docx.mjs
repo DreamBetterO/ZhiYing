@@ -15,7 +15,9 @@ const INK = "243342";
 const MUTED = "667786";
 const PALE = "EDF5F5";
 const LINE = "D6E2E5";
+const TIP_BORDER = "B0C4DE";
 const documentTitle = data.metadata.document_title || data.metadata.title;
+const BLOCK_LABELS = { rule_list: "规则", steps: "步骤", example: "案例", pitfall: "易错点" };
 
 function joinedText(rows) {
   let result = "";
@@ -54,7 +56,12 @@ function timeLabel(seconds) {
 }
 
 function sourceLinks(point, indent = 520) {
-  const links = point.source_links?.length ? point.source_links : [{ label: point.source_label, url: point.source_url }];
+  const refs = point.source_refs || {};
+  const links = refs.links?.length
+    ? refs.links
+    : point.source_links?.length
+      ? point.source_links
+      : [{ label: refs.label || point.source_label || "", url: refs.url || point.source_url || "" }];
   return links.map((source) => new Paragraph({
     style: "SourceLink",
     indent: { left: indent },
@@ -68,18 +75,167 @@ function sourceLinks(point, indent = 520) {
 function addFigure(figure) {
   if (!fs.existsSync(figure.path)) return;
   const extension = path.extname(figure.path).slice(1).toLowerCase().replace("jpg", "jpeg");
+  const data = fs.readFileSync(figure.path);
+  // 读取真实宽高，等比缩放
+  const origW = figure.width || 1280;
+  const origH = figure.height || 720;
+  const maxW = 535;
+  const maxH = 350;
+  const scale = Math.min(maxW / origW, maxH / origH, 1.0);
+  const w = Math.round(origW * scale);
+  const h = Math.round(origH * scale);
+  const caption = figure.reader_focus
+    ? `观察重点：${figure.reader_focus}\n来源：${figure.timestamp_label || timeLabel(figure.timestamp_seconds)}`
+    : figure.caption;
   children.push(new Paragraph({
     alignment: AlignmentType.CENTER,
     spacing: { before: 220, after: 80 },
     keepNext: true,
     children: [new ImageRun({
       type: extension,
-      data: fs.readFileSync(figure.path),
-      transformation: { width: 535, height: 301 },
-      altText: { title: figure.caption, description: figure.caption, name: figure.image_id },
+      data,
+      transformation: { width: w, height: h },
+      altText: { title: caption, description: caption, name: figure.image_id },
     })],
   }));
-  children.push(new Paragraph({ style: "Caption", alignment: AlignmentType.CENTER, children: [new TextRun(figure.caption)] }));
+  children.push(new Paragraph({ style: "Caption", alignment: AlignmentType.CENTER, children: [new TextRun(caption)] }));
+}
+
+function addVisualGroup(group, inputFigures) {
+  const figures = (Array.isArray(inputFigures) ? inputFigures : [inputFigures]).filter((figure) => figure && fs.existsSync(figure.path));
+  if (!figures.length) return false;
+  const first = figures[0];
+  const leadIn = String(group.lead_in || first.reader_focus || first.why_useful || "").replace(/^看图重点[:：]\s*/, "");
+  const takeaway = String(group.takeaway || first.explanation_for_reader || first.visual_summary || "");
+
+  if (leadIn) children.push(new Paragraph({
+    style: "PointBody",
+    keepNext: true,
+    keepLines: true,
+    spacing: { before: 80, after: 50 },
+    children: [new TextRun({ text: "看图重点：", bold: true, color: TEAL }), new TextRun(leadIn)],
+  }));
+  for (const figure of figures) {
+    const extension = path.extname(figure.path).slice(1).toLowerCase().replace("jpg", "jpeg");
+    const imageData = fs.readFileSync(figure.path);
+    const origW = figure.width || 1280;
+    const origH = figure.height || 720;
+    const maxHeight = figures.length === 1 ? 315 : 205;
+    const scale = Math.min(515 / origW, maxHeight / origH, 1.0);
+    const width = Math.round(origW * scale);
+    const height = Math.round(origH * scale);
+    const caption = String(figures.length === 1 ? (group.caption || figure.caption || "") : (figure.caption || ""));
+    children.push(new Paragraph({
+      alignment: AlignmentType.CENTER,
+      keepNext: true,
+      keepLines: true,
+      spacing: { before: 60, after: 45 },
+      children: [new ImageRun({
+        type: extension,
+        data: imageData,
+        transformation: { width, height },
+        altText: { title: caption, description: caption, name: figure.image_id },
+      })],
+    }));
+    if (caption) children.push(new Paragraph({
+      style: "Caption",
+      alignment: AlignmentType.CENTER,
+      keepNext: true,
+      keepLines: true,
+      spacing: { after: 70 },
+      children: [new TextRun(caption)],
+    }));
+  }
+  if (takeaway) children.push(new Paragraph({
+    style: "PointBody",
+    keepNext: figures.some((figure) => figure.source_url),
+    keepLines: true,
+    spacing: { after: 55 },
+    children: [new TextRun({ text: figures.length > 1 ? "这组图帮助理解：" : "这张图帮助理解：", bold: true, color: TEAL }), new TextRun(takeaway)],
+  }));
+  for (const [index, figure] of figures.entries()) {
+    if (!figure.source_url) continue;
+    const sourceLabel = figure.timestamp_label || timeLabel(figure.timestamp_seconds || 0);
+    children.push(new Paragraph({
+      style: "SourceLink",
+      keepNext: index < figures.length - 1,
+      keepLines: true,
+      indent: { left: 520 },
+      spacing: { after: 100 },
+      children: [new ExternalHyperlink({
+        link: figure.source_url,
+        children: [new TextRun({ text: `▶ 查看图片来源  ·  ${sourceLabel}`, style: "Hyperlink", bold: true })],
+      })],
+    }));
+  }
+  return true;
+}
+
+function renderContentBlocks(point) {
+  const blocks = point.content_blocks || [];
+  if (!blocks.length) return false;
+  const hasExplicitCaption = blocks.some((block) => block.type === "figure_caption");
+  const renderedFigureIds = new Set();
+  const figureMap = {};
+  for (const figure of (point.figures || [])) {
+    if (figure.binding_id) figureMap[figure.binding_id] = figure;
+  }
+  for (const block of blocks) {
+    const btype = block.type || "";
+    if (btype === "visual_group") {
+      const bindingIds = block.binding_ids?.length ? block.binding_ids : [block.binding_id];
+      const figures = bindingIds.map((bindingId) => figureMap[bindingId]).filter(Boolean);
+      if (addVisualGroup(block, figures)) for (const bindingId of bindingIds) renderedFigureIds.add(bindingId);
+    } else if (btype === "paragraph") {
+      if (block.text) children.push(new Paragraph({ style: "PointBody", children: [new TextRun(block.text)] }));
+    } else if (btype === "visual_lead_in") {
+      const text = String(block.text || "").replace(/^看图重点[:：]\s*/, "");
+      if (text) children.push(new Paragraph({
+        style: "PointBody",
+        keepNext: true,
+        children: [new TextRun({ text: "看图重点：", bold: true, color: TEAL }), new TextRun(text)],
+      }));
+    } else if (btype in BLOCK_LABELS) {
+      const items = block.items?.length ? block.items : (block.text ? [String(block.text)] : []);
+      addLabeledList(BLOCK_LABELS[btype], items);
+    } else if (btype === "figure") {
+      const fig = figureMap[block.binding_id];
+      if (fig) {
+        addFigure(fig);
+        renderedFigureIds.add(block.binding_id);
+        if (hasExplicitCaption) children.pop();
+      }
+    } else if (btype === "figure_caption") {
+      if (block.text) children.push(new Paragraph({ style: "Caption", alignment: AlignmentType.CENTER, children: [new TextRun(String(block.text))] }));
+    } else if (btype === "visual_takeaway") {
+      if (block.text) children.push(new Paragraph({
+        style: "PointBody",
+        children: [new TextRun({ text: "这张图帮助理解：", bold: true, color: TEAL }), new TextRun(String(block.text))],
+      }));
+    } else if (btype === "understanding_tip") {
+      if (block.text) children.push(new Paragraph({
+        style: "LeadCallout",
+        border: { left: { style: BorderStyle.SINGLE, size: 12, color: TIP_BORDER, space: 8 } },
+        children: [new TextRun({ text: "理解提示：", bold: true }), new TextRun(block.text)],
+      }));
+    }
+  }
+  for (const figure of point.figures || []) {
+    if (figure.binding_id && renderedFigureIds.has(figure.binding_id)) continue;
+    const focus = figure.reader_focus || figure.why_useful || "";
+    const takeaway = figure.explanation_for_reader || figure.visual_summary || "";
+    if (focus) children.push(new Paragraph({
+      style: "PointBody",
+      keepNext: true,
+      children: [new TextRun({ text: "看图重点：", bold: true, color: TEAL }), new TextRun(String(focus).replace(/^看图重点[:：]\s*/, ""))],
+    }));
+    addFigure(figure);
+    if (takeaway) children.push(new Paragraph({
+      style: "PointBody",
+      children: [new TextRun({ text: "这张图帮助理解：", bold: true, color: TEAL }), new TextRun(String(takeaway))],
+    }));
+  }
+  return true;
 }
 
 function addLabeledList(label, values) {
@@ -143,15 +299,18 @@ for (const [sectionIndex, section] of data.sections.entries()) {
       keepNext: true,
       children: [new TextRun({ text: `${sectionIndex + 1}.${pointIndex + 1}  `, color: TEAL, bold: true }), new TextRun({ text: point.statement, bold: true })],
     }));
-    if (point.explanation) children.push(new Paragraph({ style: "PointBody", children: [new TextRun(point.explanation)] }));
-    addLabeledList("补充细节", point.details);
-    addLabeledList("步骤", point.steps);
-    addLabeledList("课程案例", point.examples);
-    addLabeledList("适用条件与边界", point.conditions);
-    addLabeledList("易错点", point.pitfalls);
-    if (point.editorial_note) children.push(new Paragraph({ style: "LeadCallout", children: [new TextRun({ text: "整理说明：", bold: true }), new TextRun(point.editorial_note)] }));
-    if (point.review_tip) children.push(new Paragraph({ style: "PointBody", children: [new TextRun({ text: "复习提示：", bold: true, color: TEAL }), new TextRun(point.review_tip)] }));
-    for (const figure of point.figures || []) addFigure(figure);
+    const hasBlocks = renderContentBlocks(point);
+    if (!hasBlocks) {
+      if (point.explanation) children.push(new Paragraph({ style: "PointBody", children: [new TextRun(point.explanation)] }));
+      addLabeledList("补充细节", point.details);
+      addLabeledList("步骤", point.steps);
+      addLabeledList("课程案例", point.examples);
+      addLabeledList("适用条件与边界", point.conditions);
+      addLabeledList("易错点", point.pitfalls);
+      if (point.editorial_note) children.push(new Paragraph({ style: "LeadCallout", children: [new TextRun({ text: "整理说明：", bold: true }), new TextRun(point.editorial_note)] }));
+      if (point.review_tip) children.push(new Paragraph({ style: "PointBody", children: [new TextRun({ text: "复习提示：", bold: true, color: TEAL }), new TextRun(point.review_tip)] }));
+      for (const figure of point.figures || []) addFigure(figure);
+    }
     children.push(...sourceLinks(point));
   }
   const linkedFigureIds = new Set(section.knowledge_points.flatMap((point) => (point.figures || []).map((figure) => figure.image_id)));

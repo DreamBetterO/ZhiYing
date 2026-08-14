@@ -40,7 +40,24 @@ MP4 → 音频/关键帧 → 带时间戳转写 JSON → 知识 JSON
 - `.env`：仅在用户启用“记住密钥”后保存 API Key，已被 Git 忽略。
 - `workspace/`、`output/`、`models/`、`Resource/`：本地缓存、产物、模型和用户数据，不作为源码提交。
 
-禁止把 `.env` 或 `QwenAPI.txt` 中的密钥输出或提交。删除缓存与产物不会删除源 MP4。
+禁止把 `.env` 中的密钥输出或提交。删除缓存与产物不会删除源 MP4。
+
+## 目录约定
+
+```text
+src/video_study/   产品源码
+tests/             自动化测试
+scripts/           开发与渲染辅助脚本
+docs/              当前文档索引
+迭代升级/          执行事实、已批准版本与现行架构任务书
+icon/              桌面窗口图标
+Resource/ 视频/    用户输入数据
+workspace/ output/ 可恢复中间数据与最终文档
+models/            本地模型和运行时
+```
+
+根目录只保留启动入口、项目配置、依赖清单和协作入口。一次性实验脚本、测试输出与工具会话不得放在
+根目录；可复用工具进入 `scripts/`，临时结果进入已忽略的 `tmp/`，产品数据继续使用既有数据目录。
 
 ## 开发验证
 
@@ -51,18 +68,4 @@ MP4 → 音频/关键帧 → 带时间戳转写 JSON → 知识 JSON
 git diff --check
 ```
 
-详细的项目交接、研究说明和下一阶段实施任务见 [项目文档索引](docs/README.md)。
-
-## Windows onedir 发行
-
-项目提供带产品图标的 PyInstaller onedir 便携包和 Inno Setup 安装程序。标准发行随附 Python、
-Node.js、docx-js、FFmpeg/ffprobe/ffplay 与 `faster-whisper-small`；Qwen3-ASR 作为独立可选
-组件安装。运行：
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1
-```
-
-最终安装器、便携目录和压缩包位于 `pack\`。安装版不要求管理员权限，并把用户缓存和输出放在
-`文档\知影\`。面向普通用户的安装、GPU/CPU 回退、可选 Qwen 模型、来源回看与常见问题说明见
-`pack\README-安装与使用.md`；云端整理仍保持显式授权。
+详细的项目交接、执行事实和现行架构说明见 [项目文档索引](docs/README.md)。

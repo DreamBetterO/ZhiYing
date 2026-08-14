@@ -2,7 +2,6 @@
 .env
 .env.*
 !.env.example
-QwenAPI*.txt
 
 # User data and resumable pipeline artifacts
 Resource/
@@ -11,13 +10,16 @@ models/
 workspace/
 output/
 
-# Build, release and temporary artifacts
+# Build and temporary artifacts
 build/
-dist/
-pack/
 tmp/
+tmp_*/
 *.log
 *.pid
+
+# Tool-local sessions and diagnostics
+.codely-cli/
+mem-log/
 
 # Python environments and caches
 .venv/

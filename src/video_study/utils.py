@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import subprocess
 import time
+import threading
+from collections import deque
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -64,24 +68,153 @@ def ensure_not_cancelled(cancel_check=None) -> None:
         raise TaskCancelled("任务已由用户取消")
 
 
-def run_cancellable(command: list[str], *, cancel_check=None) -> subprocess.CompletedProcess[str]:
+def emit_runtime_event(
+    settings: dict[str, Any] | None,
+    stage: str,
+    level: str,
+    message: str,
+    **details: Any,
+) -> None:
+    """向桌面层发送结构化运行事件；没有回调时保持纯本地、无副作用。"""
+    if not isinstance(settings, dict):
+        return
+    callback = settings.get("_event_callback")
+    if not callable(callback):
+        return
+    callback({
+        "timestamp": now_iso(),
+        "stage": str(stage),
+        "level": str(level),
+        "message": str(message),
+        **details,
+    })
+
+
+def terminate_process(process: subprocess.Popen, *, grace_seconds: float = 1.0) -> None:
+    """终止本应用启动的子进程；Windows 下同时结束其模型/工具子进程树。"""
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except OSError:
+            pass
+    else:
+        try:
+            process.terminate()
+        except OSError:
+            pass
+    try:
+        process.wait(timeout=max(0.1, grace_seconds))
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+        except OSError:
+            pass
+
+
+def run_cancellable(
+    command: list[str], *, cancel_check=None, timeout_seconds: float | None = None,
+) -> subprocess.CompletedProcess[str]:
     process = subprocess.Popen(command, text=True, encoding="utf-8", errors="replace")
+    started_at = time.monotonic()
     try:
         while process.poll() is None:
             if cancel_check and cancel_check():
-                process.terminate()
-                try:
-                    process.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    process.kill()
+                terminate_process(process)
                 raise TaskCancelled("任务已由用户取消")
+            if timeout_seconds is not None and time.monotonic() - started_at >= timeout_seconds:
+                terminate_process(process)
+                raise subprocess.TimeoutExpired(command, timeout_seconds)
             time.sleep(0.2)
         if process.returncode:
             raise subprocess.CalledProcessError(process.returncode, command)
         return subprocess.CompletedProcess(command, process.returncode, "", "")
     finally:
         if process.poll() is None:
-            process.kill()
+            terminate_process(process)
+
+
+@dataclass(frozen=True)
+class ProcessResult:
+    command: tuple[str, ...]
+    returncode: int
+    stdout: str
+    stderr: str
+
+
+class LocalProcessAdapter:
+    """统一的可取消本地命令 adapter；诊断只保留有界、脱敏文本。"""
+
+    def __init__(self, *, diagnostic_limit: int = 4000) -> None:
+        self.diagnostic_limit = max(256, int(diagnostic_limit))
+
+    @staticmethod
+    def _redact(text: str) -> str:
+        sanitized = re.sub(
+            r"(?i)(api[-_ ]?key|authorization|bearer|token|password)(\s*[:=]\s*|\s+)[^\s,;]+",
+            r"\1\2<redacted>",
+            text,
+        )
+        return sanitized
+
+    def run(
+        self,
+        command,
+        *,
+        cancel_check=None,
+        timeout_seconds: float | None = None,
+        cwd: Path | None = None,
+    ) -> ProcessResult:
+        process = subprocess.Popen(
+            list(command),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=str(cwd) if cwd else None,
+        )
+        started_at = time.monotonic()
+        stdout_lines: deque[str] = deque(maxlen=256)
+        stderr_lines: deque[str] = deque(maxlen=256)
+
+        def drain(stream, target: deque[str]) -> None:
+            if stream is None:
+                return
+            for line in iter(stream.readline, ""):
+                target.append(str(line))
+
+        stdout_thread = threading.Thread(target=drain, args=(process.stdout, stdout_lines), daemon=True)
+        stderr_thread = threading.Thread(target=drain, args=(process.stderr, stderr_lines), daemon=True)
+        stdout_thread.start()
+        stderr_thread.start()
+        try:
+            while process.poll() is None:
+                if cancel_check and cancel_check():
+                    terminate_process(process)
+                    raise TaskCancelled("任务已由用户取消")
+                if timeout_seconds is not None and time.monotonic() - started_at >= timeout_seconds:
+                    terminate_process(process)
+                    raise TimeoutError(f"本地命令超时（{timeout_seconds:g} 秒）")
+                time.sleep(0.05)
+            stdout_thread.join(timeout=1.0)
+            stderr_thread.join(timeout=1.0)
+            safe_stdout = self._redact("".join(stdout_lines))[-self.diagnostic_limit:]
+            safe_stderr = self._redact("".join(stderr_lines))[-self.diagnostic_limit:]
+            if process.returncode:
+                message = safe_stderr or safe_stdout or f"exit code {process.returncode}"
+                raise RuntimeError(f"本地命令失败：{message}")
+            return ProcessResult(tuple(str(item) for item in command), process.returncode, safe_stdout, safe_stderr)
+        finally:
+            if process.poll() is None:
+                terminate_process(process)
 
 
 def hhmmss(seconds: float) -> str:

@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
+import queue
+import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI
+
+from .utils import TaskCancelled, ensure_not_cancelled
 
 
 @dataclass(frozen=True)
@@ -22,6 +27,67 @@ class AllModelsFailed(RuntimeError):
         super().__init__(f"所有候选模型均不可用：{summary}")
 
 
+class CloudBudgetExceeded(RuntimeError):
+    """Raised before a request when the per-video cloud budget is exhausted."""
+
+
+@dataclass
+class CloudRequestBudget:
+    """Mutable per-video request and usage ledger shared by all cloud stages."""
+
+    max_requests: int
+    requests_used: int = 0
+    usage: dict[str, int] = field(default_factory=lambda: {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+    })
+    attempts: list[dict[str, Any]] = field(default_factory=list)
+
+    def claim(self, *, stage: str, model: str) -> None:
+        if self.requests_used >= self.max_requests:
+            raise CloudBudgetExceeded(
+                f"云端请求预算已用尽（{self.requests_used}/{self.max_requests}），未继续发送请求"
+            )
+        self.requests_used += 1
+
+    def record(self, *, stage: str, attempt: ModelAttempt, usage: dict[str, int]) -> None:
+        self.attempts.append({"stage": stage, **attempt.__dict__})
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+            self.usage[key] = int(self.usage.get(key, 0)) + int(usage.get(key, 0) or 0)
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "max_requests": self.max_requests,
+            "requests_used": self.requests_used,
+            "requests_remaining": max(0, self.max_requests - self.requests_used),
+            "usage": dict(self.usage),
+            "attempts": [dict(item) for item in self.attempts],
+        }
+
+
+def cloud_request_limit(settings: dict[str, Any]) -> int:
+    """Resolve the user-configured global request cap without treating model count as a cap."""
+    budget = settings.get("budget", {}) if isinstance(settings, dict) else {}
+    configured = budget.get("max_calls_per_video", 1)
+    env_name = str(settings.get("max_calls_env", "") or "") if isinstance(settings, dict) else ""
+    env_value = os.getenv(env_name) if env_name else None
+    raw = env_value if env_value and env_value.isdigit() else configured
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 1
+
+
+def ensure_cloud_request_budget(settings: dict[str, Any]) -> CloudRequestBudget:
+    existing = settings.get("_runtime_request_budget")
+    if isinstance(existing, CloudRequestBudget):
+        return existing
+    state = CloudRequestBudget(max_requests=cloud_request_limit(settings))
+    settings["_runtime_request_budget"] = state
+    return state
+
+
 class FallbackChatClient:
     """OpenAI-compatible JSON client with ordered model failover."""
 
@@ -31,6 +97,36 @@ class FallbackChatClient:
         self.models = list(dict.fromkeys(model.strip() for model in models if model.strip()))
         self.client = OpenAI(api_key=api_key, base_url=base_url.rstrip("/"), timeout=timeout, max_retries=0)
 
+    def _create_response(self, *, cancel_check=None, **kwargs):
+        """让阻塞的 SDK 调用可被桌面线程快速放弃，并主动关闭 HTTP 客户端。"""
+        if not cancel_check:
+            return self.client.chat.completions.create(**kwargs)
+        result_queue: queue.Queue[tuple[str, Any]] = queue.Queue(maxsize=1)
+
+        def request() -> None:
+            try:
+                result_queue.put(("ok", self.client.chat.completions.create(**kwargs)))
+            except BaseException as exc:  # 在线程边界保留 SDK 原始异常类型
+                result_queue.put(("error", exc))
+
+        threading.Thread(target=request, daemon=True, name="video-study-cloud-request").start()
+        while True:
+            try:
+                ensure_not_cancelled(cancel_check)
+            except TaskCancelled:
+                try:
+                    self.client.close()
+                except Exception:
+                    pass
+                raise
+            try:
+                state, value = result_queue.get(timeout=0.1)
+            except queue.Empty:
+                continue
+            if state == "error":
+                raise value
+            return value
+
     def create_json(
         self,
         *,
@@ -39,11 +135,20 @@ class FallbackChatClient:
         max_tokens: int = 2500,
         validator: Callable[[dict[str, Any]], None] | None = None,
         on_attempt: Callable[[ModelAttempt], None] | None = None,
+        request_budget: CloudRequestBudget | None = None,
+        stage: str = "cloud",
+        cancel_check: Callable[[], bool] | None = None,
     ) -> tuple[dict[str, Any], str, list[ModelAttempt], dict[str, int]]:
         attempts: list[ModelAttempt] = []
+        usage_total = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         for model in self.models:
+            ensure_not_cancelled(cancel_check)
+            if request_budget is not None:
+                request_budget.claim(stage=stage, model=model)
+            response_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
             try:
-                response = self.client.chat.completions.create(
+                response = self._create_response(
+                    cancel_check=cancel_check,
                     model=model,
                     messages=messages,
                     temperature=temperature,
@@ -51,22 +156,29 @@ class FallbackChatClient:
                     response_format={"type": "json_object"},
                     extra_body={"enable_thinking": False},
                 )
+                usage = response.usage
+                response_usage = {
+                    "prompt_tokens": int(getattr(usage, "prompt_tokens", 0) or 0),
+                    "completion_tokens": int(getattr(usage, "completion_tokens", 0) or 0),
+                    "total_tokens": int(getattr(usage, "total_tokens", 0) or 0),
+                }
+                for key in usage_total:
+                    usage_total[key] += response_usage[key]
                 content = response.choices[0].message.content or ""
                 parsed = _extract_json(content)
                 if validator is not None:
                     validator(parsed)
                 attempts.append(ModelAttempt(model=model, ok=True))
+                if request_budget is not None:
+                    request_budget.record(stage=stage, attempt=attempts[-1], usage=response_usage)
                 if on_attempt:
                     on_attempt(attempts[-1])
-                usage = response.usage
-                return parsed, model, attempts, {
-                    "prompt_tokens": int(getattr(usage, "prompt_tokens", 0) or 0),
-                    "completion_tokens": int(getattr(usage, "completion_tokens", 0) or 0),
-                    "total_tokens": int(getattr(usage, "total_tokens", 0) or 0),
-                }
+                return parsed, model, attempts, usage_total
             except (APIConnectionError, APITimeoutError, APIStatusError, ValueError, json.JSONDecodeError) as exc:
                 detail = _safe_error(exc)
                 attempts.append(ModelAttempt(model=model, ok=False, error=detail))
+                if request_budget is not None:
+                    request_budget.record(stage=stage, attempt=attempts[-1], usage=response_usage)
                 if on_attempt:
                     on_attempt(attempts[-1])
         raise AllModelsFailed(attempts)
@@ -112,3 +224,80 @@ def _safe_error(exc: Exception) -> str:
         # 这里只包含本地 JSON/质量校验原因，不包含请求头、密钥或供应商响应正文。
         return str(exc)[:160] or "ValueError"
     return type(exc).__name__
+
+
+class OpenAICloudJsonAdapter:
+    """受共享预算控制的 CloudJsonPort adapter；秘密不会进入 repr。"""
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        base_url: str,
+        models: list[str],
+        budget: CloudRequestBudget,
+        timeout: float = 90.0,
+        max_tokens: int = 5000,
+    ) -> None:
+        self._api_key = api_key
+        self.base_url = base_url
+        self.models = tuple(models)
+        self.budget = budget
+        self.timeout = timeout
+        self.max_tokens = max_tokens
+        self._client: FallbackChatClient | None = None
+
+    def __repr__(self) -> str:
+        return (
+            f"OpenAICloudJsonAdapter(base_url={self.base_url!r}, models={self.models!r}, "
+            "api_key=<redacted>)"
+        )
+
+    def _get_client(self) -> FallbackChatClient:
+        if self._client is None:
+            self._client = FallbackChatClient(
+                api_key=self._api_key,
+                base_url=self.base_url,
+                models=list(self.models),
+                timeout=self.timeout,
+            )
+        return self._client
+
+    def request_json(
+        self,
+        payload: dict[str, Any],
+        *,
+        validator,
+        stage: str,
+        cancel_check,
+    ) -> dict[str, Any]:
+        result, _info = self.request_json_with_info(
+            payload, validator=validator, stage=stage, cancel_check=cancel_check,
+        )
+        return result
+
+    def request_json_with_info(
+        self,
+        payload: dict[str, Any],
+        *,
+        validator,
+        stage: str,
+        cancel_check,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        messages = payload.get("messages")
+        if not isinstance(messages, list):
+            messages = [{"role": "user", "content": json.dumps(payload, ensure_ascii=False)}]
+        result, model, attempts, usage = self._get_client().create_json(
+            messages=messages,
+            temperature=float(payload.get("temperature", 0.1)),
+            max_tokens=int(payload.get("max_tokens", self.max_tokens)),
+            validator=validator,
+            request_budget=self.budget,
+            stage=stage,
+            cancel_check=cancel_check,
+        )
+        return result, {
+            "model": model,
+            "attempts": [attempt.__dict__ for attempt in attempts],
+            "usage": usage,
+        }

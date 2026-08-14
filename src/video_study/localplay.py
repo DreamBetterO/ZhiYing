@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from .config import AppConfig
 from .runtime import find_tool
+from .execution.artifacts import WorkspaceCatalog
 
 
 SCHEME = "video-study"
@@ -44,14 +45,12 @@ def play_protocol_url(config: AppConfig, url: str) -> bool:
         seconds = max(0, int(parse_qs(parsed.query).get("t", ["0"])[0]))
     except ValueError as exc:
         raise ValueError("无效的时间戳") from exc
-    for manifest_path in config.path("paths", "workspace_dir").glob("*/manifest.json"):
-        import json
-        try:
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if manifest.get("video_id") == video_id:
-            return launch_local_player(Path(manifest["source_path"]), seconds)
+    entry = WorkspaceCatalog(
+        config.path("paths", "workspace_dir"),
+        project_root=config.root,
+    ).find_by_video_id(video_id)
+    if entry:
+        return launch_local_player(Path(str(entry.manifest["source_path"])), seconds)
     raise RuntimeError("未找到该视频的本地缓存，请在桌面软件中重新添加视频")
 
 

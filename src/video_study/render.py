@@ -1,20 +1,158 @@
 from __future__ import annotations
 
 import html
-import json
-import shutil
+import os
 import subprocess
 from pathlib import Path
 from urllib.parse import quote
 
-from .summarize import merge_transcript_segments
-from .runtime import bundled_path, find_tool
-from .utils import hhmmss
+from .transcript import merge_transcript_segments
+from .runtime import find_tool, project_path
+from .utils import ensure_not_cancelled, hhmmss, run_cancellable
 
 _POINT_LIST_FIELDS = (
     ("details", "补充细节"), ("steps", "步骤"), ("examples", "课程案例"),
     ("conditions", "适用条件与边界"), ("pitfalls", "易错点"),
 )
+
+_BLOCK_LABELS = {
+    "rule_list": "规则",
+    "steps": "步骤",
+    "example": "案例",
+    "pitfall": "易错点",
+}
+
+
+def _content_block_items(block: dict) -> list[str]:
+    items = [str(item).strip() for item in (block.get("items") or []) if str(item).strip()]
+    if not items and str(block.get("text", "") or "").strip():
+        items = [str(block["text"]).strip()]
+    return items
+
+
+def _render_visual_group_md(block: dict, lines: list[str], figure_map: dict[str, dict]) -> bool:
+    binding_ids = [str(value) for value in block.get("binding_ids", []) if str(value)]
+    if not binding_ids:
+        binding_ids = [str(block.get("binding_id", ""))]
+    figures = [figure_map[binding_id] for binding_id in binding_ids if binding_id in figure_map]
+    if not figures:
+        return False
+    figure = figures[0]
+    lead_in = str(block.get("lead_in") or figure.get("reader_focus") or figure.get("why_useful") or "")
+    caption = str(block.get("caption") or figure.get("caption") or "")
+    takeaway = str(
+        block.get("takeaway")
+        or figure.get("explanation_for_reader")
+        or figure.get("visual_summary")
+        or ""
+    )
+    if lead_in:
+        lines.extend([f"**看图重点**：{lead_in.replace('看图重点：', '')}", ""])
+    for row in figures:
+        row_caption = caption if len(figures) == 1 else str(row.get("caption") or "")
+        image_path = Path(row["path"]).resolve()
+        lines.extend([f"![{row_caption}]({image_path.as_posix()})", ""])
+        if row_caption:
+            lines.extend([f"*{row_caption}*", ""])
+        if row.get("source_url"):
+            label = row.get("timestamp_label") or hhmmss(float(row.get("timestamp_seconds", 0.0)))
+            lines.extend([f"[▶ 查看图片来源 · {label}]({row['source_url']})", ""])
+    if takeaway:
+        label = "这组图帮助理解" if len(figures) > 1 else "这张图帮助理解"
+        lines.extend([f"> **{label}**：{takeaway}", ""])
+    return True
+
+
+def _render_content_blocks_md(point: dict, lines: list[str], figure_map: dict[str, dict]) -> bool:
+    """按 content_blocks 渲染知识点正文。返回 True 表示已渲染，False 回退旧路径。"""
+    blocks = point.get("content_blocks") or []
+    if not blocks:
+        return False
+    has_explicit_caption = any(block.get("type") == "figure_caption" for block in blocks)
+    for block in blocks:
+        btype = block.get("type", "")
+        if btype == "visual_group":
+            _render_visual_group_md(block, lines, figure_map)
+        elif btype == "paragraph":
+            text = block.get("text", "")
+            if text:
+                lines.extend([text, ""])
+        elif btype == "visual_lead_in":
+            text = block.get("text", "")
+            if text:
+                lines.extend([f"**看图重点**：{text.replace('看图重点：', '')}", ""])
+        elif btype in ("rule_list", "steps", "example", "pitfall"):
+            label = _BLOCK_LABELS.get(btype, btype)
+            items = _content_block_items(block)
+            if items:
+                lines.extend([f"**{label}**", ""])
+                lines.extend(f"- {item}" for item in items)
+                lines.append("")
+        elif btype == "figure":
+            binding_id = block.get("binding_id", "")
+            figure = figure_map.get(binding_id)
+            if figure:
+                image_path = Path(figure["path"]).resolve()
+                caption = figure.get("caption", "")
+                lines.extend([f"![{caption}]({image_path.as_posix()})", ""])
+                if not has_explicit_caption:
+                    lines.extend([f"*{caption}*", ""])
+        elif btype == "figure_caption":
+            text = block.get("text", "")
+            if text:
+                lines.extend([f"*{text}*", ""])
+        elif btype == "visual_takeaway":
+            text = block.get("text", "")
+            if text:
+                lines.extend([f"> **这张图帮助理解**：{text}", ""])
+        elif btype == "understanding_tip":
+            text = block.get("text", "")
+            if text:
+                lines.extend([f"> **理解提示**：{text}", ""])
+        elif btype == "source_links":
+            pass  # 来源在末尾统一处理
+    return True
+
+
+def _render_point_md(point: dict, lines: list[str], figure_map: dict[str, dict]) -> None:
+    """渲染单个知识点的正文（优先 content_blocks，回退旧字段）。"""
+    if _render_content_blocks_md(point, lines, figure_map):
+        rendered_ids: set[str] = set()
+        for block in point.get("content_blocks", []):
+            if block.get("type") not in {"figure", "visual_group"}:
+                continue
+            rendered_ids.add(str(block.get("binding_id", "")))
+            rendered_ids.update(str(value) for value in block.get("binding_ids", []) if str(value))
+        for figure in point.get("figures", []):
+            if figure.get("binding_id", "") in rendered_ids:
+                continue
+            focus = figure.get("reader_focus") or figure.get("why_useful") or ""
+            takeaway = figure.get("explanation_for_reader") or figure.get("visual_summary") or ""
+            if focus:
+                lines.extend([f"**看图重点**：{focus.replace('看图重点：', '')}", ""])
+            image_path = Path(figure["path"]).resolve()
+            lines.extend([f"![{figure['caption']}]({image_path.as_posix()})", "", f"*{figure['caption']}*", ""])
+            if takeaway:
+                lines.extend([f"> **这张图帮助理解**：{takeaway}", ""])
+        return
+    # 旧路径
+    if point.get("explanation"):
+        lines.append(point['explanation'])
+        lines.append("")
+    for field, label in _POINT_LIST_FIELDS:
+        values = point.get(field) or []
+        if values:
+            lines.extend([f"**{label}**", ""])
+            lines.extend(f"- {item}" for item in values)
+            lines.append("")
+    if point.get("editorial_note"):
+        lines.extend([f"> **整理说明**：{point['editorial_note']}", ""])
+    if point.get("review_tip"):
+        lines.extend([f"**复习提示**：{point['review_tip']}", ""])
+    # 旧路径：图片统一在末尾
+    for figure in point.get("figures", []):
+        image_path = Path(figure["path"]).resolve()
+        lines.extend([f"![{figure['caption']}]({image_path.as_posix()})", "", f"*{figure['caption']}*", ""])
 
 
 def render_markdown(document: dict, output: Path, include_transcript: bool = True) -> None:
@@ -38,27 +176,26 @@ def render_markdown(document: dict, output: Path, include_transcript: bool = Tru
             image_path = Path(figure["path"]).resolve()
             lines.extend([f"![{figure['caption']}]({image_path.as_posix()})", "", f"*{figure['caption']}*", ""])
     for section_index, section in enumerate(document.get("sections", []), start=1):
-        lines.extend([f"## {section_index:02d} · {section['title']}", "", f"> {section.get('summary', '')}", ""])
+        lines.extend([f"## {section_index:02d} · {section['title']}", ""])
+        if str(section.get("summary", "")).strip():
+            lines.extend([f"> {section['summary']}", ""])
+        # 构建本 section 的 figure_map（binding_id → figure）
+        section_figure_map: dict[str, dict] = {}
+        for point in section.get("knowledge_points", []):
+            for figure in point.get("figures", []):
+                bid = figure.get("binding_id", "")
+                if bid:
+                    section_figure_map[bid] = figure
         for point_index, point in enumerate(section.get("knowledge_points", []), start=1):
             lines.append(f"### {section_index}.{point_index} {point['statement']}")
             lines.append("")
-            if point.get("explanation"):
-                lines.append(point['explanation'])
-                lines.append("")
-            for field, label in _POINT_LIST_FIELDS:
-                values = point.get(field) or []
-                if values:
-                    lines.extend([f"**{label}**", ""])
-                    lines.extend(f"- {item}" for item in values)
-                    lines.append("")
-            if point.get("editorial_note"):
-                lines.extend([f"> **整理说明**：{point['editorial_note']}", ""])
-            if point.get("review_tip"):
-                lines.extend([f"**复习提示**：{point['review_tip']}", ""])
-            for figure in point.get("figures", []):
-                image_path = Path(figure["path"]).resolve()
-                lines.extend([f"![{figure['caption']}]({image_path.as_posix()})", "", f"*{figure['caption']}*", ""])
-            source_links = point.get("source_links") or [{"label": point["source_label"], "url": point["source_url"]}]
+            _render_point_md(point, lines, section_figure_map)
+            # content_blocks 路径中 source_links 块不渲染；这里统一处理来源
+            refs = point.get("source_refs", {}) if isinstance(point.get("source_refs"), dict) else {}
+            source_links = refs.get("links") or point.get("source_links") or [{
+                "label": refs.get("label", point.get("source_label", "")),
+                "url": refs.get("url", point.get("source_url", "")),
+            }]
             for link in source_links:
                 lines.append(f"[▶ 回看来源 · {link['label']}]({link['url']})")
             lines.append("")
@@ -92,14 +229,16 @@ def render_markdown(document: dict, output: Path, include_transcript: bool = Tru
     output.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def render_docx(document_json: Path, output: Path, project_root: Path) -> None:
+def render_docx(
+    document_json: Path, output: Path, project_root: Path, *, cancel_check=None,
+) -> None:
     node = find_tool("node")
     renderer = project_root / "scripts" / "render_docx.mjs"
     modules = project_root / "node_modules" / "docx"
     if not renderer.is_file():
-        renderer = bundled_path("scripts", "render_docx.mjs")
+        renderer = project_path("scripts", "render_docx.mjs")
     if not modules.exists():
-        modules = bundled_path("node_modules", "docx")
+        modules = project_path("node_modules", "docx")
     if not node:
         raise RuntimeError("未找到 Node.js，无法生成 DOCX")
     if not renderer.is_file():
@@ -107,7 +246,7 @@ def render_docx(document_json: Path, output: Path, project_root: Path) -> None:
     if not modules.exists():
         raise RuntimeError("未安装 docx-js，请先运行 npm install")
     output.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run([node, str(renderer), str(document_json), str(output)], check=True)
+    run_cancellable([node, str(renderer), str(document_json), str(output)], cancel_check=cancel_check)
 
 
 def _font_path() -> Path | None:
@@ -121,7 +260,7 @@ def _font_path() -> Path | None:
     return None
 
 
-def render_pdf_fallback(document: dict, output: Path) -> None:
+def render_pdf_fallback(document: dict, output: Path, *, cancel_check=None) -> None:
     from reportlab.lib import colors
     from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
     from reportlab.lib.pagesizes import A4
@@ -153,6 +292,43 @@ def render_pdf_fallback(document: dict, output: Path) -> None:
     body = ParagraphStyle("ChineseBody", parent=styles["BodyText"], fontName=font_name, fontSize=10.5, leading=17, textColor=ink, spaceAfter=2.5*mm)
     small = ParagraphStyle("ChineseSmall", parent=body, fontSize=8.5, leading=12, textColor=muted, spaceAfter=1*mm)
     link = ParagraphStyle("SourceLink", parent=small, textColor=teal, spaceBefore=1*mm)
+
+    def visual_group_flowable(group: dict, figures: list[dict]):
+        figure = figures[0]
+        lead_in = str(group.get("lead_in") or figure.get("reader_focus") or figure.get("why_useful") or "")
+        caption = str(group.get("caption") or figure.get("caption") or "")
+        takeaway = str(
+            group.get("takeaway")
+            or figure.get("explanation_for_reader")
+            or figure.get("visual_summary")
+            or ""
+        )
+        visual_rows = []
+        source_rows = []
+        if lead_in:
+            visual_rows.append(Paragraph(
+                f"<b>看图重点：</b>{html.escape(lead_in.replace('看图重点：', ''))}",
+                body,
+            ))
+        for row in figures:
+            image = Image(row["path"])
+            image._restrictSize(158*mm, (82 if len(figures) == 1 else 55)*mm)
+            visual_rows.extend([image, Spacer(1, 1.2*mm)])
+            row_caption = caption if len(figures) == 1 else str(row.get("caption") or "")
+            if row_caption:
+                visual_rows.append(Paragraph(html.escape(row_caption), small))
+            if row.get("source_url"):
+                source_url = html.escape(str(row["source_url"]), quote=True)
+                source_label = row.get("timestamp_label") or hhmmss(float(row.get("timestamp_seconds", 0.0)))
+                source_rows.append(Paragraph(
+                    f"<link href='{source_url}'>▶ 查看图片来源 · {html.escape(str(source_label))}</link>",
+                    link,
+                ))
+        if takeaway:
+            label = "这组图帮助理解" if len(figures) > 1 else "这张图帮助理解"
+            visual_rows.append(Paragraph(f"<b>{label}：</b>{html.escape(takeaway)}", body))
+        visual_rows.extend(source_rows)
+        return KeepTogether(visual_rows)
 
     mode_label = "多视频智能聚合" if document["mode"] == "cloud_aggregate" else "Qwen 智能整理" if document["mode"] == "cloud_summary" else "离线提取"
     document_title = document["metadata"].get("document_title") or document["metadata"]["title"]
@@ -186,27 +362,107 @@ def render_pdf_fallback(document: dict, output: Path) -> None:
             story.append(KeepTogether([image, Paragraph(html.escape(figure["caption"]), small)]))
             story.append(Spacer(1, 3*mm))
     for index, section in enumerate(document.get("sections", []), start=1):
+        ensure_not_cancelled(cancel_check)
         story.append(Paragraph(f"{index:02d}  /  {html.escape(section['title'])}", heading))
-        story.append(Paragraph(html.escape(section.get("summary", "")), body))
+        if str(section.get("summary", "")).strip():
+            story.append(Paragraph(html.escape(section['summary']), body))
         for point_index, point in enumerate(section.get("knowledge_points", []), start=1):
             explanation = html.escape(point.get("explanation", ""))
             block = [Paragraph(f"{index}.{point_index}  {html.escape(point['statement'])}", point_title)]
-            if explanation:
-                block.append(Paragraph(explanation, body))
-            for field, label in _POINT_LIST_FIELDS:
-                values = point.get(field) or []
-                if values:
-                    block.append(Paragraph(f"<b>{html.escape(label)}</b>", body))
-                    block.extend(Paragraph(f"• {html.escape(item)}", body) for item in values)
-            if point.get("editorial_note"):
-                block.append(Paragraph(f"<b>整理说明：</b>{html.escape(point['editorial_note'])}", body))
-            if point.get("review_tip"):
-                block.append(Paragraph(f"<b>复习提示：</b>{html.escape(point['review_tip'])}", body))
+            # 构建 figure_map（binding_id → figure）
+            point_figure_map: dict[str, dict] = {}
             for figure in point.get("figures", []):
-                image = Image(figure["path"])
-                image._restrictSize(165*mm, 90*mm)
-                block.extend([image, Spacer(1, 1.5*mm), Paragraph(html.escape(figure["caption"]), small)])
-            source_links = point.get("source_links") or [{"label": point["source_label"], "url": point["source_url"]}]
+                bid = figure.get("binding_id", "")
+                if bid:
+                    point_figure_map[bid] = figure
+            # 优先 content_blocks
+            content_blocks = point.get("content_blocks") or []
+            if content_blocks:
+                has_explicit_caption = any(cb.get("type") == "figure_caption" for cb in content_blocks)
+                rendered_figure_ids: set[str] = set()
+                for cb in content_blocks:
+                    cbtype = cb.get("type", "")
+                    if cbtype == "visual_group":
+                        bids = [str(value) for value in cb.get("binding_ids", []) if str(value)]
+                        if not bids:
+                            bids = [str(cb.get("binding_id", ""))]
+                        group_figures = [point_figure_map[bid] for bid in bids if bid in point_figure_map]
+                        if group_figures:
+                            block.append(visual_group_flowable(cb, group_figures))
+                            rendered_figure_ids.update(bids)
+                    elif cbtype == "paragraph":
+                        text = cb.get("text", "")
+                        if text:
+                            block.append(Paragraph(html.escape(text), body))
+                    elif cbtype == "visual_lead_in":
+                        text = str(cb.get("text", "")).replace("看图重点：", "")
+                        if text:
+                            block.append(Paragraph(f"<b>看图重点：</b>{html.escape(text)}", body))
+                    elif cbtype in ("rule_list", "steps", "example", "pitfall"):
+                        label = _BLOCK_LABELS.get(cbtype, cbtype)
+                        items = _content_block_items(cb)
+                        if items:
+                            block.append(Paragraph(f"<b>{html.escape(label)}</b>", body))
+                            block.extend(Paragraph(f"• {html.escape(item)}", body) for item in items)
+                    elif cbtype == "figure":
+                        bid = cb.get("binding_id", "")
+                        figure = point_figure_map.get(bid)
+                        if figure:
+                            image = Image(figure["path"])
+                            image._restrictSize(165*mm, 90*mm)
+                            block.extend([image, Spacer(1, 1.5*mm)])
+                            rendered_figure_ids.add(bid)
+                            if not has_explicit_caption:
+                                block.append(Paragraph(html.escape(figure.get("caption", "")), small))
+                    elif cbtype == "figure_caption":
+                        text = cb.get("text", "")
+                        if text:
+                            block.append(Paragraph(html.escape(text), small))
+                    elif cbtype == "visual_takeaway":
+                        text = cb.get("text", "")
+                        if text:
+                            block.append(Paragraph(f"<b>这张图帮助理解：</b>{html.escape(text)}", body))
+                    elif cbtype == "understanding_tip":
+                        text = cb.get("text", "")
+                        if text:
+                            block.append(Paragraph(f"<b>理解提示：</b>{html.escape(text)}", body))
+                for figure in point.get("figures", []):
+                    if figure.get("binding_id", "") in rendered_figure_ids:
+                        continue
+                    focus = figure.get("reader_focus") or figure.get("why_useful") or ""
+                    takeaway = figure.get("explanation_for_reader") or figure.get("visual_summary") or ""
+                    if focus:
+                        block.append(Paragraph(
+                            f"<b>看图重点：</b>{html.escape(str(focus).replace('看图重点：', ''))}",
+                            body,
+                        ))
+                    image = Image(figure["path"])
+                    image._restrictSize(165*mm, 90*mm)
+                    block.extend([image, Spacer(1, 1.5*mm), Paragraph(html.escape(figure["caption"]), small)])
+                    if takeaway:
+                        block.append(Paragraph(f"<b>这张图帮助理解：</b>{html.escape(str(takeaway))}", body))
+            else:
+                # 旧路径
+                if explanation:
+                    block.append(Paragraph(explanation, body))
+                for field, label in _POINT_LIST_FIELDS:
+                    values = point.get(field) or []
+                    if values:
+                        block.append(Paragraph(f"<b>{html.escape(label)}</b>", body))
+                        block.extend(Paragraph(f"• {html.escape(item)}", body) for item in values)
+                if point.get("editorial_note"):
+                    block.append(Paragraph(f"<b>整理说明：</b>{html.escape(point['editorial_note'])}", body))
+                if point.get("review_tip"):
+                    block.append(Paragraph(f"<b>复习提示：</b>{html.escape(point['review_tip'])}", body))
+                for figure in point.get("figures", []):
+                    image = Image(figure["path"])
+                    image._restrictSize(165*mm, 90*mm)
+                    block.extend([image, Spacer(1, 1.5*mm), Paragraph(html.escape(figure["caption"]), small)])
+            refs = point.get("source_refs", {}) if isinstance(point.get("source_refs"), dict) else {}
+            source_links = refs.get("links") or point.get("source_links") or [{
+                "label": refs.get("label", point.get("source_label", "")),
+                "url": refs.get("url", point.get("source_url", "")),
+            }]
             for source in source_links:
                 source_url = html.escape(source["url"], quote=True)
                 block.append(Paragraph(f"<link href='{source_url}'>▶ 回看来源 · {html.escape(source['label'])}</link>", link))
@@ -253,16 +509,67 @@ def render_pdf_fallback(document: dict, output: Path) -> None:
         canvas.drawRightString(188*mm, 8*mm, f"{doc.page}")
         canvas.restoreState()
 
+    ensure_not_cancelled(cancel_check)
     pdf.build(story, onFirstPage=page_furniture, onLaterPages=page_furniture)
+    ensure_not_cancelled(cancel_check)
 
 
-def convert_docx_to_pdf(docx: Path, pdf: Path, document: dict) -> str:
-    soffice = find_tool("soffice") or find_tool("libreoffice")
-    if soffice:
-        subprocess.run([soffice, "--headless", "--convert-to", "pdf", "--outdir", str(pdf.parent), str(docx)], check=True)
-        generated = pdf.parent / f"{docx.stem}.pdf"
-        if generated != pdf and generated.exists():
-            generated.replace(pdf)
-        return "libreoffice_from_docx"
-    render_pdf_fallback(document, pdf)
-    return "reportlab_fallback"
+def convert_docx_to_pdf(docx: Path, pdf: Path, document: dict, *, cancel_check=None) -> str:
+    """优先使用本机 Microsoft Word 导出；不可用时静默使用内置渲染器。"""
+    if os.name == "nt":
+        word_pdf = pdf.with_name(f"{pdf.stem}.word-export{pdf.suffix}")
+        quoted_docx = str(docx.resolve()).replace("'", "''")
+        quoted_pdf = str(word_pdf.resolve()).replace("'", "''")
+        script = (
+            "$ErrorActionPreference='Stop';$word=$null;$document=$null;"
+            "try{$word=New-Object -ComObject Word.Application;"
+            "$word.Visible=$false;$word.DisplayAlerts=0;"
+            f"$document=$word.Documents.Open('{quoted_docx}',$false,$true,$false);"
+            f"$document.ExportAsFixedFormat('{quoted_pdf}',17)}}"
+            "finally{if($null-ne$document){$document.Close($false)};"
+            "if($null-ne$word){$word.Quit()};"
+            "[GC]::Collect();[GC]::WaitForPendingFinalizers()}"
+        )
+        try:
+            run_cancellable(
+                [
+                    "powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive",
+                    "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-Command", script,
+                ],
+                cancel_check=cancel_check, timeout_seconds=60.0,
+            )
+            if word_pdf.is_file() and word_pdf.stat().st_size > 0:
+                word_pdf.replace(pdf)
+                return "local_word"
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            pass
+        finally:
+            word_pdf.unlink(missing_ok=True)
+    render_pdf_fallback(document, pdf, cancel_check=cancel_check)
+    return "built_in"
+
+
+class DocumentAdapter:
+    """封装 Markdown、Node/Word 与内置 PDF 选择的 DocumentPort adapter。"""
+
+    def __init__(self, project_root: Path, *, include_transcript: bool = True) -> None:
+        self.project_root = project_root
+        self.include_transcript = include_transcript
+
+    def render_markdown(self, document: dict, output: Path) -> Path:
+        render_markdown(document, output, self.include_transcript)
+        return output
+
+    def render_word(self, document_json: Path, output: Path, *, cancel_check) -> Path:
+        render_docx(document_json, output, self.project_root, cancel_check=cancel_check)
+        return output
+
+    def render_pdf(
+        self,
+        document: dict,
+        word: Path,
+        output: Path,
+        *,
+        cancel_check,
+    ) -> str:
+        return convert_docx_to_pdf(word, output, document, cancel_check=cancel_check)

@@ -5,7 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from video_study.asr import _initial_prompt, apply_terminology_corrections, transcribe
+from video_study.asr import _initial_prompt, apply_terminology_corrections
+from video_study.transcript import normalize_transcript, write_srt
 
 
 def sample_transcript(text: str = "心房才动伴随房才") -> dict:
@@ -50,39 +51,38 @@ class TerminologyCorrectionTests(unittest.TestCase):
         self.assertNotIn("raw_text", restored["segments"][0])
         self.assertNotIn("terminology_correction", restored)
 
-    def test_cached_json_is_corrected_and_missing_srt_is_rebuilt(self) -> None:
+    def test_raw_transcript_is_corrected_and_srt_is_built_by_normalize_boundary(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            output_json = root / "transcript.json"
             output_srt = root / "transcript.srt"
-            output_json.write_text(json.dumps(sample_transcript(), ensure_ascii=False), encoding="utf-8")
-
-            result = transcribe(
-                root / "unused.flac",
-                output_json,
-                output_srt,
-                root / "unused-model",
-                {"terminology_replacements": {"房才": "房颤"}},
+            result = normalize_transcript(
+                sample_transcript(), {"terminology_replacements": {"房才": "房颤"}}, 10.0,
             )
+            write_srt(output_srt, result["segments"])
 
             self.assertEqual(result["segments"][0]["text"], "心房颤动伴随房颤")
             self.assertIn("心房颤动伴随房颤", output_srt.read_text(encoding="utf-8-sig"))
 
-    def test_cloud_refine_can_preserve_cached_asr_engine(self) -> None:
+    def test_tail_timestamp_is_clamped_to_video_duration(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            output_json = root / "transcript.json"
-            cached = sample_transcript("已有转写")
-            cached["engine"] = "faster-whisper"
-            output_json.write_text(json.dumps(cached, ensure_ascii=False), encoding="utf-8")
+            output_srt = root / "transcript.srt"
+            raw = sample_transcript("视频末尾")
+            raw["segments"][0]["start_seconds"] = 10.2
+            raw["segments"][0]["end_seconds"] = 11.3
+            result = normalize_transcript(raw, {}, 10.0)
+            write_srt(output_srt, result["segments"])
 
-            result = transcribe(
-                root / "unused.flac", output_json, root / "transcript.srt", root / "unused-model",
-                {"engine": "qwen3-asr-0.6b", "_preserve_cached_engine": True},
-            )
+            self.assertEqual(result["segments"][0]["start_seconds"], 10.0)
+            self.assertEqual(result["segments"][0]["end_seconds"], 10.0)
+            self.assertIn("00:00:10,000 --> 00:00:10,000", output_srt.read_text(encoding="utf-8-sig"))
 
-            self.assertEqual(result["engine"], "faster-whisper")
-            self.assertEqual(result["segments"][0]["text"], "已有转写")
+    def test_normalization_preserves_provider_engine_identity(self) -> None:
+        raw = sample_transcript("已有转写")
+        raw["engine"] = "faster-whisper"
+        result = normalize_transcript(raw, {}, 10.0)
+        self.assertEqual(result["engine"], "faster-whisper")
+        self.assertEqual(result["segments"][0]["text"], "已有转写")
 
 
 if __name__ == "__main__":

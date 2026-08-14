@@ -10,6 +10,20 @@ from video_study.frames import select_keyframe_candidates
 
 
 class KeyframeSelectionTests(unittest.TestCase):
+    def test_short_video_padding_beyond_duration_falls_back_to_available_frame(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "candidate_00000.jpg"
+            Image.new("RGB", (640, 360), "white").save(path, quality=90)
+
+            chosen = select_keyframe_candidates([path], {
+                "_min_candidate_index": 3,
+                "max_keyframes": 1,
+            })
+
+        self.assertEqual(len(chosen), 1)
+        self.assertEqual(chosen[0][0], path)
+        self.assertEqual(chosen[0][1], 0)
+
     def test_content_rich_late_scene_beats_early_title_pages(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

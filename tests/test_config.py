@@ -52,6 +52,13 @@ class ConfigIncludeTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "同时出现在"):
                 load_config(root / "config.yaml")
 
+    def test_retired_upgrade_switches_are_not_in_default_config(self) -> None:
+        source = Path(__file__).resolve().parents[1] / "config.yaml"
+        config = load_config(source)
+        self.assertNotIn("cloud_payload", config.raw)
+        self.assertNotIn("progress", config.raw)
+        self.assertNotIn("execution_mode", config.raw["visual_evidence"])
+
 
 if __name__ == "__main__":
     unittest.main()

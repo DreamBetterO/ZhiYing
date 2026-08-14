@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from video_study.providers import FallbackChatClient, test_openai_connection
+from video_study.providers import (
+    CloudBudgetExceeded,
+    CloudRequestBudget,
+    FallbackChatClient,
+    test_openai_connection,
+)
+from video_study.utils import TaskCancelled
 
 
 def response(payload: dict) -> SimpleNamespace:
@@ -45,9 +53,54 @@ class ProviderFallbackTests(unittest.TestCase):
         self.assertEqual(parsed["quality"], "good")
         self.assertEqual(model, "second")
         self.assertEqual([item.ok for item in attempts], [False, True])
-        self.assertEqual(usage["total_tokens"], 15)
+        self.assertEqual(usage["total_tokens"], 30)
         self.assertEqual(create.call_count, 2)
         self.assertEqual([item.model for item in observed], ["first", "second"])
+
+    def test_request_budget_is_shared_across_stages_and_records_usage(self) -> None:
+        client = FallbackChatClient(
+            api_key="test-key",
+            base_url="https://example.invalid/v1",
+            models=["model-a"],
+        )
+        create = Mock(side_effect=[response({"ok": True}), response({"ok": True})])
+        client.client.chat.completions.create = create
+        budget = CloudRequestBudget(max_requests=2)
+
+        client.create_json(messages=[{"role": "user", "content": "plan"}], request_budget=budget, stage="planning")
+        client.create_json(messages=[{"role": "user", "content": "organize"}], request_budget=budget, stage="organizing")
+        with self.assertRaises(CloudBudgetExceeded):
+            client.create_json(messages=[{"role": "user", "content": "retry"}], request_budget=budget, stage="fallback")
+
+        snapshot = budget.snapshot()
+        self.assertEqual(snapshot["requests_used"], 2)
+        self.assertEqual(snapshot["requests_remaining"], 0)
+        self.assertEqual(snapshot["usage"]["total_tokens"], 30)
+        self.assertEqual([item["stage"] for item in snapshot["attempts"]], ["planning", "organizing"])
+        self.assertEqual(create.call_count, 2)
+
+    def test_blocking_cloud_request_can_be_cancelled_promptly(self) -> None:
+        client = FallbackChatClient(
+            api_key="test-key", base_url="https://example.invalid/v1", models=["model-a"],
+        )
+        release = threading.Event()
+        client.client.chat.completions.create = Mock(side_effect=lambda **_kwargs: release.wait(5))
+        checks = 0
+
+        def cancelled() -> bool:
+            nonlocal checks
+            checks += 1
+            return checks >= 3
+
+        started = time.monotonic()
+        try:
+            with self.assertRaises(TaskCancelled):
+                client.create_json(
+                    messages=[{"role": "user", "content": "test"}], cancel_check=cancelled,
+                )
+        finally:
+            release.set()
+        self.assertLess(time.monotonic() - started, 1.0)
 
 
 if __name__ == "__main__":
