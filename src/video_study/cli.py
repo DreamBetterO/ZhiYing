@@ -82,29 +82,46 @@ def main() -> None:
         }
         print(json.dumps(report, ensure_ascii=False, indent=2))
     elif args.command == "run":
-        qwen_settings = None
-        qwen = config.raw.get("qwen", {})
-        configured_default = bool(qwen.get("enabled", False))
-        cloud_enabled = (
-            bool(args.cloud_summary)
-            if args.cloud_summary is not None
-            else os.getenv(qwen.get("enabled_env", "CLOUD_LLM_ENABLED"), str(configured_default)).lower() == "true"
-        )
-        if cloud_enabled:
-            qwen_settings = _cloud_authorization(qwen).legacy_settings(qwen)
-        results = run_all(
-            config,
-            video=args.video,
-            force=args.force,
-            force_summary=args.force_summary,
-            cloud_summary=args.cloud_summary,
-            qwen_settings=qwen_settings,
-            force_asr=args.force_asr,
-        )
-        print(json.dumps([{key: str(value) for key, value in item.items()} for item in results], ensure_ascii=False, indent=2))
+        from .single_instance import acquire_single_instance
+        try:
+            with acquire_single_instance(str(config.root)):
+                qwen_settings = None
+                qwen = config.raw.get("qwen", {})
+                configured_default = bool(qwen.get("enabled", False))
+                cloud_enabled = (
+                    bool(args.cloud_summary)
+                    if args.cloud_summary is not None
+                    else os.getenv(qwen.get("enabled_env", "CLOUD_LLM_ENABLED"), str(configured_default)).lower() == "true"
+                )
+                if cloud_enabled:
+                    qwen_settings = _cloud_authorization(qwen).legacy_settings(qwen)
+                results = run_all(
+                    config,
+                    video=args.video,
+                    force=args.force,
+                    force_summary=args.force_summary,
+                    cloud_summary=args.cloud_summary,
+                    qwen_settings=qwen_settings,
+                    force_asr=args.force_asr,
+                )
+                print(json.dumps([{key: str(value) for key, value in item.items()} for item in results], ensure_ascii=False, indent=2))
+        except RuntimeError as exc:
+            print(f"无法启动：{exc}", file=sys.stderr)
+            sys.exit(2)
     elif args.command == "desktop":
-        from .desktop import launch_desktop
-        launch_desktop(config)
+        from .single_instance import acquire_single_instance
+        try:
+            with acquire_single_instance(str(config.root)):
+                from .desktop import launch_desktop
+                launch_desktop(config)
+        except RuntimeError as exc:
+            import tkinter as tk
+            from tkinter import messagebox
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showwarning("知影", str(exc))
+            root.destroy()
+            sys.exit(2)
     elif args.command == "play-url":
         from .localplay import play_protocol_url
         play_protocol_url(config, args.url)

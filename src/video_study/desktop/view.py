@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import queue
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, font as tkfont, messagebox, ttk
@@ -22,12 +23,24 @@ from .settings import (
 
 
 PRIMARY_UI_ACTIONS = (
-    "add", "toggle_all", "move_up", "move_down", "remove", "delete_generated", "clear_cache",
-    "local", "cloud", "cancel", "aggregate", "open_output", "open_video",
+    "add", "toggle_all", "remove", "clear_selected_cache", "clear_cache",
+    "local", "cloud", "cancel", "aggregate", "local_aggregate", "open_output", "open_video",
     "open_markdown", "open_docx", "open_pdf", "open_aggregate", "settings",
 )
 
 _RUNNING_STATES = {DesktopState.PREPARING, DesktopState.RUNNING, DesktopState.CANCELLING}
+UI_EVENT_BATCH_LIMIT = 200
+
+
+def drain_ui_events(events: queue.Queue, *, limit: int = UI_EVENT_BATCH_LIMIT) -> list:
+    """有界排空 UI 队列，防止持续生产事件时饿死 Tk 主循环。"""
+    drained = []
+    for _ in range(max(1, int(limit))):
+        try:
+            drained.append(events.get_nowait())
+        except queue.Empty:
+            break
+    return drained
 
 
 class DesktopView:
@@ -69,8 +82,8 @@ class DesktopView:
         self._configure_window()
         self._configure_style()
         self._build()
-        self.root.after(80, self._drain_events)
-        self.root.after(1000, self._tick)
+        self._drain_after_id = self.root.after(80, self._drain_events)
+        self._tick_after_id = self.root.after(1000, self._tick)
 
     def _configure_window(self) -> None:
         self.root.title(f"知影 · 视频知识工作台 {__version__}")
@@ -161,15 +174,12 @@ class DesktopView:
         toolbar.pack(fill="x", pady=(0, 10))
         self.add_button = ttk.Button(toolbar, text="＋ 添加视频", style="Accent.TButton", command=self.add_videos)
         self.select_all_button = ttk.Button(toolbar, text="全选", style="Soft.TButton", command=self.toggle_all)
-        self.move_up_button = ttk.Button(toolbar, text="↑ 上移所选", command=self.move_selected_up)
-        self.move_down_button = ttk.Button(toolbar, text="↓ 下移所选", command=self.move_selected_down)
         self.remove_button = ttk.Button(toolbar, text="移除所选", command=self.remove_selected)
-        self.delete_button = ttk.Button(toolbar, text="删除所选产物", style="Danger.TButton", command=self.delete_generated)
+        self.clear_selected_button = ttk.Button(toolbar, text="清除所选缓存", style="Danger.TButton", command=self.clear_selected_cache)
         self.clear_cache_button = ttk.Button(toolbar, text="清理全部缓存", style="Danger.TButton", command=self.clear_workspace)
         for button, pad in (
             (self.add_button, (0, 0)), (self.select_all_button, (20, 0)),
-            (self.move_up_button, (8, 0)), (self.move_down_button, (4, 0)),
-            (self.remove_button, (8, 0)), (self.delete_button, (8, 0)), (self.clear_cache_button, (8, 0)),
+            (self.remove_button, (8, 0)), (self.clear_selected_button, (8, 0)), (self.clear_cache_button, (8, 0)),
         ):
             button.pack(side="left", padx=pad)
         ttk.Label(toolbar, textvariable=self.selection_status, style="Sub.TLabel").pack(side="right", pady=8)
@@ -192,6 +202,9 @@ class DesktopView:
         scroll.pack(side="right", fill="y")
         self.tree.bind("<Button-1>", self._tree_click)
         self.tree.bind("<Double-1>", lambda _event: self.open_video())
+        self.tree.bind("<B1-Motion>", self._tree_drag)
+        self.tree.bind("<ButtonRelease-1>", self._tree_drop)
+        self._drag_row: str | None = None
         self.empty_panel = ttk.Frame(card, style="Card.TFrame")
         ttk.Label(self.empty_panel, text="还没有视频", style="Card.TLabel", font=("Microsoft YaHei UI", 14, "bold")).pack()
         ttk.Label(self.empty_panel, text="点击“添加视频”可一次选择多个本地视频", style="Card.TLabel").pack(pady=(5, 0))
@@ -215,10 +228,12 @@ class DesktopView:
         primary.pack(fill="x")
         self.local_button = ttk.Button(primary, text="本地整理", style="Accent.TButton", command=lambda: self.start(False))
         self.cloud_button = ttk.Button(primary, text="云端优化", command=lambda: self.start(True))
-        self.aggregate_button = ttk.Button(primary, text="聚合所选", style="Success.TButton", command=self.aggregate)
+        self.local_aggregate_button = ttk.Button(primary, text="本地聚合", command=self.aggregate_local)
+        self.aggregate_button = ttk.Button(primary, text="云端聚合", style="Success.TButton", command=self.aggregate)
         self.local_button.pack(side="left")
         self.cloud_button.pack(side="left", padx=8)
-        self.aggregate_button.pack(side="left")
+        self.local_aggregate_button.pack(side="left")
+        self.aggregate_button.pack(side="left", padx=8)
         self.cancel_button = ttk.Button(primary, text="取消当前任务", command=self.cancel, state="disabled")
         self.cancel_button.pack(side="right")
 
@@ -251,10 +266,10 @@ class DesktopView:
         self.log.insert("end", "等待任务。真实云端请求只会在展示数据、端点、模型链和预算并获得授权后发起。")
         self.log.configure(state="disabled")
         self._buttons = [
-            self.add_button, self.select_all_button, self.move_up_button, self.move_down_button,
-            self.remove_button, self.delete_button,
+            self.add_button, self.select_all_button,
+            self.remove_button, self.clear_selected_button,
             self.clear_cache_button, self.settings_button, self.local_button, self.cloud_button,
-            self.aggregate_button,
+            self.local_aggregate_button, self.aggregate_button,
         ]
         self._refresh()
 
@@ -281,12 +296,6 @@ class DesktopView:
 
     def toggle_all(self) -> None:
         self._command(self.controller.toggle_all)
-
-    def move_selected_up(self) -> None:
-        self._command(self.controller.move_selected_up)
-
-    def move_selected_down(self) -> None:
-        self._command(self.controller.move_selected_down)
 
     def start(self, use_cloud: bool) -> None:
         try:
@@ -385,23 +394,34 @@ class DesktopView:
             return
         self._command(lambda: self.controller.aggregate(AggregateRequest(tuple(completed), auth)))
 
+    def aggregate_local(self) -> None:
+        completed = tuple(
+            ProcessingResult.from_legacy(item.result)
+            for item in self.controller.items if item.checked and item.result
+        )
+        if len(completed) < 2:
+            messagebox.showinfo("无法聚合", "请至少勾选两个已完成视频")
+            return
+        self._command(lambda: self.controller.aggregate_local(completed))
+
     def cancel(self) -> None:
         current = self.controller.current_item
         label = f"\n\n当前视频：{current.path.name}" if current else ""
         if messagebox.askyesno("取消任务", f"确定取消当前处理任务？{label}\n队列中的源视频不会被删除。"):
             self.controller.cancel()
 
-    def delete_generated(self) -> None:
+    def clear_selected_cache(self) -> None:
         selected = [item for item in self.controller.items if item.checked]
         if not selected:
             messagebox.showinfo("没有选择", "请先勾选视频")
             return
         if not messagebox.askyesno(
-            "删除生成文件",
-            "将删除所选视频的工作区缓存和最终 Markdown、Word、PDF。原视频始终保留。是否继续？",
+            "清除所选缓存",
+            "将删除所选视频的工作区缓存和最终 Markdown、Word、PDF，"
+            "同时清除引用这些视频的聚合结果。原视频始终保留。是否继续？",
         ):
             return
-        self._command(self.controller.delete_selected)
+        self._command(self.controller.clear_selected_cache)
 
     def clear_workspace(self) -> None:
         workspace = self.config.path("paths", "workspace_dir").resolve()
@@ -460,12 +480,34 @@ class DesktopView:
             item = self.controller.items[int(row)]
             self._command(lambda: self.controller.select(item.path, not item.checked))
             return "break"
+        self._drag_row = row if row else None
         return None
+
+    def _tree_drag(self, event) -> str | None:
+        if self._drag_row is None or self.controller.state in _RUNNING_STATES:
+            return None
+        target = self.tree.identify_row(event.y)
+        if target and target != self._drag_row:
+            self.tree.selection_set(target)
+            self.tree.see(target)
+        return "break"
+
+    def _tree_drop(self, event) -> str | None:
+        if self._drag_row is None:
+            return None
+        source_index = int(self._drag_row)
+        self._drag_row = None
+        target_row = self.tree.identify_row(event.y)
+        if not target_row:
+            return None
+        target_index = int(target_row)
+        if source_index != target_index and self.controller.state not in _RUNNING_STATES:
+            self._command(lambda: self.controller.reorder(source_index, target_index))
+        return "break"
 
     def _drain_events(self) -> None:
         changed = False
-        while not self.controller.events.empty():
-            event = self.controller.events.get_nowait()
+        for event in drain_ui_events(self.controller.events):
             if event.kind == "aggregate" and event.payload:
                 self.aggregate_result = dict(event.payload)
             if event.message:
@@ -474,7 +516,8 @@ class DesktopView:
             changed = True
         if changed:
             self._refresh()
-        self.root.after(80, self._drain_events)
+        delay = 1 if not self.controller.events.empty() else 80
+        self._drain_after_id = self.root.after(delay, self._drain_events)
 
     def _append_log(self, message: str) -> None:
         self.log.configure(state="normal")
@@ -525,23 +568,57 @@ class DesktopView:
         self.cancel_button.configure(state="normal" if running else "disabled")
         completed = sum(item.checked and bool(item.result) for item in self.controller.items)
         if not running:
+            self.local_aggregate_button.configure(state="normal" if completed >= 2 else "disabled")
             self.aggregate_button.configure(state="normal" if completed >= 2 else "disabled")
-        self.artifact_buttons[-1].configure(
-            state="normal" if (self.controller.aggregate_result or self.aggregate_result) else "disabled",
+        # 产物按钮：仅当恰好选择一个已完成视频且文件存在时显示
+        single = self._single_selected_silent()
+        artifact_specs = (
+            ("markdown", 2),
+            ("docx", 3),
+            ("pdf", 4),
         )
+        for kind, col in artifact_specs:
+            button = self.artifact_buttons[col]
+            if running:
+                button.configure(state="disabled")
+            elif single and single.result.get(kind) and Path(single.result[kind]).is_file():
+                button.configure(state="normal")
+            else:
+                button.configure(state="disabled")
+        # 聚合文档按钮：仅在聚合 Document v2 和目标文件完整落盘后显示
+        agg_result = self.controller.aggregate_result or self.aggregate_result
+        agg_button = self.artifact_buttons[-1]
+        if running:
+            agg_button.configure(state="disabled")
+        elif agg_result and Path(agg_result.get("docx", "")).is_file():
+            agg_button.configure(state="normal")
+        else:
+            agg_button.configure(state="disabled")
+
+    def _single_selected_silent(self) -> QueueItem | None:
+        selected = [item for item in self.controller.items if item.checked]
+        if len(selected) != 1:
+            return None
+        return selected[0] if selected[0].result else None
 
     def _tick(self) -> None:
         active = self.controller.current_item
         if active is not None:
             active.update_elapsed()
             self._refresh()
-        self.root.after(1000, self._tick)
+        self._tick_after_id = self.root.after(1000, self._tick)
 
     def close(self) -> None:
         if self.controller.state in _RUNNING_STATES:
             if not messagebox.askyesno("退出", "当前任务仍在处理。退出会取消界面任务，源视频会保留。确定继续？"):
                 return
             self.controller.cancel()
+        for callback_id in (self._drain_after_id, self._tick_after_id):
+            try:
+                self.root.after_cancel(callback_id)
+            except tk.TclError:
+                pass
+        self.canvas.unbind_all("<MouseWheel>")
         self.root.destroy()
 
     def _command(self, command) -> None:

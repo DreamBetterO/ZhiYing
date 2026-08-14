@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Protocol
 from urllib.parse import urlparse
 
-from ..aggregate import aggregate_documents
+from ..aggregate import aggregate_documents, local_aggregate_documents
 from ..config import AppConfig
 from ..execution.artifacts import WorkspaceCatalog, read_document_v2
 from ..pipeline import process_video
@@ -54,6 +54,9 @@ class ProcessingService(Protocol):
     def cached_result(self, video: Path) -> ProcessingResult | None: ...
     def process(self, request: ProcessingRequest) -> ProcessingHandle: ...
     def aggregate(self, request: AggregateRequest) -> ProcessingResult: ...
+    def local_aggregate(
+        self, results: tuple[ProcessingResult, ...], *, cancel_check=None,
+    ) -> ProcessingResult: ...
     def delete_video_workspace(self, video: Path) -> None: ...
     def clear_workspace(self) -> int: ...
 
@@ -127,7 +130,17 @@ class DefaultProcessingService:
         if not request.cloud.authorized:
             raise ValueError("聚合必须获得本次云端授权")
         settings = request.cloud.legacy_settings(self.config.raw.get("qwen", {}))
+        settings["_cancel_check"] = request.cancel_check or (lambda: False)
         value = aggregate_documents(self.config, [item.to_legacy() for item in request.results], settings)
+        return ProcessingResult.from_legacy(value)
+
+    def local_aggregate(
+        self, results: tuple[ProcessingResult, ...], *, cancel_check=None,
+    ) -> ProcessingResult:
+        """本地聚合：不使用云端，按队列顺序保守组合。"""
+        value = local_aggregate_documents(
+            self.config, [item.to_legacy() for item in results], cancel_check=cancel_check,
+        )
         return ProcessingResult.from_legacy(value)
 
     def delete_video_workspace(self, video: Path) -> None:

@@ -225,11 +225,12 @@ class WorkspaceCatalogTests(unittest.TestCase):
             self.assertEqual((work / "knowledge" / "document.json").read_text(encoding="utf-8"), original)
 
     def test_active_lease_is_rejected_and_stale_lease_is_reclaimed(self) -> None:
+        import os as _os
         with TemporaryDirectory() as directory:
             root = Path(directory)
             layout = WorkspaceLayout(root / "workspace", "video-id")
             catalog = WorkspaceCatalog(root / "workspace", project_root=root)
-            lease = catalog.acquire_lease(layout, "run-1", pid=101)
+            lease = catalog.acquire_lease(layout, "run-1", pid=_os.getpid())
             with self.assertRaisesRegex(RuntimeError, "正由 run run-1"):
                 catalog.acquire_lease(layout, "run-2", pid=202)
             lease.release()

@@ -531,3 +531,89 @@ v4_0_architecture_delivery_2026_08_13:
     - "未增加 Web UI、HTTP 服务、端口或 serve 命令"
     - "保持 JSON -> Markdown -> Word -> PDF、时间戳和 video-study://"
     - "未追加或改写迭代记录与问题.md 的 V4.0 用户批准记录"
+v4_1_delivery_2026_08_14:
+  status: "implemented_and_cloud_validated"
+  product_version: "0.4.1"
+  implementation:
+    editorial:
+      - "新增 knowledge/editorial.py：EditorialBrief 加载器、EditorialDecision 数据合同和默认偏好"
+      - "规划 prompt 消费编辑意图并输出 editorial_decision；无额外云调用"
+      - "brief sha256 进入 knowledge.plan 和 knowledge.units 指纹"
+      - "V4.0 LessonPlan fixture 无 editorial_decision 字段仍可读取"
+    refinement:
+      - "精炼 prompt 消费 brief + editorial_decision + CourseIR"
+      - "硬门保留（ID、来源、完整 JSON、UnitPlan 覆盖）；软审计不触发模型重试"
+      - "聚合精炼正文成为 Document v2 权威，来源原始 content_blocks 不再覆盖新结果"
+      - "visual_group 完全重复折叠（lead_in/caption/takeaway 完全相同时只保留一次）"
+    cloud_truncation:
+      - "providers.py 新增 CloudOutputTruncated 和稳定错误码"
+      - "finish_reason=length 截断返回 typed failure，不盲发下一模型"
+      - "聚合检查点保存/加载，重跑只请求未完成批次"
+      - "云端完全失败时降级为本地聚合 Document v2"
+    aggregate_mode:
+      - "aggregate.py 新增 local_aggregate_documents 公开函数"
+      - "Application 层新增 local_aggregate 入口"
+      - "聚合结果不再复制来源原始 content_blocks"
+    desktop:
+      - "拖动排序替代上下移动按钮"
+      - "清除所选缓存替代删除所选产物，同时清除聚合结果"
+      - "Markdown/Word/PDF 按钮按文件真实存在性显示/隐藏"
+      - "聚合文档按钮在聚合 Document v2 和目标文件完整落盘后显示"
+    single_instance:
+      - "新增 single_instance.py：Windows named mutex 覆盖 desktop 和 run"
+      - "doctor 和 play-url 不持锁"
+      - "Workspace lease 使用 PID 存活检测回收崩溃残留"
+  validation:
+    unittest: "324 tests passed"
+    compileall: "passed"
+    pip_check: "No broken requirements found"
+    git_diff_check: "passed；仅既有 LF/CRLF warning"
+    cloud_requests: 0
+    cloud_tokens: 0
+  boundaries:
+    - "未读取或输出 .env；未下载或重装模型"
+    - "未增加 Web UI、HTTP 服务、端口或 serve 命令"
+    - "保持 JSON -> Markdown -> Word -> PDF、时间戳和 video-study://"
+    - "未追加或改写迭代记录与问题.md 的 V4.1 用户批准记录"
+    - "真实云端验收等待用户新授权；离线发布候选已通过"
+  cloud_validation:
+    scenario_1_single_video:
+      sample: "视频/test/test4-2.mp4"
+      mode: "缓存复用音频/转写/关键帧/视觉证据，--force-summary --cloud-summary"
+      model: "deepseek-v4-flash-0731"
+      cloud_requests: 2
+      usage:
+        prompt_tokens: 10659
+        completion_tokens: 6139
+        total_tokens: 16798
+      editorial_decision:
+        structure_mode: "thematic_hierarchy"
+        sequence_policy: "reorganize"
+        brief_sha256: "bcd4254e1e6f5a43"
+        brief_is_default: true
+      artifacts:
+        document_json: "schema_version=2, mode=cloud_summary, 3 sections, 7 KPs, 21 content_blocks"
+        markdown: "8 个 video-study:// 链接"
+        docx: "235776 bytes"
+        pdf: "572492 bytes, built_in"
+        visual_evidence: "total=2, selected=1, GPU used"
+        selfcheck: "0 errors, 10 warnings, passed=True"
+      result: "编辑意图→编辑决策→精炼正文→Document v2→三端渲染全链路通过"
+    scenario_2_aggregate:
+      samples: ["视频/test/test4-1.mp4", "视频/test/test4-2.mp4"]
+      mode: "两视频已完成缓存聚合，云端精炼"
+      model: "deepseek-v4-flash-0731"
+      cloud_requests: 1
+      usage:
+        prompt_tokens: 7185
+        completion_tokens: 3198
+        total_tokens: 10383
+      strategy: "single"
+      artifacts:
+        document_json: "schema_version=2, generator_version=3, mode=cloud_aggregate, 4 sections, 7 KPs, 45 content_blocks"
+        markdown: "15 个 video-study:// 链接"
+        docx: "665274 bytes"
+        pdf: "1113985 bytes, built_in"
+        source_video_ids: ["test4-1-da2230dd85c7", "test4-2-c380e216e27c"]
+        source_links: 15
+      result: "输出感知分批、跨视频精炼、来源回填与最终渲染全链路通过"

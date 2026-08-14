@@ -1,13 +1,23 @@
-change_id: architecture-decoupling-pipeline-kernel
-phase: P11
+change_id: v4-1-cloud-refinement-desktop-task-control
+phase: P7
 status: complete
 blockers: []
-next: "V4.0 已交付；后续仅处理用户新反馈或用户批准的新命名版本"
-latest_validation:
-  P9: "278 tests passed；退役路径和无效开关已删除；0 cloud requests"
-  P10: "27 documentation/architecture/desktop tests passed；只读诊断通过；VLM adapter 已归位 execution/adapters"
-  P11: "125 warnings-as-errors + 283 full tests passed；CODELY 导航已与 V4.0 对齐；JSON/MD/DOCX/PDF、10 页视觉 QA、协议与桌面启动通过"
+next: "V4.1 全部交付完成（离线+真实云端验收通过）"
+baseline:
+  version: "0.4.1"
+  tests_passed: 324
+  dirty_worktree: "api.yaml (用户修改，保留)"
+p7_validation:
+  unittest: "324 tests passed"
+  compileall: "passed"
+  pip_check: "No broken requirements found"
+  git_diff_check: "passed；仅既有 LF/CRLF warning"
+  cloud_scenario_1: "单视频知识阶段云端验收通过：deepseek-v4-flash-0731, 2 requests, 16798 tokens"
+  cloud_scenario_2: "两视频聚合云端验收通过：deepseek-v4-flash-0731, 1 request, 10383 tokens"
+  total_cloud_tokens: 27181
+  total_cloud_requests: 3
 boundaries:
-  cloud_requests: 0
+  cloud_requests: 3
+  cloud_tokens: 27181
   secrets_read: false
   web_surface_added: false

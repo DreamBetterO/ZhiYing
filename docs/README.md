@@ -5,7 +5,8 @@
 | 文档 | 说明 |
 |------|------|
 | [业务文档](业务文档.md) | 产品概述、用户场景、处理流程、功能清单、桌面端使用指南、安全与隐私 |
-| [开发文档](开发文档.md) | V4 分层、Step/Artifact、诊断流程、缓存、端口、Document v2 与验收 |
+| [开发文档](开发文档.md) | V4.1 分层、Step/Artifact、诊断流程、缓存、端口、Document v2 与验收 |
+| [架构详解](架构详解.md) | 15 步流水线详解、模型工作方式、模态融合、失败降级、缓存与预算 |
 | [模块边界合同](architecture/module-boundaries.yaml) | owner、公开接口、允许/禁止依赖、Artifact、Step 与测试 |
 | [流水线步骤目录](architecture/pipeline-steps.yaml) | 与 StepRegistry 自动对照的 15 步生产目录 |
 | [故障索引](diagnostics/problem-index.yaml) | error code 到 owner、Artifact、测试和安全重跑范围 |

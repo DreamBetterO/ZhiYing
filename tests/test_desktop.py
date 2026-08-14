@@ -27,13 +27,13 @@ from video_study.desktop.view import PRIMARY_UI_ACTIONS
 class DesktopLogicTests(unittest.TestCase):
     def test_primary_ui_keeps_all_product_actions_mounted(self) -> None:
         self.assertEqual(set(PRIMARY_UI_ACTIONS), {
-            "add", "toggle_all", "move_up", "move_down", "remove", "delete_generated", "clear_cache",
-            "local", "cloud", "cancel", "aggregate", "open_output", "open_video",
+            "add", "toggle_all", "remove", "clear_selected_cache", "clear_cache",
+            "local", "cloud", "cancel", "aggregate", "local_aggregate", "open_output", "open_video",
             "open_markdown", "open_docx", "open_pdf", "open_aggregate", "settings",
         })
 
     def test_ui_version_matches_package_version(self) -> None:
-        self.assertEqual(__version__, "0.4.0")
+        self.assertEqual(__version__, "0.4.1")
 
     def test_qwen_model_is_only_offered_when_runtime_and_weights_are_complete(self) -> None:
         from pathlib import Path

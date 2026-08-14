@@ -36,6 +36,7 @@ class ProcessingRequest:
 class AggregateRequest:
     results: tuple["ProcessingResult", ...]
     cloud: CloudAuthorization = field(repr=False, compare=False)
+    cancel_check: Callable[[], bool] | None = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -92,7 +93,7 @@ class ProcessingHandle:
             pending = self._pending_events
             self._pending_events = []
         for event in pending:
-            callback(dict(event))
+            self._notify(callback, event)
 
     def publish(self, event: dict[str, Any]) -> None:
         value = dict(event)
@@ -102,7 +103,15 @@ class ProcessingHandle:
                 self._pending_events.append(value)
                 return
         for callback in callbacks:
-            callback(dict(value))
+            self._notify(callback, value)
+
+    @staticmethod
+    def _notify(callback: Callable[[dict[str, Any]], None], event: dict[str, Any]) -> None:
+        """UI/观察者故障不能反向中断业务线程。"""
+        try:
+            callback(dict(event))
+        except Exception:
+            return
 
     def finish(self, result: ProcessingResult) -> None:
         self._result = result

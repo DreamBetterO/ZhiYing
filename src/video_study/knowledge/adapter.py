@@ -509,15 +509,25 @@ def _visual_group_block(items: list[VisualEvidence]) -> dict[str, Any]:
         for row in items
         if row.explanation_for_reader or row.visual_summary
     ))
+    lead_in = f"看图重点：{item.why_useful}"
+    caption = captions[0] if len(captions) == 1 else ""
+    takeaway = "；".join(takeaways)
+    # 确定性完全重复折叠：lead_in、caption 和 takeaway 完全相同时只保留一次
+    if caption and caption == lead_in:
+        caption = ""
+    if takeaway and takeaway == lead_in:
+        takeaway = ""
+    if takeaway and takeaway == caption:
+        takeaway = ""
     return {
         "block_id": f"{item.visual_group_id or item.evidence_id}_group",
         "type": "visual_group",
         "origin": "visual_backed",
         "binding_id": item.evidence_id,
         "binding_ids": binding_ids,
-        "lead_in": f"看图重点：{item.why_useful}",
-        "caption": captions[0] if len(captions) == 1 else "",
-        "takeaway": "；".join(takeaways),
+        "lead_in": lead_in,
+        "caption": caption,
+        "takeaway": takeaway,
         "source_timestamp": timestamp,
         "source_label": hhmmss(timestamp),
         "scene_cluster_id": item.scene_cluster_id or item.dedup_group_id,

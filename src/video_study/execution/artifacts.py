@@ -524,6 +524,34 @@ class WorkspaceCatalog:
             raise ValueError(f"拒绝清理不安全的工作区路径：{root}")
 
 
+def _pid_alive(pid: int) -> bool:
+    """检查 PID 对应的进程是否仍在运行。"""
+    import sys
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return False
+        try:
+            exit_code = ctypes.c_ulong()
+            if ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                return exit_code.value == STILL_ACTIVE
+            return False
+        finally:
+            ctypes.windll.kernel32.CloseHandle(handle)
+    else:
+        import os as _os
+        try:
+            _os.kill(pid, 0)
+            return True
+        except (ProcessLookupError, PermissionError):
+            return False
+
+
 @dataclass
 class WorkspaceLease:
     path: Path
@@ -550,8 +578,9 @@ class WorkspaceLease:
                 created = float(current["created_unix"])
             except (OSError, ValueError, KeyError, json.JSONDecodeError):
                 created = 0.0
-            if now - created <= stale_after_seconds:
-                raise RuntimeError(f"Workspace 正由 run {current.get('run_id', 'unknown')} 使用")
+            lease_pid = int(current.get("pid", -1)) if current else -1
+            if lease_pid > 0 and _pid_alive(lease_pid):
+                raise RuntimeError(f"Workspace 正由 run {current.get('run_id', 'unknown')} (PID {lease_pid}) 使用")
             lease_path.unlink(missing_ok=True)
         payload = {
             "schema_version": 1,

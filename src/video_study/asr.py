@@ -6,6 +6,9 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
+import time
+from collections import deque
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +20,18 @@ from .transcript import (
 )
 from .utils import TaskCancelled, emit_runtime_event, ensure_not_cancelled, now_iso, terminate_process, write_json
 from .media import prepare_cuda_runtime
+
+
+def asr_runtime_limit_seconds(settings: dict[str, Any], duration_seconds: float) -> float:
+    """为本地 ASR 子进程提供有限且随视频时长扩展的总运行边界。"""
+    configured = settings.get("max_runtime_seconds")
+    if configured is not None:
+        value = float(configured)
+        if value <= 0:
+            raise ValueError("asr.max_runtime_seconds 必须大于 0")
+        return value
+    ratio = max(2.0, float(settings.get("max_runtime_ratio", 2.5)))
+    return max(600.0, max(1.0, float(duration_seconds)) * ratio + 300.0)
 
 
 def _normalize_segment_timestamps(data: dict, settings: dict[str, Any]) -> tuple[dict, bool]:
@@ -137,11 +152,16 @@ def _transcribe_once(
     send.close()
     callback = settings.get("_progress_callback")
     final: dict[str, Any] | None = None
+    started_at = time.monotonic()
+    runtime_limit = asr_runtime_limit_seconds(settings, worker_settings["duration_seconds"])
     try:
         while process.is_alive() or receive.poll():
             if settings.get("_cancel_check") and settings["_cancel_check"]():
                 _stop_worker(process)
                 raise TaskCancelled("任务已由用户取消")
+            if time.monotonic() - started_at >= runtime_limit:
+                _stop_worker(process)
+                raise TimeoutError(f"faster-whisper 超过运行上限（{int(runtime_limit)} 秒）")
             if not receive.poll(0.1):
                 continue
             try:
@@ -307,6 +327,8 @@ def _decode_qwen_audio(
     temporary_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False, dir=temporary_dir) as handle:
         temporary = Path(handle.name)
+    process: subprocess.Popen[str] | None = None
+    drain_threads: list[threading.Thread] = []
     try:
         emit_runtime_event(
             settings, "asr", "info", "Qwen3-ASR 正在隔离进程中加载模型；可随时取消",
@@ -320,21 +342,46 @@ def _decode_qwen_audio(
             env={**os.environ, "PYTHONIOENCODING": "utf-8"})
         callback = settings.get("_progress_callback")
         duration = max(1.0, float(settings.get("_duration_seconds", 1.0)))
-        started = __import__("time").monotonic()
+        started = time.monotonic()
+        runtime_limit = asr_runtime_limit_seconds(settings, duration)
+        stdout_lines: deque[str] = deque(maxlen=256)
+        stderr_lines: deque[str] = deque(maxlen=256)
+
+        def drain(stream, target: deque[str]) -> None:
+            if stream is None:
+                return
+            for line in iter(stream.readline, ""):
+                target.append(str(line))
+
+        stdout_thread = threading.Thread(target=drain, args=(process.stdout, stdout_lines), daemon=True)
+        stderr_thread = threading.Thread(target=drain, args=(process.stderr, stderr_lines), daemon=True)
+        stdout_thread.start()
+        stderr_thread.start()
+        drain_threads = [stdout_thread, stderr_thread]
         while process.poll() is None:
             if settings.get("_cancel_check") and settings["_cancel_check"]():
                 terminate_process(process)
                 raise TaskCancelled("任务已由用户取消")
             if callback:
                 # 子进程按固定音频块运行；在无逐词时间戳时提供保守的活动进度。
-                callback(min(0.95, (__import__("time").monotonic() - started) / max(30.0, duration * 0.35)))
-            __import__("time").sleep(0.25)
-        stdout, stderr = process.communicate()
+                callback(min(0.95, (time.monotonic() - started) / max(30.0, duration * 0.35)))
+            if time.monotonic() - started >= runtime_limit:
+                terminate_process(process)
+                raise TimeoutError(f"Qwen3-ASR 超过运行上限（{int(runtime_limit)} 秒）")
+            time.sleep(0.25)
+        stdout_thread.join(timeout=1.0)
+        stderr_thread.join(timeout=1.0)
+        stdout = "".join(stdout_lines)
+        stderr = "".join(stderr_lines)
         if process.returncode:
             detail = (stderr or stdout or "Qwen3-ASR 子进程失败").strip().splitlines()[-1]
             raise RuntimeError(f"Qwen3-ASR 失败：{detail[:300]}")
         raw = json.loads(temporary.read_text(encoding="utf-8"))
     finally:
+        if process is not None and process.poll() is None:
+            terminate_process(process)
+        for thread in drain_threads:
+            thread.join(timeout=1.0)
         temporary.unlink(missing_ok=True)
     rows = [{
         "segment_id": f"seg_{index:05d}", "start_seconds": round(float(row["start_seconds"]), 3),

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
+import threading
+import time
+from collections import Counter
 from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
@@ -48,6 +52,9 @@ class RunEventJournal:
         self.finished_at = ""
         self.metadata: dict[str, Any] = {}
         self.finished = False
+        self._sequence = 0
+        self._started_monotonic = 0.0
+        self._lock = threading.RLock()
 
     @staticmethod
     def _now() -> str:
@@ -72,6 +79,7 @@ class RunEventJournal:
         if self.started_at:
             raise RuntimeError(f"运行日志已经开始：{self.run_id}")
         self.started_at = self._now()
+        self._started_monotonic = time.monotonic()
         self.metadata = dict(self._sanitize(metadata))
         self.publish({
             "timestamp": self.started_at,
@@ -120,29 +128,52 @@ class RunEventJournal:
         self._write_summary(status, outputs=outputs, error=error_payload)
 
     def publish(self, event: dict[str, Any]) -> None:
-        row = dict(self._sanitize(event))
-        row.setdefault("timestamp", self._now())
-        row.setdefault("run_id", self.run_id)
-        row.setdefault("step_id", "runtime")
-        row.setdefault("code", "runtime_event")
-        row.setdefault("stage", str(row["step_id"]).split(".", 1)[0])
-        row.setdefault("level", "info")
-        row.setdefault("message", "")
-        self.events.append(row)
-        self.jsonl_path.parent.mkdir(parents=True, exist_ok=True)
-        with self.jsonl_path.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(row, ensure_ascii=False, sort_keys=True, default=str) + "\n")
-        with self.text_path.open("a", encoding="utf-8") as stream:
-            stream.write(
-                f"{row['timestamp']} [{str(row.get('level', 'info')).upper()}] "
-                f"{row.get('step_id', 'runtime')} {row.get('code', 'runtime_event')} "
-                f"{row.get('message', '')}\n"
+        with self._lock:
+            row = dict(self._sanitize(event))
+            self._sequence += 1
+            row.setdefault("timestamp", self._now())
+            row.setdefault("run_id", self.run_id)
+            row.setdefault("sequence", self._sequence)
+            row.setdefault("process_id", os.getpid())
+            row.setdefault("thread", threading.current_thread().name)
+            row.setdefault(
+                "elapsed_seconds",
+                round(max(0.0, time.monotonic() - self._started_monotonic), 3)
+                if self._started_monotonic else 0.0,
             )
-        if row.get("type") == "step_state":
-            self._update_state(row)
-            self._update_legacy_manifest(row)
-        if self.callback:
-            self.callback(dict(row))
+            row.setdefault("step_id", "runtime")
+            row.setdefault("code", "runtime_event")
+            row.setdefault("stage", str(row["step_id"]).split(".", 1)[0])
+            row.setdefault("level", "info")
+            row.setdefault("message", "")
+            self.events.append(row)
+            self.jsonl_path.parent.mkdir(parents=True, exist_ok=True)
+            with self.jsonl_path.open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(row, ensure_ascii=False, sort_keys=True, default=str) + "\n")
+            details = []
+            for key in ("status", "cache_reason", "error_code", "duration_seconds"):
+                value = row.get(key)
+                if value not in (None, ""):
+                    details.append(f"{key}={value}")
+            suffix = f" ({', '.join(details)})" if details else ""
+            with self.text_path.open("a", encoding="utf-8") as stream:
+                stream.write(
+                    f"{row['timestamp']} #{row['sequence']} [{str(row.get('level', 'info')).upper()}] "
+                    f"{row.get('step_id', 'runtime')} {row.get('code', 'runtime_event')} "
+                    f"{row.get('message', '')}{suffix}\n"
+                )
+            if row.get("type") == "step_state":
+                self._update_state(row)
+                self._update_legacy_manifest(row)
+                if self.started_at and not self.finished:
+                    self._write_summary("running")
+            elif row.get("type") == "step_lifecycle" and self.started_at and not self.finished:
+                self._write_summary("running")
+            elif row.get("level") in {"warning", "error"} and self.started_at and not self.finished:
+                self._write_summary("running")
+            callback = self.callback
+        if callback:
+            callback(dict(row))
 
     def _write_summary(
         self,
@@ -153,14 +184,29 @@ class RunEventJournal:
     ) -> None:
         latest_steps: dict[str, dict[str, Any]] = {}
         for event in self.events:
-            if event.get("type") == "step_state":
-                latest_steps[str(event.get("step_id"))] = {
+            if event.get("type") in {"step_lifecycle", "step_state"}:
+                current = latest_steps.setdefault(str(event.get("step_id")), {})
+                current.update({
                     "status": event.get("status"),
                     "error_code": event.get("error_code"),
                     "capability": event.get("capability"),
-                    "diagnostics": event.get("diagnostics", {}),
+                    "duration_seconds": event.get("duration_seconds"),
                     "timestamp": event.get("timestamp"),
-                }
+                })
+                if event.get("type") == "step_state":
+                    current["diagnostics"] = event.get("diagnostics", {})
+        event_types = Counter(str(event.get("type", "unknown")) for event in self.events)
+        levels = Counter(str(event.get("level", "info")) for event in self.events)
+        notable_events = [
+            {
+                "sequence": event.get("sequence"),
+                "level": event.get("level"),
+                "step_id": event.get("step_id"),
+                "code": event.get("code"),
+                "message": event.get("message"),
+            }
+            for event in self.events if event.get("level") in {"warning", "error"}
+        ][-50:]
         payload = {
             "schema_version": 1,
             "run_id": self.run_id,
@@ -169,6 +215,9 @@ class RunEventJournal:
             "finished_at": self.finished_at or None,
             "metadata": self.metadata,
             "event_count": len(self.events),
+            "event_types": dict(sorted(event_types.items())),
+            "levels": dict(sorted(levels.items())),
+            "notable_events": notable_events,
             "steps": latest_steps,
             "outputs": dict(self._sanitize(outputs or {})),
             "error": self._sanitize(error),

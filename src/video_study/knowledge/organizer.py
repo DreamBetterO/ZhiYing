@@ -11,6 +11,7 @@ from typing import Any
 
 from ..transcript import merge_transcript_segments
 from .content_profile import CONTENT_PROFILES as _CONTENT_PROFILES, content_profile as _content_profile
+from .editorial import EditorialBrief, EditorialDecision
 from ..utils import TaskCancelled, write_json
 from .schema import (
     ContentDecision,
@@ -223,6 +224,7 @@ def _request_course_ir_organizing(
     *,
     cloud_port: Any,
     cancel_check=None,
+    brief: EditorialBrief | None = None,
 ) -> tuple[dict[str, Any], str, list[Any], dict[str, int], dict[str, list[str]]]:
     """Build, pre-batch and send only the compact CourseIR projection."""
     from .cloud_payload import (
@@ -243,11 +245,26 @@ def _request_course_ir_organizing(
     # Reserve room for the stable instruction/schema wrapper before batching.
     payload_char_budget = max(1000, max_chars - 7000)
     batches = plan_payload_batches(payload, payload_char_budget, max_tokens)
+
+    decision_text = ""
+    if lesson_plan.editorial_decision:
+        decision = EditorialDecision.from_dict(lesson_plan.editorial_decision)
+        decision_text = (
+            f"结构模式：{decision.structure_mode}；"
+            f"课程主线：{decision.core_thread}；"
+            f"重点优先：{', '.join(decision.focus_priorities) if decision.focus_priorities else '由模型判断'}；"
+            f"排序策略：{decision.sequence_policy}；"
+            f"理由：{decision.decision_reason}"
+        )
+
+    brief_text = brief.text if brief else ""
     prompts = [
         compose_course_ir_prompt(
             payload_json=batch.payload.json_text(),
             content_level=content_level,
             max_tokens=max_tokens,
+            editorial_brief=brief_text,
+            editorial_decision=decision_text,
         )
         for batch in batches
     ]
@@ -348,11 +365,12 @@ def organize_cloud(
     *,
     cloud_port: Any,
     cancel_check=None,
+    brief: EditorialBrief | None = None,
 ) -> tuple[list[KnowledgeUnit], dict[str, Any]]:
     """云端专业化整理，返回 (units, cloud_info)。"""
     parsed, model, attempts, usage, source_blocks = _request_course_ir_organizing(
         lesson_plan, transcript, content_level, settings, visual_evidence,
-        cloud_port=cloud_port, cancel_check=cancel_check,
+        cloud_port=cloud_port, cancel_check=cancel_check, brief=brief,
     )
 
     # 构建 plan_id → UnitPlan 映射
@@ -468,6 +486,7 @@ def build_units(
     cloud_port: Any = None,
     cancel_check=None,
     event_sink=None,
+    brief: EditorialBrief | None = None,
 ) -> tuple[list[KnowledgeUnit], dict[str, Any]]:
     """生成知识单元；缓存由 execution Step 统一管理。"""
     cloud_info: dict[str, Any] = {}
@@ -484,6 +503,7 @@ def build_units(
                 visual_evidence,
                 cloud_port=cloud_port,
                 cancel_check=cancel_check,
+                brief=brief,
             )
             if not _has_plan_coverage(lesson_plan, units):
                 raise ValueError(f"云端整理覆盖不足：{len(units)}/{len(lesson_plan.all_unit_plans)}")

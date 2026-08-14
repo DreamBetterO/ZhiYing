@@ -12,6 +12,45 @@ from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI
 
 from .utils import TaskCancelled, ensure_not_cancelled
 
+# 稳定错误码
+CLOUD_OUTPUT_TRUNCATED = "CLOUD_OUTPUT_TRUNCATED"
+CLOUD_OUTPUT_INVALID_JSON = "CLOUD_OUTPUT_INVALID_JSON"
+CLOUD_OUTPUT_SCHEMA_REJECTED = "CLOUD_OUTPUT_SCHEMA_REJECTED"
+CLOUD_TIMEOUT = "CLOUD_TIMEOUT"
+CLOUD_BUDGET_EXCEEDED = "CLOUD_BUDGET_EXCEEDED"
+
+# 结果分类
+RESULT_SUCCESS = "success"
+RESULT_TRUNCATED = "truncated"
+RESULT_INVALID_JSON = "invalid_json"
+RESULT_SCHEMA_REJECTED = "schema_rejected"
+RESULT_TIMEOUT = "timeout"
+RESULT_CONNECTION = "connection"
+RESULT_HTTP_STATUS = "http_status"
+
+
+class CloudOutputTruncated(RuntimeError):
+    """输出被截断；不应盲发同一请求给下一个模型。"""
+    def __init__(self, message: str, *, finish_reason: str = "", response_chars: int = 0):
+        super().__init__(message)
+        self.finish_reason = finish_reason
+        self.response_chars = response_chars
+
+
+@dataclass(frozen=True)
+class CloudAttemptInfo:
+    """单次模型尝试的结构化信息，不含响应正文或密钥。"""
+    model: str
+    ok: bool
+    result_type: str = RESULT_SUCCESS
+    finish_reason: str = ""
+    prompt_chars: int = 0
+    response_chars: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    error: str | None = None
+
 
 @dataclass(frozen=True)
 class ModelAttempt:
@@ -95,7 +134,10 @@ class FallbackChatClient:
         if not api_key or not base_url or not models:
             raise ValueError("FallbackChatClient requires api_key, base_url and at least one model")
         self.models = list(dict.fromkeys(model.strip() for model in models if model.strip()))
-        self.client = OpenAI(api_key=api_key, base_url=base_url.rstrip("/"), timeout=timeout, max_retries=0)
+        self.timeout = max(0.01, float(timeout))
+        self.client = OpenAI(
+            api_key=api_key, base_url=base_url.rstrip("/"), timeout=self.timeout, max_retries=0,
+        )
 
     def _create_response(self, *, cancel_check=None, **kwargs):
         """让阻塞的 SDK 调用可被桌面线程快速放弃，并主动关闭 HTTP 客户端。"""
@@ -110,6 +152,7 @@ class FallbackChatClient:
                 result_queue.put(("error", exc))
 
         threading.Thread(target=request, daemon=True, name="video-study-cloud-request").start()
+        deadline = time.monotonic() + self.timeout
         while True:
             try:
                 ensure_not_cancelled(cancel_check)
@@ -119,8 +162,15 @@ class FallbackChatClient:
                 except Exception:
                     pass
                 raise
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                try:
+                    self.client.close()
+                except Exception:
+                    pass
+                raise TimeoutError(f"云端请求超过运行上限（{self.timeout:g} 秒）")
             try:
-                state, value = result_queue.get(timeout=0.1)
+                state, value = result_queue.get(timeout=min(0.1, remaining))
             except queue.Empty:
                 continue
             if state == "error":
@@ -141,6 +191,7 @@ class FallbackChatClient:
     ) -> tuple[dict[str, Any], str, list[ModelAttempt], dict[str, int]]:
         attempts: list[ModelAttempt] = []
         usage_total = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        prompt_chars = sum(len(str(m.get("content", ""))) for m in messages)
         for model in self.models:
             ensure_not_cancelled(cancel_check)
             if request_budget is not None:
@@ -165,6 +216,24 @@ class FallbackChatClient:
                 for key in usage_total:
                     usage_total[key] += response_usage[key]
                 content = response.choices[0].message.content or ""
+                response_chars = len(content)
+                finish_reason = str(getattr(response.choices[0], "finish_reason", "") or "")
+
+                # 截断检测：finish_reason=length 时不再盲发下一模型
+                if finish_reason == "length":
+                    truncated_error = CloudOutputTruncated(
+                        f"模型 {model} 输出被截断（finish_reason=length，"
+                        f"response_chars={response_chars}）",
+                        finish_reason=finish_reason,
+                        response_chars=response_chars,
+                    )
+                    attempts.append(ModelAttempt(model=model, ok=False, error=CLOUD_OUTPUT_TRUNCATED))
+                    if request_budget is not None:
+                        request_budget.record(stage=stage, attempt=attempts[-1], usage=response_usage)
+                    if on_attempt:
+                        on_attempt(attempts[-1])
+                    raise truncated_error
+
                 parsed = _extract_json(content)
                 if validator is not None:
                     validator(parsed)
@@ -174,6 +243,8 @@ class FallbackChatClient:
                 if on_attempt:
                     on_attempt(attempts[-1])
                 return parsed, model, attempts, usage_total
+            except CloudOutputTruncated:
+                raise
             except (APIConnectionError, APITimeoutError, APIStatusError, ValueError, json.JSONDecodeError) as exc:
                 detail = _safe_error(exc)
                 attempts.append(ModelAttempt(model=model, ok=False, error=detail))

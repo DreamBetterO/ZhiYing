@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from video_study.knowledge.editorial import DEFAULT_BRIEF_TEXT, EditorialBrief, load_brief
 from video_study.knowledge.planning import (
     _validate_plan_payload,
     build_lesson_plan,
@@ -140,6 +141,48 @@ class PlanningTests(unittest.TestCase):
         jobs = collect_visual_jobs(plan, 1302.0, {"vlm_compare_max_candidates": 4})
         self.assertLessEqual(len(jobs), 8)
         self.assertTrue(all(job.max_candidates <= 4 for job in jobs))
+
+    def test_offline_plan_has_editorial_decision(self) -> None:
+        brief = load_brief(None)
+        plan = plan_offline(self._make_transcript(), "推荐", brief=brief)
+        self.assertTrue(plan.editorial_decision)
+        self.assertEqual(plan.editorial_decision["brief_sha256"], brief.sha256)
+        self.assertEqual(plan.editorial_decision["structure_mode"], "lecture_timeline")
+
+    def test_offline_plan_without_brief_still_has_decision(self) -> None:
+        plan = plan_offline(self._make_transcript(), "推荐")
+        self.assertTrue(plan.editorial_decision)
+        self.assertIn(plan.editorial_decision["structure_mode"], {"lecture_timeline", "hybrid"})
+
+    def test_brief_change_invalidates_plan_cache_only(self) -> None:
+        transcript = self._make_transcript()
+        default_brief = load_brief(None)
+        custom_brief = EditorialBrief(
+            text="自定义偏好", sha256="abc123", char_count=4, is_default=False,
+        )
+        plan_default, _ = build_lesson_plan(transcript, "推荐", {}, brief=default_brief)
+        plan_custom, _ = build_lesson_plan(transcript, "推荐", {}, brief=custom_brief)
+        self.assertNotEqual(
+            plan_default.editorial_decision["brief_sha256"],
+            plan_custom.editorial_decision["brief_sha256"],
+        )
+
+    def test_v40_fixture_reads_without_editorial_decision(self) -> None:
+        """V4.0 LessonPlan fixture 无 editorial_decision 字段仍可读取。"""
+        plan = LessonPlan.from_dict({
+            "schema_version": 8,
+            "domain": "test",
+            "course_form": "general",
+            "core_thread": "主线",
+            "chapters": [{"chapter_id": "ch_001", "title": "ch", "unit_plans": []}],
+        })
+        self.assertEqual(plan.editorial_decision, {})
+
+    def test_plan_to_dict_includes_editorial_decision(self) -> None:
+        plan = plan_offline(self._make_transcript(), "推荐")
+        d = plan.to_dict()
+        self.assertIn("editorial_decision", d)
+        self.assertIsInstance(d["editorial_decision"], dict)
 
 
 if __name__ == "__main__":

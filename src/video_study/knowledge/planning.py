@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from ..transcript import merge_transcript_segments
+from .editorial import EditorialBrief, EditorialDecision, default_decision
 from .source_blocks import build_cloud_source_blocks
 from .text_analysis import bigrams as _bigrams, keyword_counts as _keyword_counts
 from ..utils import TaskCancelled
@@ -568,6 +569,8 @@ def plan_offline(
     transcript: dict,
     content_level: str,
     visual_level: str = "auto",
+    *,
+    brief: EditorialBrief | None = None,
 ) -> LessonPlan:
     """离线启发式课程规划。"""
     segments = transcript.get("segments", [])
@@ -637,6 +640,9 @@ def plan_offline(
             unit_plans=current_units,
         ))
 
+    safe_brief = brief or EditorialBrief(
+        text="", sha256="", char_count=0, is_default=True,
+    )
     plan = LessonPlan(
         schema_version=_PLANNING_VERSION,
         domain=domain,
@@ -646,6 +652,7 @@ def plan_offline(
         visual_profile=visual_profile,
         chapters=chapters,
         side_topics=[],
+        editorial_decision=default_decision(safe_brief).to_dict(),
     )
     return _assign_depth_contracts(plan, transcript, content_level, visual_level)
 
@@ -657,13 +664,15 @@ def plan_cloud(
     *,
     cloud_port: Any,
     cancel_check=None,
+    brief: EditorialBrief | None = None,
 ) -> tuple[LessonPlan, dict[str, Any]]:
     """云端课程规划，返回 (plan, cloud_info)。"""
 
     source, source_blocks = build_cloud_source_blocks(transcript)
+    safe_brief = brief or EditorialBrief(text="", sha256="", char_count=0, is_default=True)
     if not source.strip():
         visual_level = str(settings.get("visual_teaching", {}).get("level", "auto"))
-        return plan_offline(transcript, content_level, visual_level), {}
+        return plan_offline(transcript, content_level, visual_level, brief=safe_brief), {}
 
     visual_level = str(settings.get("visual_teaching", {}).get("level", "auto"))
 
@@ -684,6 +693,7 @@ def plan_cloud(
         max_tokens=max_tokens,
         transcript_sample=source,
         visual_level=visual_level,
+        editorial_brief=safe_brief.text,
     )
     if len(prompt) > max_chars:
         raise RuntimeError(f"规划请求共 {len(prompt)} 字符，超过云端上限 {max_chars}；未发送请求")
@@ -718,6 +728,21 @@ def plan_cloud(
                     result.append(candidate)
         return result
 
+    # 解析编辑决策；云端未返回时使用本地保守决策
+    editorial_data = parsed.get("editorial_decision")
+    if isinstance(editorial_data, dict) and editorial_data:
+        decision = EditorialDecision.from_dict(editorial_data)
+        decision = EditorialDecision(
+            brief_sha256=safe_brief.sha256,
+            structure_mode=decision.structure_mode,
+            core_thread=decision.core_thread,
+            focus_priorities=decision.focus_priorities,
+            sequence_policy=decision.sequence_policy,
+            decision_reason=decision.decision_reason,
+        )
+    else:
+        decision = default_decision(safe_brief)
+
     # 从云端结果构建 LessonPlan
     plan = LessonPlan(
         schema_version=_PLANNING_VERSION,
@@ -732,6 +757,7 @@ def plan_cloud(
         ),
         chapters=[],
         side_topics=[],
+        editorial_decision=decision.to_dict(),
     )
 
     for ch_data in parsed.get("chapters", []):
@@ -772,6 +798,7 @@ def build_lesson_plan(
     cloud_port: Any = None,
     cancel_check=None,
     event_sink=None,
+    brief: EditorialBrief | None = None,
 ) -> tuple[LessonPlan, dict[str, Any]]:
     """生成课程写作计划；缓存由 execution Step 统一管理。"""
     visual_level = str(settings.get("visual_teaching", {}).get("level", "auto"))
@@ -784,6 +811,7 @@ def build_lesson_plan(
             plan, cloud_info = plan_cloud(
                 transcript, content_level, settings,
                 cloud_port=cloud_port, cancel_check=cancel_check,
+                brief=brief,
             )
         except TaskCancelled:
             raise
@@ -794,9 +822,9 @@ def build_lesson_plan(
                     "message": f"云端规划失败，已回退本地规划：{type(exc).__name__}: {exc}",
                     "code": "cloud_planning_fallback",
                 })
-            plan = plan_offline(transcript, content_level, visual_level)
+            plan = plan_offline(transcript, content_level, visual_level, brief=brief)
     else:
-        plan = plan_offline(transcript, content_level, visual_level)
+        plan = plan_offline(transcript, content_level, visual_level, brief=brief)
 
     plan = _assign_depth_contracts(plan, transcript, content_level, visual_level)
 

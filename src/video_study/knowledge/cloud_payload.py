@@ -280,10 +280,14 @@ def validate_cloud_response(
                     allowed, bucket = id_fields[key]
                     rows = item if isinstance(item, list) else [item]
                     for raw in rows:
+                        if raw is None:
+                            continue
                         identifier = str(raw).strip()
-                        if identifier and identifier not in allowed:
+                        if not identifier or identifier.lower() in ("none", "null"):
+                            continue
+                        if identifier not in allowed:
                             raise CloudPayloadError(f"云端响应引用集合外 ID：{key}={identifier}")
-                        if identifier and identifier not in referenced[bucket]:
+                        if identifier not in referenced[bucket]:
                             referenced[bucket].append(identifier)
                 walk(item)
         elif isinstance(value, list):

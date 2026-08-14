@@ -3,20 +3,26 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
 import traceback
 import uuid
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote
 
 from .config import AppConfig
-from .providers import FallbackChatClient
+from .providers import (
+    CLOUD_OUTPUT_TRUNCATED,
+    CloudOutputTruncated,
+    FallbackChatClient,
+)
 from .render import DocumentAdapter
-from .utils import now_iso, safe_name
+from .utils import TaskCancelled, ensure_not_cancelled, now_iso, safe_name
 from .execution.artifacts import FileArtifactStore, WorkspaceCatalog, WorkspaceLayout, read_document_v2
 from .execution.events import RunEventJournal
 
-_AGGREGATE_GENERATOR_VERSION = 2
+_AGGREGATE_GENERATOR_VERSION = 3
 
 
 _AGGREGATE_SCHEMA = """{"document_title":"聚合资料标题","overview":"2-4 句内容导览","learning_objectives":["学习目标"],"sections":[{"title":"逻辑章节标题","summary":"章节摘要","knowledge_points":[{"statement":"知识点标题","explanation":"完整解释","details":["补充细节"],"steps":["步骤"],"examples":["课程案例"],"conditions":["适用条件或边界"],"pitfalls":["易错点"],"editorial_note":"仅依据来源进行的逻辑整理，没有则为空字符串","review_tip":"一句话复习提示","source_point_ids":["point_0001"]}]}],"review":{"knowledge_thread":"跨视频知识主线","checklist":["关键规则"],"open_questions":["来源尚未讲清的问题"]}}"""
@@ -181,6 +187,135 @@ def _aggregate_event(settings: dict, code: str, message: str, **details) -> None
         })
 
 
+def _aggregate_fingerprint(documents: list[dict], settings: dict) -> str:
+    """聚合检查点指纹：有序来源摘要 + 编辑意图 hash + 版本 + 档位。"""
+    brief_hash = ""
+    brief = settings.get("_editorial_brief")
+    if brief and hasattr(brief, "sha256"):
+        brief_hash = brief.sha256
+    identity = json.dumps({
+        "version": _AGGREGATE_GENERATOR_VERSION,
+        "sources": [
+            {"video_id": str(doc.get("metadata", {}).get("video_id", "")),
+             "sections": len(doc.get("sections", []))}
+            for doc in documents
+        ],
+        "brief_hash": brief_hash,
+        "content_level": str(settings.get("content_level", "推荐")),
+    }, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
+
+
+def _checkpoint_dir(layout: WorkspaceLayout, fingerprint: str) -> Path:
+    return layout.state_dir / "aggregate-checkpoints" / fingerprint
+
+
+def _load_checkpoint_index(checkpoint_dir: Path) -> dict[str, Any]:
+    index_path = checkpoint_dir / "index.json"
+    if not index_path.is_file():
+        return {"batches": {}}
+    try:
+        return json.loads(index_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"batches": {}}
+
+
+def _save_checkpoint(checkpoint_dir: Path, batch_id: str, payload: dict) -> None:
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    batch_path = checkpoint_dir / f"batch-{batch_id}.json"
+    tmp_path = batch_path.with_name(f".{batch_path.name}.{os.getpid()}.tmp")
+    tmp_path.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    json.loads(tmp_path.read_text(encoding="utf-8"))
+    tmp_path.replace(batch_path)
+    index_path = checkpoint_dir / "index.json"
+    index = _load_checkpoint_index(checkpoint_dir)
+    index["batches"][batch_id] = {"completed": True}
+    tmp_index = index_path.with_name(f".{index_path.name}.{os.getpid()}.tmp")
+    tmp_index.write_text(json.dumps(index, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    tmp_index.replace(index_path)
+
+
+def _local_aggregate_documents(documents: list[dict], point_map: dict[str, dict], settings: dict) -> dict:
+    """本地降级聚合：按队列顺序保守组合，保留来源。"""
+    from .knowledge.adapter import v1_to_v2
+    sections: list[dict[str, Any]] = []
+    all_links: list[dict] = []
+    all_figures: list[dict] = []
+    for doc_index, document in enumerate(documents, start=1):
+        title = document.get("metadata", {}).get("document_title") or document.get("metadata", {}).get("title", f"视频 {doc_index}")
+        knowledge_points: list[dict[str, Any]] = []
+        section_figures: list[dict] = []
+        for section in document.get("sections", []):
+            for point in section.get("knowledge_points", []):
+                links = []
+                figures = []
+                for link in point.get("source_links", []):
+                    if link.get("url") and link not in links:
+                        links.append(link)
+                for figure in point.get("figures", []):
+                    if figure.get("path") and all(figure.get("path") != f.get("path") for f in figures):
+                        figures.append(figure)
+                all_links.extend(link for link in links if link not in all_links)
+                section_figures.extend(figure for figure in figures if figure not in section_figures)
+                all_figures.extend(figure for figure in figures if figure not in all_figures)
+                refs = point.get("source_refs", {}) if isinstance(point.get("source_refs"), dict) else {}
+                knowledge_points.append({
+                    "statement": str(point.get("statement", "")).strip(),
+                    "explanation": str(point.get("explanation", "")).strip(),
+                    "details": [str(item).strip() for item in (point.get("details") or []) if str(item).strip()],
+                    "steps": [str(item).strip() for item in (point.get("steps") or []) if str(item).strip()],
+                    "examples": [str(item).strip() for item in (point.get("examples") or []) if str(item).strip()],
+                    "conditions": [str(item).strip() for item in (point.get("conditions") or []) if str(item).strip()],
+                    "pitfalls": [str(item).strip() for item in (point.get("pitfalls") or []) if str(item).strip()],
+                    "editorial_note": "本地降级聚合：未经过云端跨视频精炼",
+                    "review_tip": "",
+                    "source_segment_ids": [],
+                    "start_seconds": float(refs.get("start_seconds", point.get("start_seconds", 0)) or 0),
+                    "end_seconds": float(refs.get("end_seconds", point.get("end_seconds", 0)) or 0),
+                    "source_video_id": str(document.get("metadata", {}).get("video_id", "")),
+                    "source_label": links[0]["label"] if links else f"视频 {doc_index}",
+                    "source_url": links[0]["url"] if links else "",
+                    "source_links": links,
+                    "figures": figures,
+                })
+        if knowledge_points:
+            sections.append({
+                "title": f"{title}",
+                "summary": "",
+                "start_seconds": 0,
+                "end_seconds": 0,
+                "knowledge_points": knowledge_points,
+                "figures": section_figures,
+            })
+    video_ids = [str(doc.get("metadata", {}).get("video_id", "")) for doc in documents]
+    aggregate_id = "aggregate-" + hashlib.sha256(
+        json.dumps(video_ids, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()[:12]
+    document = {
+        "schema_version": 1, "generator_version": _AGGREGATE_GENERATOR_VERSION,
+        "generated_at": now_iso(), "mode": "degraded_local_aggregate",
+        "metadata": {
+            "video_id": aggregate_id,
+            "title": f"本地聚合 · {len(documents)} 个视频",
+            "document_title": f"本地聚合 · {len(documents)} 个视频",
+            "source_video": "multiple",
+            "duration_seconds": sum(float(doc.get("metadata", {}).get("duration_seconds", 0)) for doc in documents),
+            "duration_label": f"{len(documents)} 个视频",
+        },
+        "overview": "本资料由本地降级聚合生成，未经过云端跨视频精炼。请结合原视频核对重要信息。",
+        "learning_objectives": [],
+        "sections": sections,
+        "figures": all_figures,
+        "transcript": [],
+        "notice": "本资料由本地降级聚合生成，请通过来源链接回看核对。",
+        "review": {"knowledge_thread": "", "checklist": [], "open_questions": []},
+        "source_video_ids": video_ids,
+        "source_links": all_links,
+        "render_options": {"include_full_transcript": False},
+    }
+    return v1_to_v2(document)
+
+
 def aggregate_documents(config: AppConfig, results: list[dict], qwen_settings: dict) -> dict:
     run_id = uuid.uuid4().hex
     ordered_sources = [{
@@ -219,21 +354,33 @@ def aggregate_documents(config: AppConfig, results: list[dict], qwen_settings: d
         })
         value["workspace"] = layout.video_root
         value["run_id"] = run_id
+        value["logs"] = {
+            "events": journal.jsonl_path,
+            "readable": journal.text_path,
+            "summary": journal.summary_path,
+        }
         value["runtime_events"] = list(journal.events)
         value["degradations"] = [row for row in journal.events if row.get("level") in {"warning", "error"}]
         return value
     except BaseException as exc:
-        journal.finish("failed", error=exc, traceback_text=traceback.format_exc())
+        journal.finish(
+            "cancelled" if isinstance(exc, TaskCancelled) else "failed",
+            error=exc,
+            traceback_text=traceback.format_exc(),
+        )
         raise
 
 
 def _aggregate_documents_impl(config: AppConfig, results: list[dict], qwen_settings: dict) -> dict:
+    cancel_check = qwen_settings.get("_cancel_check") or (lambda: False)
+    ensure_not_cancelled(cancel_check)
     _aggregate_event(qwen_settings, "aggregate_inputs_started", "开始校验聚合输入", source_count=len(results))
     if len(results) < 2:
         raise ValueError("至少需要两个已完成视频才能聚合")
     documents = []
     markdown_paths = []
     for result in results:
+        ensure_not_cancelled(cancel_check)
         manifest_path = Path(result["manifest"])
         document_path = WorkspaceCatalog(manifest_path.parent.parent).document_for_manifest(manifest_path)
         markdown_path = Path(result["markdown"])
@@ -261,6 +408,18 @@ def _aggregate_documents_impl(config: AppConfig, results: list[dict], qwen_setti
                 f"聚合输入共 {len(source)} 字符，需要 {required_calls} 次分批请求，"
                 f"但本次授权上限为 {request_budget.max_requests}；未发送请求"
             )
+    # 检查点初始化
+    paths = config.raw.get("paths", {})
+    workspace_root = (config.root / str(paths.get("workspace_dir", "workspace"))).resolve()
+    output_root = config.path("paths", "output_dir")
+    work_id = "aggregate-work-" + hashlib.sha256(
+        json.dumps([str(r.get("video_id", "")) for r in results], ensure_ascii=False).encode("utf-8")
+    ).hexdigest()[:12]
+    layout = WorkspaceLayout(workspace_root, work_id, output_root)
+    fingerprint = _aggregate_fingerprint(documents, qwen_settings)
+    checkpoint_dir = _checkpoint_dir(layout, fingerprint)
+    checkpoint_index = _load_checkpoint_index(checkpoint_dir)
+
     client = FallbackChatClient(
         api_key=qwen_settings.get("_runtime_api_key", ""),
         base_url=qwen_settings.get("_runtime_base_url", ""),
@@ -274,148 +433,171 @@ def _aggregate_documents_impl(config: AppConfig, results: list[dict], qwen_setti
     )
     attempts = []
     usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-    if chunks:
-        intermediate_payloads = []
-        for index, chunk in enumerate(chunks, start=1):
-            batch_prompt = _aggregate_prompt(chunk, content_level, intermediate=True)
+    try:
+        if chunks:
+            intermediate_payloads = []
+            for index, chunk in enumerate(chunks, start=1):
+                ensure_not_cancelled(cancel_check)
+                batch_id = f"{index:04d}"
+                # 检查点命中则跳过
+                if checkpoint_index.get("batches", {}).get(batch_id, {}).get("completed"):
+                    cached_path = checkpoint_dir / f"batch-{batch_id}.json"
+                    if cached_path.is_file():
+                        intermediate_payloads.append(json.loads(cached_path.read_text(encoding="utf-8")))
+                        _aggregate_event(
+                            qwen_settings, "aggregate_batch_cached", f"聚合分批 {index}/{len(chunks)} 命中检查点",
+                            batch_index=index, batch_count=len(chunks),
+                        )
+                        continue
+                batch_prompt = _aggregate_prompt(chunk, content_level, intermediate=True)
+                _aggregate_event(
+                    qwen_settings, "aggregate_batch_started", f"开始整理聚合分批 {index}/{len(chunks)}",
+                    batch_index=index, batch_count=len(chunks), source_chars=len(chunk), prompt_chars=len(batch_prompt),
+                )
+                batch_payload, batch_model, batch_attempts, batch_usage = client.create_json(
+                    messages=[{"role": "user", "content": batch_prompt}], temperature=0.1,
+                    max_tokens=min(int(budget.get("max_output_tokens", 5000)), 3200),
+                    validator=lambda value, ids=_source_point_ids(chunk): _validate_aggregate(value, ids),
+                    request_budget=request_budget, stage=f"aggregate_batch_{index}",
+                    cancel_check=qwen_settings.get("_cancel_check"),
+                )
+                intermediate_payloads.append(batch_payload)
+                attempts.extend(batch_attempts)
+                _usage_add(usage, batch_usage)
+                _save_checkpoint(checkpoint_dir, batch_id, batch_payload)
+                _aggregate_event(
+                    qwen_settings, "aggregate_batch_completed", f"聚合分批 {index}/{len(chunks)} 整理完成",
+                    batch_index=index, batch_count=len(chunks), model=batch_model,
+                    attempts=[item.__dict__ for item in batch_attempts], usage=batch_usage,
+                )
+            merged_source = "\n\n".join(
+                f"## 分批整理结果 {index}\n{json.dumps(item, ensure_ascii=False, separators=(',', ':'))}"
+                for index, item in enumerate(intermediate_payloads, start=1)
+            )
+            prompt = _aggregate_prompt(merged_source, content_level)
+            if len(prompt) > max_chars:
+                raise RuntimeError(
+                    f"分批整理结果共 {len(prompt)} 字符，仍超过云端上限 {max_chars}；"
+                    "已保留分批日志，未发送最终合并请求"
+                )
             _aggregate_event(
-                qwen_settings, "aggregate_batch_started", f"开始整理聚合分批 {index}/{len(chunks)}",
-                batch_index=index, batch_count=len(chunks), source_chars=len(chunk), prompt_chars=len(batch_prompt),
+                qwen_settings, "aggregate_merge_started", "开始合并聚合分批结果",
+                batch_count=len(chunks), prompt_chars=len(prompt),
             )
-            batch_payload, batch_model, batch_attempts, batch_usage = client.create_json(
-                messages=[{"role": "user", "content": batch_prompt}], temperature=0.1,
-                max_tokens=min(int(budget.get("max_output_tokens", 5000)), 3200),
-                validator=lambda value, ids=_source_point_ids(chunk): _validate_aggregate(value, ids),
-                request_budget=request_budget, stage=f"aggregate_batch_{index}",
-                cancel_check=qwen_settings.get("_cancel_check"),
-            )
-            intermediate_payloads.append(batch_payload)
-            attempts.extend(batch_attempts)
-            _usage_add(usage, batch_usage)
-            _aggregate_event(
-                qwen_settings, "aggregate_batch_completed", f"聚合分批 {index}/{len(chunks)} 整理完成",
-                batch_index=index, batch_count=len(chunks), model=batch_model,
-                attempts=[item.__dict__ for item in batch_attempts], usage=batch_usage,
-            )
-        merged_source = "\n\n".join(
-            f"## 分批整理结果 {index}\n{json.dumps(item, ensure_ascii=False, separators=(',', ':'))}"
-            for index, item in enumerate(intermediate_payloads, start=1)
+        payload, model, final_attempts, final_usage = client.create_json(
+            messages=[{"role": "user", "content": prompt}], temperature=0.1,
+            max_tokens=int(budget.get("max_output_tokens", 5000)),
+            validator=lambda value: _validate_aggregate(value, set(point_map)),
+            request_budget=request_budget, stage="aggregate_merge" if chunks else "aggregate",
+            cancel_check=qwen_settings.get("_cancel_check"),
         )
-        prompt = _aggregate_prompt(merged_source, content_level)
-        if len(prompt) > max_chars:
-            raise RuntimeError(
-                f"分批整理结果共 {len(prompt)} 字符，仍超过云端上限 {max_chars}；"
-                "已保留分批日志，未发送最终合并请求"
-            )
+        attempts.extend(final_attempts)
+        _usage_add(usage, final_usage)
         _aggregate_event(
-            qwen_settings, "aggregate_merge_started", "开始合并聚合分批结果",
-            batch_count=len(chunks), prompt_chars=len(prompt),
+            qwen_settings, "aggregate_cloud_completed", "云端聚合请求完成",
+            model=model, attempts=[item.__dict__ for item in attempts], usage=usage,
+            strategy="hierarchical" if chunks else "single", requests_used=request_budget.requests_used,
         )
-    payload, model, final_attempts, final_usage = client.create_json(
-        messages=[{"role": "user", "content": prompt}], temperature=0.1,
-        max_tokens=int(budget.get("max_output_tokens", 5000)),
-        validator=lambda value: _validate_aggregate(value, set(point_map)),
-        request_budget=request_budget, stage="aggregate_merge" if chunks else "aggregate",
-        cancel_check=qwen_settings.get("_cancel_check"),
-    )
-    attempts.extend(final_attempts)
-    _usage_add(usage, final_usage)
-    _aggregate_event(
-        qwen_settings, "aggregate_cloud_completed", "云端聚合请求完成",
-        model=model, attempts=[item.__dict__ for item in attempts], usage=usage,
-        strategy="hierarchical" if chunks else "single", requests_used=request_budget.requests_used,
-    )
+    except (CloudOutputTruncated, Exception) as exc:
+        from .providers import AllModelsFailed
+        if not isinstance(exc, (CloudOutputTruncated, AllModelsFailed)):
+            raise
+        _aggregate_event(
+            qwen_settings, "aggregate_cloud_failed", f"云端聚合失败，降级为本地聚合：{type(exc).__name__}: {exc}",
+            level="warning", code="aggregate_cloud_degraded",
+        )
+        payload = None
+        model = ""
+        usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "degraded": True}
     sections = []
     all_links = []
     all_figures = []
-    for source_section in _payload_sections(payload):
-        knowledge_points = []
-        section_figures = []
-        for row in source_section["knowledge_points"]:
-            links = []
-            figures = []
-            content_blocks = []
-            for point_id in row["source_point_ids"]:
-                for link in point_map[point_id]["links"]:
-                    if link.get("url") and link not in links:
-                        links.append(link)
-                for figure in point_map[point_id].get("figures", []):
-                    if figure.get("path") and all(figure.get("path") != item.get("path") for item in figures):
-                        figures.append(figure)
-                for block in point_map[point_id]["point"].get("content_blocks", []):
-                    if block not in content_blocks:
-                        content_blocks.append(block)
-            primary_id = row["source_point_ids"][0]
-            all_links.extend(link for link in links if link not in all_links)
-            section_figures.extend(figure for figure in figures if figure not in section_figures)
-            all_figures.extend(figure for figure in figures if figure not in all_figures)
-            knowledge_points.append({
-                "statement": str(row["statement"]).strip(),
-                "explanation": str(row["explanation"]).strip(),
-                "details": [str(item).strip() for item in (row.get("details") or []) if str(item).strip()],
-                "steps": [str(item).strip() for item in (row.get("steps") or []) if str(item).strip()],
-                "examples": [str(item).strip() for item in (row.get("examples") or []) if str(item).strip()],
-                "conditions": [str(item).strip() for item in (row.get("conditions") or []) if str(item).strip()],
-                "pitfalls": [str(item).strip() for item in (row.get("pitfalls") or []) if str(item).strip()],
-                "editorial_note": str(row.get("editorial_note", "")).strip(),
-                "review_tip": str(row.get("review_tip", "")).strip(),
-                # V2: 保留原始时间戳而非清零
-                "source_segment_ids": [],
-                "start_seconds": point_map[primary_id]["start_seconds"],
-                "end_seconds": point_map[primary_id]["end_seconds"],
-                "source_video_id": point_map[primary_id].get("video_id", ""),
-                "source_label": links[0]["label"] if links else "多视频来源",
-                "source_url": links[0]["url"] if links else "", "source_links": links,
-                "figures": figures,
-                "content_blocks": content_blocks,
+    if payload is not None:
+        for source_section in _payload_sections(payload):
+            knowledge_points = []
+            section_figures = []
+            for row in source_section["knowledge_points"]:
+                links = []
+                figures = []
+                for point_id in row["source_point_ids"]:
+                    for link in point_map[point_id]["links"]:
+                        if link.get("url") and link not in links:
+                            links.append(link)
+                    for figure in point_map[point_id].get("figures", []):
+                        if figure.get("path") and all(figure.get("path") != item.get("path") for item in figures):
+                            figures.append(figure)
+                primary_id = row["source_point_ids"][0]
+                all_links.extend(link for link in links if link not in all_links)
+                section_figures.extend(figure for figure in figures if figure not in section_figures)
+                all_figures.extend(figure for figure in figures if figure not in all_figures)
+                knowledge_points.append({
+                    "statement": str(row["statement"]).strip(),
+                    "explanation": str(row["explanation"]).strip(),
+                    "details": [str(item).strip() for item in (row.get("details") or []) if str(item).strip()],
+                    "steps": [str(item).strip() for item in (row.get("steps") or []) if str(item).strip()],
+                    "examples": [str(item).strip() for item in (row.get("examples") or []) if str(item).strip()],
+                    "conditions": [str(item).strip() for item in (row.get("conditions") or []) if str(item).strip()],
+                    "pitfalls": [str(item).strip() for item in (row.get("pitfalls") or []) if str(item).strip()],
+                    "editorial_note": str(row.get("editorial_note", "")).strip(),
+                    "review_tip": str(row.get("review_tip", "")).strip(),
+                    "source_segment_ids": [],
+                    "start_seconds": point_map[primary_id]["start_seconds"],
+                    "end_seconds": point_map[primary_id]["end_seconds"],
+                    "source_video_id": point_map[primary_id].get("video_id", ""),
+                    "source_label": links[0]["label"] if links else "多视频来源",
+                    "source_url": links[0]["url"] if links else "", "source_links": links,
+                    "figures": figures,
+                })
+            sections.append({
+                "title": str(source_section["title"]).strip(), "summary": str(source_section["summary"]).strip(),
+                "start_seconds": 0, "end_seconds": 0, "knowledge_points": knowledge_points, "figures": section_figures,
             })
-        sections.append({
-            "title": str(source_section["title"]).strip(), "summary": str(source_section["summary"]).strip(),
-            "start_seconds": 0, "end_seconds": 0, "knowledge_points": knowledge_points, "figures": section_figures,
-        })
-    video_ids = [str(doc.get("metadata", {}).get("video_id", "")) for doc in documents]
-    fingerprint = json.dumps({
-        "version": _AGGREGATE_GENERATOR_VERSION,
-        "sources": [{"video_id": video_id, "generator_version": doc.get("generator_version"), "sections": doc.get("sections", [])} for video_id, doc in zip(video_ids, documents)],
-    }, ensure_ascii=False, sort_keys=True, default=str)
-    aggregate_id = "aggregate-" + hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()[:12]
-    review = payload.get("review") if isinstance(payload.get("review"), dict) else {}
-    document = {
-        "schema_version": 1, "generator_version": _AGGREGATE_GENERATOR_VERSION, "generated_at": now_iso(), "mode": "cloud_aggregate",
-        "metadata": {
-            "video_id": aggregate_id, "title": payload["document_title"],
-            "document_title": payload["document_title"], "source_video": "multiple",
-            "duration_seconds": sum(float(doc.get("metadata", {}).get("duration_seconds", 0)) for doc in documents),
-            "duration_label": f"{len(documents)} 个视频",
-        },
-        "overview": payload["overview"],
-        "learning_objectives": [str(item).strip() for item in (payload.get("learning_objectives") or []) if str(item).strip()],
-        "sections": sections, "figures": all_figures,
-        "transcript": [], "notice": "本资料由多个视频的已生成知识文档二次聚合，请通过来源链接回看核对。",
-        "review": {
-            "knowledge_thread": str(review.get("knowledge_thread", "")).strip(),
-            "checklist": [str(item).strip() for item in (review.get("checklist") or []) if str(item).strip()],
-            "open_questions": [str(item).strip() for item in (review.get("open_questions") or []) if str(item).strip()],
-        },
-        "model": model, "model_attempts": [item.__dict__ for item in attempts],
-        "cloud_usage": {
-            **usage, "source_chars": len(source), "strategy": "hierarchical" if chunks else "single",
-            "batch_count": len(chunks), "requests_used": request_budget.requests_used,
-        },
-        "source_markdown": [str(path) for path in markdown_paths], "source_video_ids": video_ids,
-        "source_links": all_links, "render_options": {"include_full_transcript": False},
-    }
+        video_ids = [str(doc.get("metadata", {}).get("video_id", "")) for doc in documents]
+        fingerprint = json.dumps({
+            "version": _AGGREGATE_GENERATOR_VERSION,
+            "sources": [{"video_id": video_id, "generator_version": doc.get("generator_version"), "sections": doc.get("sections", [])} for video_id, doc in zip(video_ids, documents)],
+        }, ensure_ascii=False, sort_keys=True, default=str)
+        aggregate_id = "aggregate-" + hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()[:12]
+        review = payload.get("review") if isinstance(payload.get("review"), dict) else {}
+        document = {
+            "schema_version": 1, "generator_version": _AGGREGATE_GENERATOR_VERSION, "generated_at": now_iso(), "mode": "cloud_aggregate",
+            "metadata": {
+                "video_id": aggregate_id, "title": payload["document_title"],
+                "document_title": payload["document_title"], "source_video": "multiple",
+                "duration_seconds": sum(float(doc.get("metadata", {}).get("duration_seconds", 0)) for doc in documents),
+                "duration_label": f"{len(documents)} 个视频",
+            },
+            "overview": payload["overview"],
+            "learning_objectives": [str(item).strip() for item in (payload.get("learning_objectives") or []) if str(item).strip()],
+            "sections": sections, "figures": all_figures,
+            "transcript": [], "notice": "本资料由多个视频的已生成知识文档二次聚合，请通过来源链接回看核对。",
+            "review": {
+                "knowledge_thread": str(review.get("knowledge_thread", "")).strip(),
+                "checklist": [str(item).strip() for item in (review.get("checklist") or []) if str(item).strip()],
+                "open_questions": [str(item).strip() for item in (review.get("open_questions") or []) if str(item).strip()],
+            },
+            "model": model, "model_attempts": [item.__dict__ for item in attempts],
+            "cloud_usage": {
+                **usage, "source_chars": len(source), "strategy": "hierarchical" if chunks else "single",
+                "batch_count": len(chunks), "requests_used": request_budget.requests_used,
+            },
+            "source_markdown": [str(path) for path in markdown_paths], "source_video_ids": video_ids,
+            "source_links": all_links, "render_options": {"include_full_transcript": False},
+        }
+    else:
+        document = _local_aggregate_documents(documents, point_map, qwen_settings)
+        video_ids = [str(doc.get("metadata", {}).get("video_id", "")) for doc in documents]
     from .knowledge.adapter import v1_to_v2
     document = v1_to_v2(document)
-    output_dir = config.path("paths", "output_dir") / aggregate_id
-    title = safe_name(str(payload["document_title"]))
+    output_dir = config.path("paths", "output_dir") / document["metadata"]["video_id"]
+    title = safe_name(str(document["metadata"].get("document_title") or document["metadata"].get("title", "aggregate")))
     document_json = output_dir / "document.json"
     markdown = output_dir / f"{title}.md"
     docx = output_dir / f"{title}.docx"
     pdf = output_dir / f"{title}.pdf"
     FileArtifactStore().write_document_v2(document_json, document)
     document_port = DocumentAdapter(config.root, include_transcript=False)
-    cancel_check = qwen_settings.get("_cancel_check") or (lambda: False)
+    ensure_not_cancelled(cancel_check)
     _aggregate_event(qwen_settings, "aggregate_render_started", "开始生成聚合 Markdown、Word 和 PDF")
     document_port.render_markdown(document, markdown)
     document_port.render_word(document_json, docx, cancel_check=cancel_check)
@@ -424,8 +606,116 @@ def _aggregate_documents_impl(config: AppConfig, results: list[dict], qwen_setti
         qwen_settings, "aggregate_render_completed", "聚合文档生成完成",
         markdown=markdown, docx=docx, pdf=pdf, pdf_mode=pdf_mode,
     )
+    mode = document.get("mode", "cloud_aggregate")
     return {
-        "video_id": aggregate_id, "manifest": document_json, "markdown": markdown,
-        "docx": docx, "pdf": pdf, "pdf_mode": pdf_mode, "mode": "cloud_aggregate",
-        "model": model, "model_attempts": document["model_attempts"], "cloud_usage": document["cloud_usage"],
+        "video_id": document["metadata"]["video_id"], "manifest": document_json, "markdown": markdown,
+        "docx": docx, "pdf": pdf, "pdf_mode": pdf_mode, "mode": mode,
+        "model": model, "model_attempts": document.get("model_attempts", []), "cloud_usage": document.get("cloud_usage", usage),
     }
+
+
+def _local_aggregate_documents_impl(config: AppConfig, results: list[dict], settings: dict) -> dict:
+    """本地聚合实现：调用方负责运行日志和取消终态。"""
+    cancel_check = settings.get("_cancel_check") or (lambda: False)
+    ensure_not_cancelled(cancel_check)
+    _aggregate_event(settings, "local_aggregate_inputs_started", "开始校验本地聚合输入", source_count=len(results))
+    if len(results) < 2:
+        raise ValueError("至少需要两个已完成视频才能聚合")
+    documents = []
+    markdown_paths = []
+    for result in results:
+        ensure_not_cancelled(cancel_check)
+        manifest_path = Path(result["manifest"])
+        document_path = WorkspaceCatalog(manifest_path.parent.parent).document_for_manifest(manifest_path)
+        markdown_path = Path(result["markdown"])
+        if not document_path.is_file() or not markdown_path.is_file():
+            raise FileNotFoundError("聚合所需的结构化文档或 Markdown 不完整")
+        documents.append(read_document_v2(document_path))
+        markdown_paths.append(markdown_path)
+    source, point_map = _aggregate_source(documents)
+    document = _local_aggregate_documents(documents, point_map, settings)
+    output_dir = config.path("paths", "output_dir") / document["metadata"]["video_id"]
+    title = safe_name(str(document["metadata"].get("document_title", "本地聚合")))
+    document_json = output_dir / "document.json"
+    markdown = output_dir / f"{title}.md"
+    docx = output_dir / f"{title}.docx"
+    pdf = output_dir / f"{title}.pdf"
+    FileArtifactStore().write_document_v2(document_json, document)
+    document_port = DocumentAdapter(config.root, include_transcript=False)
+    ensure_not_cancelled(cancel_check)
+    _aggregate_event(settings, "local_aggregate_render_started", "开始生成本地聚合 Markdown、Word 和 PDF")
+    document_port.render_markdown(document, markdown)
+    document_port.render_word(document_json, docx, cancel_check=cancel_check)
+    pdf_mode = document_port.render_pdf(document, docx, pdf, cancel_check=cancel_check)
+    _aggregate_event(
+        settings, "local_aggregate_render_completed", "本地聚合文档生成完成",
+        markdown=markdown, docx=docx, pdf=pdf, pdf_mode=pdf_mode,
+    )
+    return {
+        "video_id": document["metadata"]["video_id"], "manifest": document_json, "markdown": markdown,
+        "docx": docx, "pdf": pdf, "pdf_mode": pdf_mode, "mode": "degraded_local_aggregate",
+        "model": "", "model_attempts": [], "cloud_usage": {},
+    }
+
+
+def local_aggregate_documents(
+    config: AppConfig,
+    results: list[dict],
+    *,
+    cancel_check=None,
+) -> dict:
+    """本地聚合：不使用云端，按队列顺序保守组合、渲染并记录完整日志。"""
+    run_id = uuid.uuid4().hex
+    ordered_sources = [{
+        "position": index,
+        "video_id": str(result.get("video_id", "")),
+        "manifest": str(result.get("manifest", "")),
+        "markdown": str(result.get("markdown", "")),
+    } for index, result in enumerate(results, start=1)]
+    identity = json.dumps(
+        {"version": _AGGREGATE_GENERATOR_VERSION, "sources": ordered_sources, "mode": "local"},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    work_id = "aggregate-local-work-" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:12]
+    paths = config.raw.get("paths", {})
+    workspace_root = (config.root / str(paths.get("workspace_dir", "workspace"))).resolve()
+    layout = WorkspaceLayout(workspace_root, work_id, config.path("paths", "output_dir"))
+    journal = RunEventJournal(layout, run_id)
+    journal.start({
+        "work_type": "local_aggregate",
+        "ordered_sources": ordered_sources,
+        "generator_version": _AGGREGATE_GENERATOR_VERSION,
+        "cloud": {"authorized": False},
+    })
+    settings: dict = {
+        "content_level": str(config.raw.get("render", {}).get("content_level", "推荐")),
+        "_cancel_check": cancel_check or (lambda: False),
+        "_aggregate_event_sink": journal.publish,
+    }
+    try:
+        value = _local_aggregate_documents_impl(config, results, settings)
+        journal.finish("succeeded", outputs={
+            key: value.get(key) for key in (
+                "video_id", "manifest", "markdown", "docx", "pdf", "pdf_mode", "mode",
+            )
+        })
+        value["workspace"] = layout.video_root
+        value["run_id"] = run_id
+        value["logs"] = {
+            "events": journal.jsonl_path,
+            "readable": journal.text_path,
+            "summary": journal.summary_path,
+        }
+        value["runtime_events"] = list(journal.events)
+        value["degradations"] = [
+            row for row in journal.events if row.get("level") in {"warning", "error"}
+        ]
+        return value
+    except BaseException as exc:
+        journal.finish(
+            "cancelled" if isinstance(exc, TaskCancelled) else "failed",
+            error=exc,
+            traceback_text=traceback.format_exc(),
+        )
+        raise

@@ -304,6 +304,47 @@ def _check_understanding_tip_limits(units: list[KnowledgeUnit]) -> list[CheckRes
     return results
 
 
+_ORAL_FILLERS = re.compile(
+    r"(?:嗯+|啊+|呃+|好(?:的)?|那么|然后|就是|这个|那个|对吧|是不是|看到没有|同学们)"
+)
+
+
+def _check_soft_quality(units: list[KnowledgeUnit]) -> list[CheckResult]:
+    """软质量审计：文风、详略和可选栏目，不触发模型重试。"""
+    results: list[CheckResult] = []
+    for unit in units:
+        body_text = unit.definition_or_conclusion or ""
+        for block in unit.content_blocks:
+            if isinstance(block, dict):
+                body_text += " " + str(block.get("text", ""))
+                for item in (block.get("items") or []):
+                    body_text += " " + str(item)
+        # 标题与正文开头重复
+        title = unit.title.strip()
+        if title and body_text.strip().startswith(title):
+            results.append(CheckResult(
+                level="warning", check="title_body_overlap",
+                message=f"知识点 {unit.unit_id} 的标题与正文开头重复",
+                unit_id=unit.unit_id,
+            ))
+        # 口头填充词密度过高
+        filler_count = len(_ORAL_FILLERS.findall(body_text))
+        if len(body_text) > 50 and filler_count / max(1, len(body_text) / 10) > 0.3:
+            results.append(CheckResult(
+                level="warning", check="oral_filler_density",
+                message=f"知识点 {unit.unit_id} 口头填充词密度过高",
+                unit_id=unit.unit_id,
+            ))
+    # 详略分配过于平均
+    detail_levels = [u.detail_level for u in units if u.detail_level]
+    if len(detail_levels) >= 4 and len(set(detail_levels)) == 1:
+        results.append(CheckResult(
+            level="warning", check="detail_distribution",
+            message="所有知识点详略分配相同，未按重要性区分",
+        ))
+    return results
+
+
 def _compute_stats(units: list[KnowledgeUnit], lesson_plan: LessonPlan) -> dict[str, int]:
     """统计各 detail_level 数量和 plan 覆盖率。"""
     stats = {
@@ -356,6 +397,7 @@ def run_selfcheck(
     report.results.extend(_check_plan_coverage(units, lesson_plan))
     report.results.extend(_check_conflicts(units))
     report.results.extend(_check_understanding_tip_limits(units))
+    report.results.extend(_check_soft_quality(units))
 
     if bindings:
         report.results.extend(_check_binding_basis(bindings, valid_frame_ids, valid_unit_ids))

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+import time
 from types import MappingProxyType
 from typing import Mapping
 
@@ -91,12 +92,22 @@ class PipelineRunner:
         step = self.registry.get(step_id)
         inputs = self._inputs_for(step.spec.dependencies)
         staging = None
+        started_at = time.monotonic()
+        cache_reason: str | None = None
         try:
             self._ensure_not_cancelled()
             fingerprint = step.fingerprint(self.context, inputs)
             self.state.transition(step_id, StepStatus.CHECKING_CACHE)
+            self._publish_lifecycle(
+                step_id, StepStatus.CHECKING_CACHE, "step_cache_check_started", "正在检查步骤缓存",
+            )
             decision = self.cache.decide(self.context, step.spec, fingerprint, inputs)
+            cache_reason = decision.reason.value
             if decision.hit:
+                self._publish_lifecycle(
+                    step_id, StepStatus.CACHED, "step_cache_hit", "步骤缓存命中",
+                    cache_reason=cache_reason,
+                )
                 if not all(self.artifacts.validate(self.context, ref) for ref in decision.artifacts):
                     raise RuntimeError("缓存返回了未通过 Artifact 校验的输出")
                 outcome = StepOutcome(
@@ -109,23 +120,41 @@ class PipelineRunner:
                 )
                 step.validate(self.context, outcome)
                 self._publish_cache_progress(step_id, "hit")
-                self._finish(outcome)
+                self._finish(
+                    outcome,
+                    duration_seconds=time.monotonic() - started_at,
+                    extra_diagnostics={"cache_reason": cache_reason},
+                )
                 return
             self.state.transition(step_id, StepStatus.READY)
+            self._publish_lifecycle(
+                step_id, StepStatus.READY, "step_cache_miss", "步骤缓存未命中",
+                cache_reason=cache_reason,
+            )
             self._publish_cache_progress(step_id, "miss", completed=0.0)
             self._ensure_not_cancelled()
             staging = self.artifacts.staging_dir(self.context, step_id)
             self.state.transition(step_id, StepStatus.RUNNING)
+            self._publish_lifecycle(
+                step_id, StepStatus.RUNNING, "step_execution_started", "开始执行步骤",
+                cache_reason=cache_reason,
+            )
             outcome = step.execute(self.context, inputs, staging)
             if outcome.step_id != step_id or outcome.run_id != self.context.run_id:
                 raise ValueError("StepOutcome 身份与当前 Step/Run 不一致")
             if outcome.status in {StepStatus.PENDING, StepStatus.CHECKING_CACHE, StepStatus.READY, StepStatus.RUNNING, StepStatus.CACHED}:
                 raise ValueError(f"execute 返回了非法终态：{outcome.status.value}")
             if outcome.status == StepStatus.CANCELLED:
-                self._finish(outcome)
+                self._finish(
+                    outcome, duration_seconds=time.monotonic() - started_at,
+                    extra_diagnostics={"cache_reason": cache_reason},
+                )
                 return
             if outcome.status == StepStatus.FAILED:
-                self._finish(outcome)
+                self._finish(
+                    outcome, duration_seconds=time.monotonic() - started_at,
+                    extra_diagnostics={"cache_reason": cache_reason},
+                )
                 return
             step.validate(self.context, outcome)
             if outcome.status in {StepStatus.SUCCEEDED, StepStatus.DEGRADED}:
@@ -133,9 +162,12 @@ class PipelineRunner:
                 outcome = replace(outcome, artifacts=committed)
                 self.cache.record(self.context, step.spec, fingerprint, outcome)
                 self._publish_cache_progress(step_id, "miss")
-            self._finish(outcome)
+            self._finish(
+                outcome, duration_seconds=time.monotonic() - started_at,
+                extra_diagnostics={"cache_reason": cache_reason},
+            )
         except ExecutionCancelled as exc:
-            self._set_cancelled(step_id, str(exc))
+            self._set_cancelled(step_id, str(exc), duration_seconds=time.monotonic() - started_at)
         except Exception as exc:
             if self.state.statuses.get(step_id) in {
                 StepStatus.CACHED, StepStatus.SUCCEEDED, StepStatus.DEGRADED,
@@ -151,7 +183,10 @@ class PipelineRunner:
                     message=str(exc),
                     exception_type=type(exc).__name__,
                 ),
-            ))
+            ),
+                duration_seconds=time.monotonic() - started_at,
+                extra_diagnostics={"cache_reason": cache_reason},
+            )
         finally:
             if staging is not None:
                 self.artifacts.cleanup_staging(self.context, step_id)
@@ -171,13 +206,15 @@ class PipelineRunner:
         if self._cancelled():
             raise ExecutionCancelled("任务已取消")
 
-    def _set_cancelled(self, step_id: str, message: str = "任务已取消") -> None:
+    def _set_cancelled(
+        self, step_id: str, message: str = "任务已取消", *, duration_seconds: float | None = None,
+    ) -> None:
         self._finish(StepOutcome(
             step_id=step_id,
             run_id=self.context.run_id,
             status=StepStatus.CANCELLED,
             error=ErrorInfo(code="RUN_CANCELLED", message=message, exception_type="ExecutionCancelled"),
-        ))
+        ), duration_seconds=duration_seconds)
 
     def _publish_cache_progress(
         self, step_id: str, cache_state: str, *, completed: float = 1.0,
@@ -193,7 +230,32 @@ class PipelineRunner:
             bucket=step_id,
         ))
 
-    def _finish(self, outcome: StepOutcome) -> None:
+    def _publish_lifecycle(
+        self, step_id: str, status: StepStatus, code: str, message: str, **diagnostics,
+    ) -> None:
+        try:
+            self.context.services.event_sink({
+                "type": "step_lifecycle",
+                "run_id": self.context.run_id,
+                "step_id": step_id,
+                "stage": step_id.split(".", 1)[0],
+                "level": "info",
+                "message": message,
+                "code": code,
+                "status": status.value,
+                **{key: value for key, value in diagnostics.items() if value is not None},
+            })
+        except Exception:
+            # 诊断增强事件是 best-effort；终态事件仍保持原有严格写入语义。
+            return
+
+    def _finish(
+        self,
+        outcome: StepOutcome,
+        *,
+        duration_seconds: float | None = None,
+        extra_diagnostics: Mapping[str, object] | None = None,
+    ) -> None:
         self.state.outcomes[outcome.step_id] = outcome
         self.state.transition(outcome.step_id, outcome.status)
         error_diagnostics = ({
@@ -202,6 +264,11 @@ class PipelineRunner:
             "retryable": outcome.error.retryable,
             "error_details": dict(outcome.error.details),
         } if outcome.error else {})
+        diagnostics = {
+            **dict(outcome.diagnostics),
+            **{key: value for key, value in dict(extra_diagnostics or {}).items() if value is not None},
+            **error_diagnostics,
+        }
         self.context.services.event_sink({
             "timestamp": __import__("datetime").datetime.now().astimezone().isoformat(timespec="seconds"),
             "type": "step_state",
@@ -213,6 +280,8 @@ class PipelineRunner:
             "code": f"step_{outcome.status.value}",
             "status": outcome.status.value,
             "error_code": outcome.error.code if outcome.error else None,
+            "cache_reason": diagnostics.get("cache_reason"),
+            "duration_seconds": None if duration_seconds is None else round(max(0.0, duration_seconds), 3),
             "capability": outcome.capability,
             "artifacts": [
                 {
@@ -221,5 +290,5 @@ class PipelineRunner:
                 }
                 for ref in outcome.artifacts
             ],
-            "diagnostics": {**dict(outcome.diagnostics), **error_diagnostics},
+            "diagnostics": diagnostics,
         })

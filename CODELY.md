@@ -78,15 +78,13 @@ src/video_study/          产品源码
   providers.py            云端模型 provider
   progress.py             ETA 与进度跟踪
   transcript.py           转写规范化纯函数
-  config.py / runtime.py / media.py / utils.py / aggregate.py
-  knowledge/              LessonPlan、视觉证据、Course IR、单元与 Document v2
-    planning.py           课程规划
-    visual_retrieval.py   视觉证据检索
-    course_ir.py          Course IR 生成
-    organizer.py          知识单元整理
-    selfcheck.py          知识自检
-    document.py           Canonical Document v2
-    cloud_payload.py      紧凑云端载荷
+  config.py / runtime.py / media.py / utils.py / aggregate.py / single_instance.py   knowledge/              LessonPlan、视觉证据、Course IR、单元与 Document v2     planning.py           课程规划     visual_retrieval.py   视觉证据检索     course_ir.py          Course IR 生成     organizer.py          知识单元整理     selfcheck.py          知识自检     document.py           Canonical Document v2     cloud_payload.py      紧凑云端载荷     editorial.py          编辑意图加载器与编辑决策合同
+
+
+
+
+
+
 
 tests/                    单元测试 (unittest)
 scripts/                  开发与渲染辅助脚本
@@ -105,7 +103,8 @@ api.yaml                  云端端点、模型链与预算配置
 ## 关键配置文件
 
 - **`config.yaml`**：ASR 引擎与参数、关键帧采样、视觉教学、视觉证据、Course IR、文档 schema、桌面 UI、水印。
-- **`api.yaml`**：云端模型链 (默认 glm-5.2 → qwen3.7-plus → kimi-k2.6)、调用预算 (`max_calls_per_video: 5`)、输入/输出 token 上限。所有云端参数通过环境变量覆盖，不硬编码密钥。
+- **`api.yaml`**：云端模型链 (默认 deepseek-v4-flash-0731 → glm-5.2 → kimi-k2.6 → qwen3.7-plus)、调用预算 (`max_calls_per_video: 5`)、`planning_max_output_tokens: 5000`、输入/输出 token 上限。所有云端参数通过环境变量覆盖，不硬编码密钥。
+
 - **`.env`**：`QWEN_API_KEY`, `QWEN_BASE_URL`, `CLOUD_LLM_ENABLED`（默认 false）。已被 `.gitignore` 忽略，禁止输出或提交。
 
 ## 工作约定

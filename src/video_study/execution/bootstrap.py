@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -157,6 +157,41 @@ def run_compatible_pipeline(
     run_id = uuid.uuid4().hex
     journal = RunEventJournal(layout, run_id, event)
 
+    def journal_task_progress(progress_event) -> None:
+        if is_dataclass(progress_event):
+            payload = asdict(progress_event)
+        elif isinstance(progress_event, Mapping):
+            payload = dict(progress_event)
+        else:
+            payload = {key: getattr(progress_event, key) for key in (
+                "stage", "unit_kind", "completed", "total", "cache_hit",
+                "duration_seconds", "task_id", "cache_state", "bucket",
+            ) if hasattr(progress_event, key)}
+        journal.publish({
+            "type": "task_progress",
+            "step_id": str(payload.get("task_id") or payload.get("stage") or "runtime"),
+            "stage": str(payload.get("stage") or "runtime"),
+            "code": "task_progress",
+            "message": (
+                f"任务进度 {payload.get('completed', 0)}/{payload.get('total', 0)}"
+            ),
+            "event": payload,
+        })
+        if task_progress:
+            task_progress(progress_event)
+
+    def journal_stage_progress(stage: str, message: str, percent: int) -> None:
+        journal.publish({
+            "type": "stage_progress",
+            "step_id": stage,
+            "stage": stage.split(".", 1)[0],
+            "code": "stage_progress",
+            "message": message,
+            "progress_percent": max(0, min(100, int(percent))),
+        })
+        if progress:
+            progress(stage, message, percent)
+
     raw_qwen = dict(qwen_settings or config.raw.get("qwen", {}))
     cloud_authorized = (
         bool(cloud_summary)
@@ -215,8 +250,8 @@ def run_compatible_pipeline(
         force_steps.add("transcript.decode")
     if force_summary:
         force_steps.update({
-            "knowledge.plan", "visual.jobs", "visual.evidence", "frames.semantics",
-            "knowledge.course_ir", "knowledge.units", "knowledge.selfcheck", "document.assemble",
+            "knowledge.course_ir", "knowledge.units",
+            "knowledge.selfcheck", "document.assemble",
         })
     policy = RunPolicy(
         cloud_authorized=cloud_authorized,
@@ -242,8 +277,8 @@ def run_compatible_pipeline(
         cloud_budget=cloud_budget,
         cancel_check=cancel_check or (lambda: False),
         event_sink=journal.publish,
-        progress_sink=task_progress or (lambda _event: None),
-        stage_progress_sink=progress or (lambda _stage, _message, _percent: None),
+        progress_sink=journal_task_progress,
+        stage_progress_sink=journal_stage_progress,
         extra_factories={
             "journal": lambda: journal,
             "project_root": lambda: config.root,
@@ -276,6 +311,18 @@ def run_compatible_pipeline(
             "knowledge": dict(options.knowledge),
             "visual": dict(options.visual),
             "render": dict(options.render),
+        },
+        "runtime": {
+            "python": __import__("sys").version.split()[0],
+            "platform": __import__("platform").platform(),
+            "process_id": __import__("os").getpid(),
+            "product_version": __import__("video_study", fromlist=["__version__"]).__version__,
+        },
+        "cloud": {
+            "authorized": cloud_authorized,
+            "endpoint": credentials.base_url if credentials else "",
+            "models": list(credentials.models) if credentials else [],
+            "max_calls": cloud_budget.max_requests if cloud_budget else 0,
         },
     })
     try:

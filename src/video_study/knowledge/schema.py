@@ -718,6 +718,7 @@ class LessonPlan:
     visual_profile: VisualProfile = field(default_factory=VisualProfile)
     chapters: list[ChapterPlan] = field(default_factory=list)
     side_topics: list[SideTopic] = field(default_factory=list)
+    editorial_decision: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.course_form not in COURSE_FORMS:
@@ -733,6 +734,7 @@ class LessonPlan:
             "visual_profile": self.visual_profile.to_dict(),
             "chapters": [ch.to_dict() for ch in self.chapters],
             "side_topics": [st.to_dict() for st in self.side_topics],
+            "editorial_decision": dict(self.editorial_decision),
         }
 
     @classmethod
@@ -750,6 +752,7 @@ class LessonPlan:
             ),
             chapters=[ChapterPlan.from_dict(ch) for ch in data.get("chapters", [])],
             side_topics=[SideTopic.from_dict(st) for st in data.get("side_topics", [])],
+            editorial_decision=dict(data.get("editorial_decision", {})),
         )
 
     @property

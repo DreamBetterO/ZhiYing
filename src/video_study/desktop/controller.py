@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import queue
 import threading
+from dataclasses import replace
 from pathlib import Path
 
 from ..application.processing import ProcessingService
@@ -18,6 +19,7 @@ class DesktopController:
         self._handle: ProcessingHandle | None = None
         self.aggregate_result: dict = {}
         self.current_item: QueueItem | None = None
+        self._aggregate_cancel = threading.Event()
 
     def add(self, paths: list[Path]) -> None:
         self._require_idle("添加视频")
@@ -39,30 +41,20 @@ class DesktopController:
         self.items = [item for item in self.items if not item.checked]
         self._emit("queue")
 
-    def move_selected(self, direction: int) -> bool:
+    def reorder(self, source_index: int, target_index: int) -> bool:
+        """确定性重排：将 source_index 处的行移动到 target_index 位置。"""
         self._require_idle("调整视频顺序")
-        if direction not in {-1, 1}:
-            raise ValueError("视频移动方向必须是 -1 或 1")
-        moved = False
-        indices = range(len(self.items)) if direction < 0 else range(len(self.items) - 1, -1, -1)
-        for index in indices:
-            target = index + direction
-            if not self.items[index].checked or target < 0 or target >= len(self.items):
-                continue
-            if self.items[target].checked:
-                continue
-            self.items[index], self.items[target] = self.items[target], self.items[index]
-            moved = True
-        if moved:
-            self.aggregate_result = {}
-            self._emit("queue", message="已调整视频顺序")
-        return moved
-
-    def move_selected_up(self) -> bool:
-        return self.move_selected(-1)
-
-    def move_selected_down(self) -> bool:
-        return self.move_selected(1)
+        if source_index < 0 or source_index >= len(self.items):
+            raise ValueError(f"source_index {source_index} 越界")
+        if target_index < 0 or target_index >= len(self.items):
+            raise ValueError(f"target_index {target_index} 越界")
+        if source_index == target_index:
+            return False
+        item = self.items.pop(source_index)
+        self.items.insert(target_index, item)
+        self.aggregate_result = {}
+        self._emit("queue", message="已调整视频顺序")
+        return True
 
     def select(self, path: Path, selected: bool) -> None:
         item = self._item(path)
@@ -87,6 +79,10 @@ class DesktopController:
 
         def run_queue() -> None:
             try:
+                if self.state == DesktopState.CANCELLING:
+                    self.state = DesktopState.CANCELLED
+                    self._emit("state", message="已取消")
+                    return
                 self.state = DesktopState.RUNNING
                 self._emit("state", message="开始处理")
                 for item in selected:
@@ -102,6 +98,8 @@ class DesktopController:
                     request: ProcessingRequest = request_factory(item.path)
                     handle = self.service.process(request)
                     self._handle = handle
+                    if self.state == DesktopState.CANCELLING:
+                        handle.cancel()
                     handle.subscribe(lambda event, current=item: self._on_runtime(current, event))
                     result = handle.wait()
                     self._complete_item(item, result)
@@ -140,35 +138,92 @@ class DesktopController:
         self.state = DesktopState.CANCELLING
         if self._handle:
             self._handle.cancel()
+        else:
+            self._aggregate_cancel.set()
         self._emit("state", message="正在取消")
 
     def aggregate(self, request: AggregateRequest) -> None:
         if self.state in {DesktopState.PREPARING, DesktopState.RUNNING, DesktopState.CANCELLING}:
             raise RuntimeError("处理中不能聚合")
         self.state = DesktopState.PREPARING
+        self._aggregate_cancel.clear()
         self._emit("state", message="正在准备聚合")
 
         def worker() -> None:
             try:
+                if self.state == DesktopState.CANCELLING:
+                    self.state = DesktopState.CANCELLED
+                    self._emit("state", message="聚合已取消")
+                    return
                 self.state = DesktopState.RUNNING
                 self._emit("state", message="正在聚合")
-                result = self.service.aggregate(request)
+                result = self.service.aggregate(replace(
+                    request, cancel_check=self._aggregate_cancel.is_set,
+                ))
+                if self.state == DesktopState.CANCELLING:
+                    self.state = DesktopState.CANCELLED
+                    self._emit("state", message="聚合已取消")
+                    return
                 self.aggregate_result = result.to_legacy()
                 self.state = DesktopState.COMPLETED
                 self._emit("aggregate", message="聚合完成", payload=self.aggregate_result)
             except BaseException as exc:
-                self.state = DesktopState.FAILED
-                self._emit("error", message=str(exc))
+                if self.state == DesktopState.CANCELLING:
+                    self.state = DesktopState.CANCELLED
+                    self._emit("state", message="聚合已取消")
+                else:
+                    self.state = DesktopState.FAILED
+                    self._emit("error", message=str(exc))
 
         threading.Thread(target=worker, name="video-study-aggregate", daemon=True).start()
 
-    def delete_selected(self) -> None:
-        self._require_idle("删除产物")
+    def aggregate_local(self, results: tuple[ProcessingResult, ...]) -> None:
+        """在后台线程执行完全离线的保守聚合。"""
+        if self.state in {DesktopState.PREPARING, DesktopState.RUNNING, DesktopState.CANCELLING}:
+            raise RuntimeError("处理中不能聚合")
+        if len(results) < 2:
+            raise ValueError("至少需要两个已完成视频才能聚合")
+        self.state = DesktopState.PREPARING
+        self._aggregate_cancel.clear()
+        self._emit("state", message="正在准备本地聚合")
+
+        def worker() -> None:
+            try:
+                if self.state == DesktopState.CANCELLING:
+                    self.state = DesktopState.CANCELLED
+                    self._emit("state", message="本地聚合已取消")
+                    return
+                self.state = DesktopState.RUNNING
+                self._emit("state", message="正在本地聚合")
+                result = self.service.local_aggregate(
+                    results, cancel_check=self._aggregate_cancel.is_set,
+                )
+                if self.state == DesktopState.CANCELLING:
+                    self.state = DesktopState.CANCELLED
+                    self._emit("state", message="本地聚合已取消")
+                    return
+                self.aggregate_result = result.to_legacy()
+                self.state = DesktopState.COMPLETED
+                self._emit("aggregate", message="本地聚合完成", payload=self.aggregate_result)
+            except BaseException as exc:
+                if self.state == DesktopState.CANCELLING:
+                    self.state = DesktopState.CANCELLED
+                    self._emit("state", message="本地聚合已取消")
+                else:
+                    self.state = DesktopState.FAILED
+                    self._emit("error", message=str(exc))
+
+        threading.Thread(target=worker, name="video-study-local-aggregate", daemon=True).start()
+
+    def clear_selected_cache(self) -> None:
+        """清除所选视频的 Workspace、Output 和失效的派生聚合结果；保留原视频。"""
+        self._require_idle("清除缓存")
         for item in [value for value in self.items if value.checked]:
             self.service.delete_video_workspace(item.path)
             item.result = {}
             item.stage, item.status, item.progress = "queued", "等待中", 0
             item.message, item.started_at, item.elapsed, item.eta, item.estimating = "", None, 0.0, None, False
+        self.aggregate_result = {}
         self._emit("queue")
 
     def clear_workspace(self) -> int:

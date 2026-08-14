@@ -7,6 +7,7 @@ from typing import Any, Mapping
 
 from ...knowledge.adapter import units_to_document
 from ...knowledge.course_ir import build_course_ir
+from ...knowledge.editorial import load_brief
 from ...knowledge.organizer import build_units
 from ...knowledge.cloud_info import merge_cloud_info
 from ...knowledge.planning import build_lesson_plan, collect_visual_jobs
@@ -63,12 +64,48 @@ def _material(inputs: Mapping[ArtifactId, ArtifactRef], **components: Any) -> Fi
     })
 
 
+def _visual_plan_digest(plan_ref: ArtifactRef | None) -> str:
+    """从 plan artifact 中提取视觉相关部分计算专用摘要。
+
+    避免 editorial_decision 等非视觉字段变化导致视觉缓存误判失效。
+    """
+    import hashlib
+    if plan_ref is None or not plan_ref.path.is_file():
+        return ""
+    payload = json.loads(plan_ref.path.read_text(encoding="utf-8"))
+    plan = payload.get("plan", {}) if isinstance(payload, dict) else {}
+    visual_parts = {
+        "visual_profile": plan.get("visual_profile", {}),
+        "visual_questions": [
+            {
+                "plan_id": up.get("plan_id", ""),
+                "needs_visual": up.get("needs_visual", False),
+                "visual_need": up.get("visual_need", {}),
+                "visual_questions": up.get("visual_questions", []),
+            }
+            for ch in plan.get("chapters", [])
+            for up in ch.get("unit_plans", [])
+        ],
+    }
+    return hashlib.sha256(
+        json.dumps(visual_parts, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+
 def _settings(context: ProcessingContext) -> dict[str, Any]:
     settings = dict(context.options.knowledge)
     settings["visual_teaching"] = dict(context.options.visual).get("visual_teaching", {})
     settings["visual_evidence"] = dict(context.options.visual).get("visual_evidence", {})
     settings["_config_root"] = str(context.services.port("project_root"))
     return settings
+
+
+def _brief_path(context: ProcessingContext) -> Path:
+    from ...knowledge.editorial import BRIEF_FILENAME
+    root = context.services.port("project_root")
+    if root is not None:
+        return Path(root) / BRIEF_FILENAME
+    return Path(BRIEF_FILENAME)
 
 
 def _cancel(exc: BaseException) -> None:
@@ -79,7 +116,7 @@ def _cancel(exc: BaseException) -> None:
 @dataclass
 class KnowledgePlanStep:
     spec = StepSpec(
-        "knowledge.plan", 1, dependencies=("transcript.normalize",),
+        "knowledge.plan", 2, dependencies=("transcript.normalize",),
         inputs=(TRANSCRIPT_NORMALIZED,), outputs=(KNOWLEDGE_PLAN,),
         config_keys=("knowledge.content_level", "policy.cloud"), remote_cost=RemoteCost.CLOUD,
         capabilities=("offline", "cloud"), degradation_policy="offline",
@@ -88,10 +125,17 @@ class KnowledgePlanStep:
     )
 
     def fingerprint(self, context, inputs):
-        return _material(inputs, content_level=context.policy.content_level, cloud=context.policy.cloud_authorized)
+        brief = load_brief(_brief_path(context))
+        return _material(
+            inputs,
+            content_level=context.policy.content_level,
+            cloud=context.policy.cloud_authorized,
+            brief_sha256=brief.sha256,
+        )
 
     def execute(self, context, inputs, staging):
         transcript = _read(_input(inputs, TRANSCRIPT_NORMALIZED))
+        brief = load_brief(_brief_path(context))
         try:
             plan, cloud_info = build_lesson_plan(
                 transcript, context.policy.content_level, _settings(context),
@@ -99,10 +143,11 @@ class KnowledgePlanStep:
                 cloud_port=context.services.port("cloud") if context.policy.cloud_authorized else None,
                 cancel_check=context.services.cancelled,
                 event_sink=context.services.event_sink,
+                brief=brief,
             )
         except BaseException as exc:
             _cancel(exc); raise
-        output = _write(staging, KNOWLEDGE_PLAN, {"version": 1, "plan": plan.to_dict(), "cloud_info": cloud_info})
+        output = _write(staging, KNOWLEDGE_PLAN, {"version": 1, "plan": plan.to_dict(), "cloud_info": cloud_info, "brief": brief.to_dict()})
         capability = "cloud" if cloud_info.get("model") else "offline"
         status = StepStatus.DEGRADED if context.policy.cloud_authorized and capability == "offline" else StepStatus.SUCCEEDED
         return StepOutcome(self.spec.step_id, context.run_id, status, capability, (ArtifactRef(KNOWLEDGE_PLAN, output),))
@@ -122,7 +167,15 @@ class VisualJobsStep:
     )
 
     def fingerprint(self, context, inputs):
-        return _material(inputs, visual=dict(context.options.visual))
+        plan_ref = inputs.get(KNOWLEDGE_PLAN)
+        frames_ref = inputs.get(FRAMES_SELECTED)
+        transcript_ref = inputs.get(TRANSCRIPT_NORMALIZED)
+        return FingerprintMaterial({
+            "upstream.frames.selected": frames_ref.digest if frames_ref else "",
+            "upstream.transcript.normalized": transcript_ref.digest if transcript_ref else "",
+            "visual_plan": _visual_plan_digest(plan_ref),
+            "visual": dict(context.options.visual),
+        })
 
     def execute(self, context, inputs, staging):
         plan = LessonPlan.from_dict(_read(_input(inputs, KNOWLEDGE_PLAN)).get("plan", {}))
@@ -150,7 +203,17 @@ class VisualEvidenceStep:
     )
 
     def fingerprint(self, context, inputs):
-        return _material(inputs, visual=dict(context.options.visual))
+        plan_ref = inputs.get(KNOWLEDGE_PLAN)
+        jobs_ref = inputs.get(VISUAL_JOBS)
+        frames_ref = inputs.get(FRAMES_SELECTED)
+        transcript_ref = inputs.get(TRANSCRIPT_NORMALIZED)
+        return FingerprintMaterial({
+            "upstream.visual.jobs": jobs_ref.digest if jobs_ref else "",
+            "upstream.frames.selected": frames_ref.digest if frames_ref else "",
+            "upstream.transcript.normalized": transcript_ref.digest if transcript_ref else "",
+            "visual_plan": _visual_plan_digest(plan_ref),
+            "visual": dict(context.options.visual),
+        })
 
     def execute(self, context, inputs, staging):
         plan = LessonPlan.from_dict(_read(_input(inputs, KNOWLEDGE_PLAN)).get("plan", {}))
@@ -269,7 +332,7 @@ class CourseIRStep:
 @dataclass
 class KnowledgeUnitsStep:
     spec = StepSpec(
-        "knowledge.units", 1,
+        "knowledge.units", 2,
         dependencies=("knowledge.plan", "knowledge.course_ir", "frames.semantics", "visual.evidence", "transcript.normalize"),
         inputs=(KNOWLEDGE_PLAN, KNOWLEDGE_COURSE_IR, FRAMES_SEMANTICS, VISUAL_EVIDENCE, TRANSCRIPT_NORMALIZED),
         outputs=(KNOWLEDGE_UNITS,), config_keys=("knowledge.units",), remote_cost=RemoteCost.CLOUD,
@@ -279,13 +342,15 @@ class KnowledgeUnitsStep:
     )
 
     def fingerprint(self, context, inputs):
-        return _material(inputs, content_level=context.policy.content_level, cloud=context.policy.cloud_authorized)
+        brief = load_brief(_brief_path(context))
+        return _material(inputs, content_level=context.policy.content_level, cloud=context.policy.cloud_authorized, brief_sha256=brief.sha256)
 
     def execute(self, context, inputs, staging):
         plan_payload = _read(_input(inputs, KNOWLEDGE_PLAN))
         plan = LessonPlan.from_dict(plan_payload.get("plan", {}))
         semantics = [FrameSemantic.from_dict(row) for row in _read(_input(inputs, FRAMES_SEMANTICS)).get("semantics", [])]
         evidence = [VisualEvidence.from_dict(row) for row in _read(_input(inputs, VISUAL_EVIDENCE)).get("visual_evidence", [])]
+        brief = load_brief(_brief_path(context))
         degraded_reason = ""
         try:
             units, cloud_info = build_units(
@@ -295,6 +360,7 @@ class KnowledgeUnitsStep:
                 cloud_port=context.services.port("cloud") if context.policy.cloud_authorized else None,
                 cancel_check=context.services.cancelled,
                 event_sink=context.services.event_sink,
+                brief=brief,
             )
         except BaseException as exc:
             _cancel(exc)
