@@ -28,15 +28,21 @@ _AGGREGATE_GENERATOR_VERSION = 3
 _AGGREGATE_SCHEMA = """{"document_title":"聚合资料标题","overview":"2-4 句内容导览","learning_objectives":["学习目标"],"sections":[{"title":"逻辑章节标题","summary":"章节摘要","knowledge_points":[{"statement":"知识点标题","explanation":"完整解释","details":["补充细节"],"steps":["步骤"],"examples":["课程案例"],"conditions":["适用条件或边界"],"pitfalls":["易错点"],"editorial_note":"仅依据来源进行的逻辑整理，没有则为空字符串","review_tip":"一句话复习提示","source_point_ids":["point_0001"]}]}],"review":{"knowledge_thread":"跨视频知识主线","checklist":["关键规则"],"open_questions":["来源尚未讲清的问题"]}}"""
 
 
-def _aggregate_prompt(source: str, content_level: str, *, intermediate: bool = False) -> str:
+def _aggregate_prompt(
+    source: str, content_level: str, *, intermediate: bool = False, editorial_brief: str = "",
+) -> str:
     scope = (
         "这是较大输入的一个连续分批。只整理当前批次，保留原始 source_point_ids，"
         "不得将它们改成新编号。"
         if intermediate else
         "请去除重复、合并同义内容、梳理前置概念与后续应用，把它们整合成可直接复习的多章节课程讲义。"
     )
+    brief_section = (
+        f"\n\n## 整理偏好（用户编辑意图）\n\n{editorial_brief.strip()}\n"
+        if editorial_brief.strip() else ""
+    )
     return f"""你是课程资料总编。下面是多个连续或相关视频形成的结构化课程笔记。
-{scope}当前内容档位为“{content_level}”，应尽量保留来源中的解释、步骤、案例、条件和易错点，不能压缩成一个大章节。只允许依据输入内容，不补充外部知识。
+{scope}当前内容档位为“{content_level}”，应尽量保留来源中的解释、步骤、案例、条件和易错点，不能压缩成一个大章节。只允许依据输入内容，不补充外部知识。{brief_section}
 输出严格 JSON：
 {_AGGREGATE_SCHEMA}
 每个知识点必须引用真实 source_point_ids；允许一个知识点引用多个来源。不要输出 JSON 之外的文字。
@@ -45,9 +51,11 @@ def _aggregate_prompt(source: str, content_level: str, *, intermediate: bool = F
 {source}"""
 
 
-def _split_source_for_prompts(source: str, content_level: str, max_chars: int) -> list[str]:
+def _split_source_for_prompts(
+    source: str, content_level: str, max_chars: int, *, editorial_brief: str = "",
+) -> list[str]:
     """按行保留完整知识点，使每个分批请求都不超过云端字符上限。"""
-    overhead = len(_aggregate_prompt("", content_level, intermediate=True))
+    overhead = len(_aggregate_prompt("", content_level, intermediate=True, editorial_brief=editorial_brief))
     capacity = max_chars - overhead
     if capacity <= 0:
         raise RuntimeError("聚合提示词已超过云端输入上限；未发送请求")
@@ -63,7 +71,10 @@ def _split_source_for_prompts(source: str, content_level: str, max_chars: int) -
             current = [line]
         else:
             current.append(line)
-        if len(_aggregate_prompt("\n".join(current).strip(), content_level, intermediate=True)) > max_chars:
+        if len(_aggregate_prompt(
+            "\n".join(current).strip(), content_level,
+            intermediate=True, editorial_brief=editorial_brief,
+        )) > max_chars:
             raise RuntimeError("聚合中存在单个知识点超过云端输入上限；未发送请求")
     if current:
         chunks.append("\n".join(current).strip())
@@ -395,13 +406,19 @@ def _aggregate_documents_impl(config: AppConfig, results: list[dict], qwen_setti
     models = list(qwen_settings.get("_runtime_models") or qwen_settings.get("default_models", []))
     max_calls = min(int(qwen_settings.get("_runtime_max_calls", 1)), int(budget.get("max_calls_per_video", 1)))
     content_level = str(qwen_settings.get("content_level", "推荐"))
+    runtime_brief = str(qwen_settings.get("_runtime_editorial_brief", "") or "").strip()
+    if runtime_brief and "_editorial_brief" not in qwen_settings:
+        from .knowledge.editorial import brief_from_text
+        qwen_settings["_editorial_brief"] = brief_from_text(runtime_brief)
+    brief = qwen_settings.get("_editorial_brief")
+    brief_text = str(getattr(brief, "text", "") or runtime_brief)
     from .providers import ensure_cloud_request_budget
     request_budget = ensure_cloud_request_budget(qwen_settings)
     request_budget.max_requests = min(request_budget.max_requests, max_calls)
-    prompt = _aggregate_prompt(source, content_level)
+    prompt = _aggregate_prompt(source, content_level, editorial_brief=brief_text)
     chunks: list[str] = []
     if len(prompt) > max_chars:
-        chunks = _split_source_for_prompts(source, content_level, max_chars)
+        chunks = _split_source_for_prompts(source, content_level, max_chars, editorial_brief=brief_text)
         required_calls = len(chunks) + 1
         if required_calls > request_budget.max_requests:
             raise RuntimeError(
@@ -449,7 +466,9 @@ def _aggregate_documents_impl(config: AppConfig, results: list[dict], qwen_setti
                             batch_index=index, batch_count=len(chunks),
                         )
                         continue
-                batch_prompt = _aggregate_prompt(chunk, content_level, intermediate=True)
+                batch_prompt = _aggregate_prompt(
+                    chunk, content_level, intermediate=True, editorial_brief=brief_text,
+                )
                 _aggregate_event(
                     qwen_settings, "aggregate_batch_started", f"开始整理聚合分批 {index}/{len(chunks)}",
                     batch_index=index, batch_count=len(chunks), source_chars=len(chunk), prompt_chars=len(batch_prompt),
@@ -474,7 +493,7 @@ def _aggregate_documents_impl(config: AppConfig, results: list[dict], qwen_setti
                 f"## 分批整理结果 {index}\n{json.dumps(item, ensure_ascii=False, separators=(',', ':'))}"
                 for index, item in enumerate(intermediate_payloads, start=1)
             )
-            prompt = _aggregate_prompt(merged_source, content_level)
+            prompt = _aggregate_prompt(merged_source, content_level, editorial_brief=brief_text)
             if len(prompt) > max_chars:
                 raise RuntimeError(
                     f"分批整理结果共 {len(prompt)} 字符，仍超过云端上限 {max_chars}；"

@@ -136,6 +136,18 @@ def load_brief(brief_path: Path | None = None) -> EditorialBrief:
     )
 
 
+def brief_from_text(text: str, *, default: str | None = None) -> EditorialBrief:
+    """从 UI/调用方传入的本次编辑意图构造 EditorialBrief，不落盘。"""
+    normalized = _normalize(text)
+    default_text = _normalize(default if default is not None else DEFAULT_BRIEF_TEXT)
+    return EditorialBrief(
+        text=normalized,
+        sha256=_compute_hash(normalized),
+        char_count=len(normalized),
+        is_default=(normalized == default_text),
+    )
+
+
 def restore_default(brief_path: Path) -> None:
     """将默认偏好写入指定路径。"""
     brief_path.parent.mkdir(parents=True, exist_ok=True)

@@ -9,6 +9,7 @@ Resource/
 models/
 workspace/
 output/
+packing/
 
 # Build and temporary artifacts
 build/

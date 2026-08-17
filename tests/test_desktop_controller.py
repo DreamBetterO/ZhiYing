@@ -106,10 +106,11 @@ class DesktopControllerTests(unittest.TestCase):
         self.wait_state(controller, DesktopState.COMPLETED)
         self.assertEqual(controller.aggregate_result["video_id"], "id")
 
-    def test_v4_task_progress_updates_eta_and_elapsed_fields(self) -> None:
+    def test_v4_task_progress_tracks_eta_internally_without_ui_text(self) -> None:
         controller = DesktopController(FakeService())
         controller.add([Path("lesson.mp4")])
         item = controller.items[0]
+        item.progress = 30
 
         controller._on_runtime(item, {
             "type": "task_progress",
@@ -122,8 +123,40 @@ class DesktopControllerTests(unittest.TestCase):
         })
 
         self.assertEqual(item.stage, "visual")
+        self.assertEqual(item.progress, 30)
         self.assertEqual(item.eta, 12.5)
+        self.assertNotIn("剩余", item.detail)
+        self.assertNotIn("估算中", item.detail)
         self.assertGreaterEqual(item.elapsed, 0)
+
+    def test_stage_progress_is_smoothed_for_large_early_jump(self) -> None:
+        controller = DesktopController(FakeService())
+        controller.add([Path("lesson.mp4")])
+        item = controller.items[0]
+
+        controller._on_runtime(item, {
+            "type": "progress",
+            "stage": "frames",
+            "message": "正在提取候选画面",
+            "progress": 55,
+        })
+
+        self.assertEqual(item.progress, 3)
+
+    def test_stage_progress_is_monotonic(self) -> None:
+        controller = DesktopController(FakeService())
+        controller.add([Path("lesson.mp4")])
+        item = controller.items[0]
+        item.progress = 50
+
+        controller._on_runtime(item, {
+            "type": "progress",
+            "stage": "asr",
+            "message": "正在执行本地语音识别",
+            "progress": 40,
+        })
+
+        self.assertEqual(item.progress, 50)
 
 
 if __name__ == "__main__":

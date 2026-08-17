@@ -11,6 +11,7 @@ from video_study.knowledge.editorial import (
     MAX_BRIEF_CHARS,
     EditorialBrief,
     EditorialDecision,
+    brief_from_text,
     default_decision,
     load_brief,
     restore_default,
@@ -88,6 +89,13 @@ class EditorialBriefTests(unittest.TestCase):
         self.assertIn("sha256", d)
         self.assertIn("char_count", d)
         self.assertIn("is_default", d)
+
+    def test_brief_from_text_is_ephemeral_and_validated(self) -> None:
+        brief = brief_from_text("  本次按主题重组，突出易错点。  ")
+        self.assertEqual(brief.text, "本次按主题重组，突出易错点。")
+        self.assertFalse(brief.is_default)
+        with self.assertRaises(ValueError):
+            brief_from_text("  ")
 
 
 class EditorialDecisionTests(unittest.TestCase):

@@ -14,6 +14,13 @@ from pathlib import Path
 from typing import Any
 
 
+def background_process_kwargs() -> dict[str, int]:
+    """Return platform flags that keep tool/model subprocesses behind the GUI."""
+    if os.name != "nt":
+        return {}
+    return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
+
+
 def now_iso() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
 
@@ -56,6 +63,7 @@ def run(command: list[str], *, capture: bool = False) -> subprocess.CompletedPro
         errors="replace",
         stdout=subprocess.PIPE if capture else None,
         stderr=subprocess.PIPE if capture else None,
+        **background_process_kwargs(),
     )
 
 
@@ -122,7 +130,10 @@ def terminate_process(process: subprocess.Popen, *, grace_seconds: float = 1.0) 
 def run_cancellable(
     command: list[str], *, cancel_check=None, timeout_seconds: float | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    process = subprocess.Popen(command, text=True, encoding="utf-8", errors="replace")
+    process = subprocess.Popen(
+        command, text=True, encoding="utf-8", errors="replace",
+        **background_process_kwargs(),
+    )
     started_at = time.monotonic()
     try:
         while process.poll() is None:
@@ -180,6 +191,7 @@ class LocalProcessAdapter:
             encoding="utf-8",
             errors="replace",
             cwd=str(cwd) if cwd else None,
+            **background_process_kwargs(),
         )
         started_at = time.monotonic()
         stdout_lines: deque[str] = deque(maxlen=256)

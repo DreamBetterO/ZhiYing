@@ -157,6 +157,8 @@ def run_compatible_pipeline(
     run_id = uuid.uuid4().hex
     journal = RunEventJournal(layout, run_id, event)
 
+    _last_logged_progress: dict[str, float] = {}
+
     def journal_task_progress(progress_event) -> None:
         if is_dataclass(progress_event):
             payload = asdict(progress_event)
@@ -167,28 +169,44 @@ def run_compatible_pipeline(
                 "stage", "unit_kind", "completed", "total", "cache_hit",
                 "duration_seconds", "task_id", "cache_state", "bucket",
             ) if hasattr(progress_event, key)}
-        journal.publish({
-            "type": "task_progress",
-            "step_id": str(payload.get("task_id") or payload.get("stage") or "runtime"),
-            "stage": str(payload.get("stage") or "runtime"),
-            "code": "task_progress",
-            "message": (
-                f"任务进度 {payload.get('completed', 0)}/{payload.get('total', 0)}"
-            ),
-            "event": payload,
-        })
+        task_key = str(payload.get("task_id") or payload.get("stage") or "runtime")
+        completed = float(payload.get("completed", 0))
+        total = float(payload.get("total", 0))
+        last = _last_logged_progress.get(task_key)
+        # 只在完成量有 >1% 整体变化时写入 JSONL，UI 回调始终更新
+        should_log = (
+            last is None
+            or completed >= total
+            or abs(completed - last) / max(1.0, total) >= 0.01
+        )
+        if should_log:
+            _last_logged_progress[task_key] = completed
+            journal.publish({
+                "type": "task_progress",
+                "step_id": task_key,
+                "stage": str(payload.get("stage") or "runtime"),
+                "code": "task_progress",
+                "message": f"任务进度 {completed:.0f}/{total:.0f}",
+                "event": payload,
+            })
         if task_progress:
             task_progress(progress_event)
 
+    _last_stage_percent: dict[str, int] = {}
+
     def journal_stage_progress(stage: str, message: str, percent: int) -> None:
-        journal.publish({
-            "type": "stage_progress",
-            "step_id": stage,
-            "stage": stage.split(".", 1)[0],
-            "code": "stage_progress",
-            "message": message,
-            "progress_percent": max(0, min(100, int(percent))),
-        })
+        percent = max(0, min(100, int(percent)))
+        last = _last_stage_percent.get(stage)
+        if last is None or percent != last:
+            _last_stage_percent[stage] = percent
+            journal.publish({
+                "type": "stage_progress",
+                "step_id": stage,
+                "stage": stage.split(".", 1)[0],
+                "code": "stage_progress",
+                "message": message,
+                "progress_percent": percent,
+            })
         if progress:
             progress(stage, message, percent)
 

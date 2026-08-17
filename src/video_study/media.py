@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .utils import now_iso, quick_fingerprint, run, run_cancellable, safe_name, write_json
+from .utils import background_process_kwargs, now_iso, quick_fingerprint, run, run_cancellable, safe_name, write_json
 from .runtime import find_tool
 from .execution.artifacts import SOURCE_MANIFEST, WorkspaceLayout
 
@@ -17,8 +17,8 @@ _CUDA_DLL_HANDLES: list[object] = []
 _CUDA_LIBRARY_HANDLES: list[object] = []
 
 
-def prepare_cuda_runtime() -> list[str]:
-    """登记当前 Python/Conda 环境自带的 CUDA DLL 目录。"""
+def prepare_cuda_runtime(extra_dirs: list[Path] | None = None) -> list[str]:
+    """登记当前 Python/Conda 环境及额外路径中的 CUDA DLL 目录。"""
     if os.name != "nt" or not hasattr(os, "add_dll_directory"):
         return []
     prefixes = [Path(sys.prefix)]
@@ -44,6 +44,8 @@ def prepare_cuda_runtime() -> list[str]:
             candidates.append(torch_lib)
             if not all((torch_lib / name).is_file() for name in required):
                 candidates.append(prefix / "Library" / "bin")
+    if extra_dirs:
+        candidates.extend(extra_dirs)
     added: list[str] = []
     for directory in dict.fromkeys(candidates):
         if not directory.is_dir():
@@ -139,7 +141,8 @@ def check_tools() -> dict[str, str | bool]:
     try:
         gpu = subprocess.run(
             ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"],
-            capture_output=True, text=True, check=True, encoding="utf-8", errors="replace"
+            capture_output=True, text=True, check=True, encoding="utf-8", errors="replace",
+            **background_process_kwargs(),
         )
         result["gpu"] = gpu.stdout.strip()
     except (OSError, subprocess.CalledProcessError):

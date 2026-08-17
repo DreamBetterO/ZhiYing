@@ -14,11 +14,13 @@ class CloudAuthorization:
     models: tuple[str, ...] = ()
     allowed_data: tuple[str, ...] = ("transcript", "source_ids")
     max_calls: int = 0
+    editorial_brief: str = ""
 
     def legacy_settings(self, base: dict[str, Any]) -> dict[str, Any]:
         return {
             **base, "_runtime_api_key": self.api_key, "_runtime_base_url": self.base_url,
             "_runtime_models": list(self.models), "_runtime_max_calls": self.max_calls,
+            "_runtime_editorial_brief": self.editorial_brief,
         }
 
 

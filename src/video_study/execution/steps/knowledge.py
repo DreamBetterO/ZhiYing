@@ -7,7 +7,7 @@ from typing import Any, Mapping
 
 from ...knowledge.adapter import units_to_document
 from ...knowledge.course_ir import build_course_ir
-from ...knowledge.editorial import load_brief
+from ...knowledge.editorial import EditorialBrief, brief_from_text, load_brief
 from ...knowledge.organizer import build_units
 from ...knowledge.cloud_info import merge_cloud_info
 from ...knowledge.planning import build_lesson_plan, collect_visual_jobs
@@ -108,6 +108,13 @@ def _brief_path(context: ProcessingContext) -> Path:
     return Path(BRIEF_FILENAME)
 
 
+def _brief(context: ProcessingContext) -> EditorialBrief:
+    runtime_text = str(context.options.knowledge.get("_runtime_editorial_brief", "") or "").strip()
+    if runtime_text:
+        return brief_from_text(runtime_text)
+    return load_brief(_brief_path(context))
+
+
 def _cancel(exc: BaseException) -> None:
     if isinstance(exc, (TaskCancelled, ExecutionCancelled)):
         raise ExecutionCancelled(str(exc)) from exc
@@ -125,7 +132,7 @@ class KnowledgePlanStep:
     )
 
     def fingerprint(self, context, inputs):
-        brief = load_brief(_brief_path(context))
+        brief = _brief(context)
         return _material(
             inputs,
             content_level=context.policy.content_level,
@@ -135,7 +142,7 @@ class KnowledgePlanStep:
 
     def execute(self, context, inputs, staging):
         transcript = _read(_input(inputs, TRANSCRIPT_NORMALIZED))
-        brief = load_brief(_brief_path(context))
+        brief = _brief(context)
         try:
             plan, cloud_info = build_lesson_plan(
                 transcript, context.policy.content_level, _settings(context),
@@ -342,7 +349,7 @@ class KnowledgeUnitsStep:
     )
 
     def fingerprint(self, context, inputs):
-        brief = load_brief(_brief_path(context))
+        brief = _brief(context)
         return _material(inputs, content_level=context.policy.content_level, cloud=context.policy.cloud_authorized, brief_sha256=brief.sha256)
 
     def execute(self, context, inputs, staging):
@@ -350,7 +357,7 @@ class KnowledgeUnitsStep:
         plan = LessonPlan.from_dict(plan_payload.get("plan", {}))
         semantics = [FrameSemantic.from_dict(row) for row in _read(_input(inputs, FRAMES_SEMANTICS)).get("semantics", [])]
         evidence = [VisualEvidence.from_dict(row) for row in _read(_input(inputs, VISUAL_EVIDENCE)).get("visual_evidence", [])]
-        brief = load_brief(_brief_path(context))
+        brief = _brief(context)
         degraded_reason = ""
         try:
             units, cloud_info = build_units(

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ..application.processing import ProcessingService
 from ..application.requests import AggregateRequest, ProcessingHandle, ProcessingRequest, ProcessingResult
+from . import STAGE_LABELS, format_duration
 from .models import DesktopState, QueueItem, UiEvent
 
 
@@ -247,23 +248,42 @@ class DesktopController:
             }
         stage = event.get("step_id") if event.get("type") == "step_state" else event.get("stage")
         item.stage = str(stage or nested.get("stage") or item.stage)
-        item.message = str(event.get("message") or item.message)
+
+        raw_message = str(event.get("message") or "")
+        if raw_message:
+            item.message = raw_message
+
         if event.get("progress") is not None:
-            item.progress = max(0, min(100, int(event["progress"])))
-        elif nested.get("total"):
-            fraction = float(nested.get("completed", 0)) / float(nested["total"])
-            item.progress = max(item.progress, min(99, int(fraction * 100)))
+            candidate = max(0, min(100, int(event["progress"])))
+            if candidate >= 100:
+                item.progress = 100
+            elif candidate > item.progress:
+                # UI 展示采用平滑递增，避免缓存/阶段权重导致一开始直接跳到 50%+。
+                item.progress = min(candidate, item.progress + 3)
         eta = event.get("eta_seconds", nested.get("eta_seconds"))
         item.eta = None if eta is None else max(0.0, float(eta))
-        item.estimating = eta is None and item.started_at is not None
+        item.estimating = False
         item.update_elapsed()
-        self._emit("progress", item, item.message)
+
+        detail_parts: list[str] = []
+        progress_label = f"{item.progress}%"
+        if item.stage and item.stage != "completed":
+            detail_parts.append(STAGE_LABELS.get(item.stage, item.stage))
+        detail_parts.append(progress_label)
+        if item.elapsed > 0:
+            detail_parts.append(f"已用 {format_duration(item.elapsed)}")
+        code = str(event.get("code", ""))
+        if code.startswith("asr_") and event.get("level") in {"warning", "error"}:
+            detail_parts.append(str(event.get("message", "")))
+        item.detail = " · ".join(detail_parts)
+        self._emit("progress", item, item.message, item.detail)
 
     def _complete_item(self, item: QueueItem, result: ProcessingResult) -> None:
         item.stage, item.status, item.progress = "completed", "已完成", 100
         item.result = result.to_legacy()
         item.finish_timing()
-        self._emit("progress", item, "处理完成")
+        item.detail = "已完成"
+        self._emit("progress", item, "处理完成", "已完成")
 
     def _require_idle(self, action: str) -> None:
         if self.state in {DesktopState.PREPARING, DesktopState.RUNNING, DesktopState.CANCELLING}:
@@ -276,8 +296,10 @@ class DesktopController:
                 return item
         raise KeyError(path)
 
-    def _emit(self, kind: str, item: QueueItem | None = None, message: str = "", payload=None) -> None:
+    def _emit(self, kind: str, item: QueueItem | None = None, message: str = "", detail: str = "", payload=None) -> None:
         self.events.put(UiEvent(
-            kind, self.state, item.path if item else None, message, item.progress if item else 0,
+            kind, self.state, item.path if item else None, message,
+            item.detail if (item and not detail) else detail,
+            item.progress if item else 0,
             dict(payload or {}),
         ))

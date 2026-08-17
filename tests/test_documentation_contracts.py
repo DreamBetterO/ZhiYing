@@ -87,6 +87,72 @@ class DocumentationContractTests(unittest.TestCase):
         self.assertEqual(report["suggested_rerun_step"], "frames.select")
         self.assertEqual(before, after)
 
+    def test_workspace_diagnosis_scans_full_run_for_recent_asr_events(self) -> None:
+        from scripts.diagnose_workspace import diagnose
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "video"
+            state = root / "state"
+            runs = state / "runs"
+            runs.mkdir(parents=True)
+            (state / "cache").mkdir()
+            (root / "manifest.json").write_text("{}", encoding="utf-8")
+            (state / "pipeline-state.json").write_text(json.dumps({
+                "run_id": "run-1", "steps": {},
+            }), encoding="utf-8")
+            events = [
+                {"type": "asr", "sequence": 1, "code": "asr_attempt_failed", "message": "missing nagisa"},
+                *(
+                    {"type": "runtime", "sequence": index, "code": "noise", "message": "later"}
+                    for index in range(2, 45)
+                ),
+            ]
+            (runs / "run-1.jsonl").write_text(
+                "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in events),
+                encoding="utf-8",
+            )
+            (runs / "run-1.summary.json").write_text(json.dumps({
+                "run_id": "run-1", "status": "succeeded",
+            }), encoding="utf-8")
+
+            report = diagnose(root)
+
+        self.assertEqual(report["recent_asr_events"][0]["code"], "asr_attempt_failed")
+        self.assertEqual(report["recent_asr_events"][0]["message"], "missing nagisa")
+
+    def test_workspace_diagnosis_uses_transcript_cache_run_for_asr_events(self) -> None:
+        from scripts.diagnose_workspace import diagnose
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "video"
+            state = root / "state"
+            runs = state / "runs"
+            cache = state / "cache"
+            runs.mkdir(parents=True)
+            cache.mkdir()
+            (root / "manifest.json").write_text("{}", encoding="utf-8")
+            (state / "pipeline-state.json").write_text(json.dumps({
+                "run_id": "cache-only", "steps": {},
+            }), encoding="utf-8")
+            (cache / "transcript.decode.json").write_text(json.dumps({
+                "run_id": "asr-run",
+            }), encoding="utf-8")
+            (runs / "cache-only.jsonl").write_text(json.dumps({
+                "type": "step_state", "step_id": "transcript.decode", "status": "cached",
+            }) + "\n", encoding="utf-8")
+            (runs / "cache-only.summary.json").write_text(json.dumps({
+                "run_id": "cache-only", "status": "succeeded",
+            }), encoding="utf-8")
+            (runs / "asr-run.jsonl").write_text(json.dumps({
+                "type": "asr", "sequence": 8, "code": "asr_attempt_succeeded",
+                "engine": "qwen3-asr-0.6b",
+            }) + "\n", encoding="utf-8")
+
+            report = diagnose(root)
+
+        self.assertEqual(report["recent_asr_source_run_id"], "asr-run")
+        self.assertEqual(report["recent_asr_events"][0]["engine"], "qwen3-asr-0.6b")
+
 
 if __name__ == "__main__":
     unittest.main()

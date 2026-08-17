@@ -15,7 +15,10 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 from ...progress import ProgressEvent
-from ...utils import TaskCancelled, emit_runtime_event, ensure_not_cancelled, terminate_process
+from ...utils import (
+    TaskCancelled, background_process_kwargs, emit_runtime_event, ensure_not_cancelled,
+    terminate_process,
+)
 
 
 class VisualProviderError(RuntimeError):
@@ -175,6 +178,7 @@ class QwenVLSession:
             encoding="utf-8",
             errors="replace",
             env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"},
+            **background_process_kwargs(),
         )
         threading.Thread(target=self._drain, args=(self.process.stdout, self.stdout_lines), daemon=True).start()
         threading.Thread(target=self._drain, args=(self.process.stderr, self.stderr_lines), daemon=True).start()
@@ -253,7 +257,7 @@ class LocalQwenVLProvider:
         self.settings = settings
         root = Path(str(settings.get("_config_root") or ".")).resolve()
         self.python = _resolve_path(root, str(settings.get(
-            "local_vlm_runtime_python", "D:/Anaconda/envs/envs/ImageT10/python.exe",
+            "local_vlm_runtime_python", "models/qwen3-asr-runtime/python.exe",
         )))
         self.runtime = _resolve_path(root, str(settings.get(
             "local_vlm_runtime_dir", "models/qwen3-asr-runtime",
@@ -275,6 +279,7 @@ class LocalQwenVLProvider:
             command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", errors="replace",
             env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+            **background_process_kwargs(),
         )
         started = time.monotonic()
         try:

@@ -9,7 +9,7 @@ from tkinter import filedialog, font as tkfont, messagebox, ttk
 from .. import __version__
 from ..application.requests import AggregateRequest, CloudAuthorization, ProcessingRequest, ProcessingResult
 from ..config import AppConfig
-from . import STAGE_LABELS, cloud_authorization_message, format_duration, format_eta, watermark_options, blended_hex
+from . import STAGE_LABELS, cloud_authorization_message, format_duration, watermark_options, blended_hex
 from .controller import DesktopController
 from .models import DesktopState, QueueItem
 from .settings import (
@@ -30,6 +30,18 @@ PRIMARY_UI_ACTIONS = (
 
 _RUNNING_STATES = {DesktopState.PREPARING, DesktopState.RUNNING, DesktopState.CANCELLING}
 UI_EVENT_BATCH_LIMIT = 200
+EDITORIAL_BRIEF_FILENAME = "课程资料整理偏好.md"
+MAX_EDITORIAL_BRIEF_CHARS = 4000
+DEFAULT_EDITORIAL_BRIEF_TEXT = """# 课程资料整理偏好
+
+希望最终文档形成适合系统学习和复习的正式课程资料。
+
+优先提炼全课主线，再根据内容关系组织章节；如果课程明显按照演示、推导、案例或操作步骤逐步展开，可以保留老师讲课的时间顺序。
+
+重点关注概念定义、判断条件、推导关系、操作步骤、案例结论、容易混淆的地方，以及老师反复强调或明确提醒的内容。
+
+删除寒暄、口头语和无信息重复。详略由知识的重要程度、理解难度和课程强调程度决定，不平均分配篇幅。
+"""
 
 
 def drain_ui_events(events: queue.Queue, *, limit: int = UI_EVENT_BATCH_LIMIT) -> list:
@@ -75,7 +87,9 @@ class DesktopView:
         speech = list(config.raw.get("desktop", {}).get("speech_models", ("faster-whisper",)))
         if qwen_asr_ready(config) and "qwen3-asr-0.6b" not in speech:
             speech.insert(0, "qwen3-asr-0.6b")
-        self.speech_models = tk.StringVar(value="，".join(speech))
+        self._speech_engine = tk.StringVar(
+            value=speech[0] if speech else "faster-whisper",
+        )
         self.remember_key = tk.BooleanVar(value=bool(self.api_key.get()))
         self.aggregate_result: dict = {}
         self._buttons: list[ttk.Button] = []
@@ -138,6 +152,8 @@ class DesktopView:
         style.map("Treeview", background=[("selected", "#f2dadd")], foreground=[("selected", "#54232d")])
         style.configure("Treeview.Heading", background="#f4e5e3", foreground="#633641", font=("Microsoft YaHei UI", 9, "bold"), padding=(6, 9), borderwidth=0)
         style.configure("Horizontal.TProgressbar", background=self.RED, troughcolor="#eadfda", borderwidth=0)
+        # 主题无关的勾选框：使用 Canvas 绘制 ✓，避免 clam 主题的叉号问题
+        style.configure("TCheckbutton", background=self.CARD, foreground="#4d353a")
 
     def _build(self) -> None:
         viewport = ttk.Frame(self.root)
@@ -168,7 +184,7 @@ class DesktopView:
         title_box.pack(side="left")
         ttk.Label(title_box, text="知影", style="Title.TLabel").pack(anchor="w")
         ttk.Label(title_box, text="视频知识整理与溯源工作台", style="Sub.TLabel").pack(anchor="w", pady=(3, 0))
-        ttk.Label(header, text=f"V{__version__} · 15 步可恢复内核", style="Chip.TLabel").pack(side="right", pady=8)
+        ttk.Label(header, text=f"V{__version__}", style="Chip.TLabel").pack(side="right", pady=8)
 
         toolbar = ttk.Frame(outer)
         toolbar.pack(fill="x", pady=(0, 10))
@@ -186,13 +202,13 @@ class DesktopView:
 
         card = ttk.Frame(outer, style="Card.TFrame", padding=1)
         card.pack(fill="both", expand=True)
-        columns = ("order", "check", "name", "status", "stage", "progress", "elapsed", "eta", "tokens")
+        columns = ("order", "check", "name", "status", "stage", "progress", "elapsed", "tokens")
         self.tree = ttk.Treeview(card, columns=columns, show="headings", selectmode="browse", height=9)
         headings = {
             "order": "顺序", "check": "选择", "name": "视频文件", "status": "状态", "stage": "当前步骤",
-            "progress": "进度", "elapsed": "已用", "eta": "预计剩余", "tokens": "Token（入 / 出 / 总）",
+            "progress": "进度", "elapsed": "已用", "tokens": "Token（入 / 出 / 总）",
         }
-        widths = {"order": 52, "check": 58, "name": 300, "status": 100, "stage": 135, "progress": 62, "elapsed": 65, "eta": 78, "tokens": 155}
+        widths = {"order": 52, "check": 58, "name": 300, "status": 100, "stage": 135, "progress": 62, "elapsed": 75, "tokens": 155}
         for column in columns:
             self.tree.heading(column, text=headings[column])
             self.tree.column(column, width=widths[column], minwidth=50, anchor="w" if column == "name" else "center", stretch=column == "name")
@@ -299,7 +315,8 @@ class DesktopView:
 
     def start(self, use_cloud: bool) -> None:
         try:
-            speech = validate_speech_models(self.speech_models.get())
+            primary = self._speech_engine.get()
+            speech = validate_speech_models(primary)
             cloud = self._cloud_authorization(aggregate=False) if use_cloud else None
         except ValueError as exc:
             messagebox.showerror("设置无效", str(exc))
@@ -314,20 +331,106 @@ class DesktopView:
 
     def _cloud_authorization(self, *, aggregate: bool) -> CloudAuthorization:
         base, models, _speech = validate_desktop_settings(
-            self.base_url.get(), self.models.get(), self.speech_models.get(),
+            self.base_url.get(), self.models.get(), self._speech_engine.get(),
         )
         qwen = {
             **self.config.raw.get("qwen", {}),
             "_runtime_base_url": base,
             "_runtime_models": models,
         }
-        if not messagebox.askyesno(
-            "云端请求授权",
-            cloud_authorization_message(qwen, aggregate=aggregate),
-            parent=self.root,
-        ):
+        brief_text = self._cloud_authorization_dialog(qwen, aggregate=aggregate)
+        if brief_text is None:
             raise ValueError("未授权云端处理")
-        return self.cloud_resolver(api_key=self.api_key.get(), base_url=base, models=tuple(models))
+        return self.cloud_resolver(
+            api_key=self.api_key.get(), base_url=base,
+            models=tuple(models), editorial_brief=brief_text,
+        )
+
+    def _default_editorial_brief(self) -> str:
+        try:
+            path = self.config.root / EDITORIAL_BRIEF_FILENAME
+            if path.is_file():
+                text = path.read_text(encoding="utf-8").strip()
+                if text:
+                    return text[:MAX_EDITORIAL_BRIEF_CHARS]
+        except OSError:
+            pass
+        return DEFAULT_EDITORIAL_BRIEF_TEXT.strip()
+
+    def _cloud_authorization_dialog(self, qwen: dict, *, aggregate: bool) -> str | None:
+        dialog = tk.Toplevel(self.root)
+        dialog.title("云端优化授权与本次整理要求")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.resizable(True, True)
+        result: dict[str, str | None] = {"brief": None}
+
+        frame = ttk.Frame(dialog, style="Card.TFrame", padding=18)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(
+            frame, text="云端优化授权", style="Card.TLabel",
+            font=("Microsoft YaHei UI", 14, "bold"),
+        ).pack(anchor="w")
+        notice = tk.Text(
+            frame, height=6, wrap="word", relief="flat",
+            bg=self.CARD, fg="#4d353a", font=("Microsoft YaHei UI", 9),
+            padx=0, pady=8,
+        )
+        notice.pack(fill="x", pady=(6, 10))
+        notice.insert("end", cloud_authorization_message(qwen, aggregate=aggregate))
+        notice.configure(state="disabled")
+
+        ttk.Label(
+            frame,
+            text="本次整理要求（可修改；只影响本次云端规划/整理，不会自动保存）",
+            style="Card.TLabel",
+            font=("Microsoft YaHei UI", 10, "bold"),
+        ).pack(anchor="w", pady=(0, 4))
+        brief_box = tk.Text(
+            frame, height=11, wrap="word", bg="#ffffff", fg=self.INK,
+            font=("Microsoft YaHei UI", 9), padx=8, pady=8,
+        )
+        brief_box.pack(fill="both", expand=True)
+        brief_box.insert("1.0", self._default_editorial_brief())
+        counter = tk.StringVar(value="")
+        ttk.Label(frame, textvariable=counter, style="Card.TLabel").pack(anchor="e", pady=(4, 8))
+
+        def update_counter(_event=None) -> None:
+            count = len(brief_box.get("1.0", "end-1c").strip())
+            counter.set(f"{count} / {MAX_EDITORIAL_BRIEF_CHARS} 字")
+
+        def approve() -> None:
+            text = brief_box.get("1.0", "end-1c").strip()
+            if not text:
+                messagebox.showerror("整理要求无效", "本次整理要求不能为空", parent=dialog)
+                return
+            if len(text) > MAX_EDITORIAL_BRIEF_CHARS:
+                messagebox.showerror(
+                    "整理要求过长",
+                    f"本次整理要求超过 {MAX_EDITORIAL_BRIEF_CHARS} 字符上限（当前 {len(text)} 字符）",
+                    parent=dialog,
+                )
+                return
+            result["brief"] = text
+            dialog.destroy()
+
+        def cancel() -> None:
+            result["brief"] = None
+            dialog.destroy()
+
+        brief_box.bind("<KeyRelease>", update_counter)
+        buttons = ttk.Frame(frame, style="Card.TFrame")
+        buttons.pack(anchor="e")
+        ttk.Button(buttons, text="取消", command=cancel).pack(side="left", padx=(0, 8))
+        ttk.Button(buttons, text="确认并授权本次云端优化", style="Accent.TButton", command=approve).pack(side="left")
+        dialog.protocol("WM_DELETE_WINDOW", cancel)
+        update_counter()
+        dialog.update_idletasks()
+        width = min(900, max(720, dialog.winfo_reqwidth()))
+        height = min(720, max(560, dialog.winfo_reqheight()))
+        dialog.geometry(f"{width}x{height}")
+        self.root.wait_window(dialog)
+        return result["brief"]
 
     def open_settings(self) -> None:
         dialog = tk.Toplevel(self.root)
@@ -340,35 +443,61 @@ class DesktopView:
         ttk.Label(frame, text="模型与云端设置", style="Card.TLabel", font=("Microsoft YaHei UI", 15, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 12))
         fields = (
             ("API URL", self.base_url, False), ("API Key", self.api_key, True),
-            ("语言模型链", self.models, False), ("语音模型链", self.speech_models, False),
+            ("语言模型链", self.models, False),
         )
         for row, (label, variable, secret) in enumerate(fields, start=1):
             ttk.Label(frame, text=label, style="Card.TLabel").grid(row=row, column=0, sticky="w", padx=(0, 10), pady=5)
             ttk.Entry(frame, textvariable=variable, width=62, show="•" if secret else "").grid(row=row, column=1, sticky="ew", pady=5)
-        ttk.Checkbutton(frame, text="记住 API Key（仅写入本机 .env）", variable=self.remember_key).grid(row=5, column=1, sticky="w", pady=(8, 3))
+
+        speech_options = ("faster-whisper（高速）", "Qwen3-ASR（方言）")
+        speech_values = {"faster-whisper（高速）": "faster-whisper", "Qwen3-ASR（方言）": "qwen3-asr-0.6b"}
+        speech_labels = {v: k for k, v in speech_values.items()}
+        current_speech_label = speech_labels.get(self._speech_engine.get(), "faster-whisper（高速）")
+        speech_var = tk.StringVar(value=current_speech_label)
+        ttk.Label(frame, text="本地语音模型", style="Card.TLabel").grid(row=4, column=0, sticky="w", padx=(0, 10), pady=5)
+        speech_box = ttk.Combobox(frame, textvariable=speech_var, values=speech_options, state="readonly", width=30)
+        speech_box.grid(row=4, column=1, sticky="w", pady=5)
+        ttk.Label(
+            frame,
+            text="首选失败时会自动尝试另一模型，并标记为降级。",
+            style="Card.TLabel",
+        ).grid(row=5, column=1, sticky="w", pady=(0, 3))
+
+        remember_var = tk.BooleanVar(value=self.remember_key.get())
+        chk = tk.Checkbutton(
+            frame,
+            text="记住 API Key（仅写入本机 .env）",
+            variable=remember_var,
+            font=("Microsoft YaHei UI", 9),
+            bg=self.CARD, fg="#4d353a", activebackground=self.CARD, activeforeground="#4d353a",
+            selectcolor=self.CARD,
+        )
+        chk.grid(row=6, column=1, sticky="w", pady=(8, 3))
         ttk.Label(
             frame,
             text="保存只更新本地配置，不会自动联网测试；每次真实云请求仍需单独授权。",
             style="Card.TLabel",
-        ).grid(row=6, column=0, columnspan=2, sticky="w", pady=(2, 12))
+        ).grid(row=7, column=0, columnspan=2, sticky="w", pady=(2, 12))
         buttons = ttk.Frame(frame, style="Card.TFrame")
-        buttons.grid(row=7, column=0, columnspan=2, sticky="e")
+        buttons.grid(row=8, column=0, columnspan=2, sticky="e")
         ttk.Button(buttons, text="取消", command=dialog.destroy).pack(side="left", padx=(0, 8))
 
         def save() -> None:
             try:
+                speech_internal = speech_values.get(speech_var.get(), "faster-whisper")
                 base, models, speech = validate_desktop_settings(
-                    self.base_url.get(), self.models.get(), self.speech_models.get(),
+                    self.base_url.get(), self.models.get(), speech_internal,
                 )
                 save_desktop_settings(
                     self.config, base, models, speech, self.content_level.get(),
                     VISUAL_TEACHING_LEVELS[self.visual_level.get()],
                 )
-                if self.remember_key.get():
+                if remember_var.get():
                     save_api_credentials(self.config, self.api_key.get(), base)
                 self.base_url.set(base)
                 self.models.set("，".join(models))
-                self.speech_models.set("，".join(speech))
+                self._speech_engine.set(speech_internal)
+                self.remember_key.set(remember_var.get())
                 self.status.set("设置已保存；未发起任何云端请求")
                 dialog.destroy()
             except (OSError, ValueError) as exc:
@@ -507,23 +636,34 @@ class DesktopView:
 
     def _drain_events(self) -> None:
         changed = False
+        latest_message = ""
+        latest_detail = ""
         for event in drain_ui_events(self.controller.events):
             if event.kind == "aggregate" and event.payload:
                 self.aggregate_result = dict(event.payload)
             if event.message:
+                latest_message = event.message
+                latest_detail = event.detail
                 self.status.set(event.message)
-                self._append_log(event.message)
             changed = True
         if changed:
+            self._update_status_display(latest_message, latest_detail)
             self._refresh()
         delay = 1 if not self.controller.events.empty() else 80
         self._drain_after_id = self.root.after(delay, self._drain_events)
 
-    def _append_log(self, message: str) -> None:
+    def _update_status_display(self, message: str, detail: str) -> None:
+        """两行独立显示：第一行业务消息，第二行进度/建议。"""
         self.log.configure(state="normal")
-        rows = (self.log.get("1.0", "end-1c").splitlines() + [message])[-4:]
         self.log.delete("1.0", "end")
-        self.log.insert("end", "\n".join(rows))
+        lines = []
+        if message:
+            lines.append(message)
+        if detail and detail != message:
+            lines.append(detail)
+        if not lines:
+            lines.append("等待任务。真实云端请求只会在展示数据、端点、模型链和预算并获得授权后发起。")
+        self.log.insert("end", "\n".join(lines[:2]))
         self.log.configure(state="disabled")
 
     def _values(self, item: QueueItem, position: int) -> tuple[str, ...]:
@@ -535,9 +675,8 @@ class DesktopView:
         )
         stage = STAGE_LABELS.get(item.stage, item.stage)
         return (
-            str(position), "☑" if item.checked else "☐", item.path.name, item.status, stage,
-            f"{item.progress}%", format_duration(item.elapsed),
-            format_eta(item.eta, item.estimating), tokens,
+            str(position), "✓" if item.checked else "☐", item.path.name, item.status, stage,
+            f"{item.progress}%", format_duration(item.elapsed), tokens,
         )
 
     def _refresh(self) -> None:

@@ -25,6 +25,7 @@ class QueueItem:
     stage: str = "queued"
     progress: int = 0
     message: str = ""
+    detail: str = ""
     started_at: float | None = None
     elapsed: float = 0.0
     eta: float | None = None
@@ -36,6 +37,8 @@ class QueueItem:
         self.elapsed = 0.0
         self.eta = None
         self.estimating = True
+        self.message = "正在准备"
+        self.detail = ""
 
     def update_elapsed(self) -> None:
         if self.started_at is not None:
@@ -62,5 +65,6 @@ class UiEvent:
     state: DesktopState
     item_path: Path | None = None
     message: str = ""
+    detail: str = ""
     progress: int = 0
     payload: dict[str, Any] = field(default_factory=dict)

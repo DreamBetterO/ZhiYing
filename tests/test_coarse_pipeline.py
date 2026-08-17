@@ -139,6 +139,21 @@ class CoarseProductionPipelineTests(unittest.TestCase):
             ),
         )
 
+    def test_truncated_extracted_audio_blocks_downstream_asr(self) -> None:
+        def probe(path: Path) -> dict:
+            if path.suffix.lower() == ".flac":
+                return {"format": {"duration": "20.0"}}
+            return {"format": {"duration": "100.0"}}
+
+        with ExitStack() as stack:
+            stack.enter_context(patch("video_study.media.MediaAdapter.probe", side_effect=probe))
+            stack.enter_context(patch("video_study.media.MediaAdapter.extract_audio", side_effect=self._audio))
+            decode = stack.enter_context(patch("video_study.asr.SpeechAdapter.decode", side_effect=self._decode))
+            with self.assertRaisesRegex(RuntimeError, "音频提取不完整"):
+                process_video(self.config, self.video, cloud_summary=False)
+
+        decode.assert_not_called()
+
     def test_production_runner_outputs_compatibility_result_and_structured_state(self) -> None:
         events = []
         with self.fake_middleware():

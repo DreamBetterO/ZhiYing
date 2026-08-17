@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import multiprocessing
 import os
 import sys
 from pathlib import Path
@@ -19,6 +20,7 @@ def _cloud_authorization(settings: dict):
 
 
 def main() -> None:
+    multiprocessing.freeze_support()
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")

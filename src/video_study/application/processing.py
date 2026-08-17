@@ -23,6 +23,7 @@ def resolve_cloud_authorization(
     api_key: str = "",
     base_url: str = "",
     models: tuple[str, ...] = (),
+    editorial_brief: str = "",
 ) -> "CloudAuthorization":
     from .requests import CloudAuthorization
     qwen = config.raw.get("qwen", {})
@@ -47,6 +48,7 @@ def resolve_cloud_authorization(
     return CloudAuthorization(
         True, key, endpoint, chain,
         max_calls=int(qwen.get("budget", {}).get("max_calls_per_video", len(chain))),
+        editorial_brief=editorial_brief,
     )
 
 

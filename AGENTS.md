@@ -4,7 +4,7 @@ Current baseline: **V4.0 architecture upgrade complete** / product version `0.4.
 
 The production path is the 15-step `StepRegistry -> PipelineRunner -> ArtifactStore/WorkspaceCache` execution kernel. `pipeline.py` is only the public compatibility facade. Course IR, one VLM session per video, compact CloudPayload, Canonical Document v2, task ETA, and the Application/Desktop split are the only default contracts.
 
-Before changing this project, read `CODELY.md` for project context, then `MEMORY.md` and `迭代升级/AI执行入口.md` linked from it.
+Before changing this project, read `MEMORY.md` and `迭代升级/AI执行入口.md` linked from it.
 
 - Communicate with the user in Chinese unless they request otherwise.
 - Never print, copy, or commit secrets from `.env`.
@@ -37,6 +37,7 @@ The timeline already contains the single user-approved V4.0 entry. V4.0 implemen
 - Each entry contains only: Asia/Shanghai time, user-approved version label/type, problems raised by the user, and the final solution approved by the user.
 - Do not write AI-discovered issues, reasoning traces, research notes, rejected alternatives, environment details, file lists, task plans, test results or remaining Agent work into this timeline.
 - Existing version entries are append-only and immutable. A later problem/solution cycle becomes a new entry only after the user approves the next version.
+- In the Python environment using conda, you can use the command: 'conda activate ImageT10' to activate the environment.The environment is located at  `D:\Anaconda\envs\envs\ImageT10`.
 
 Execution documents are separate. AI reasoning, architecture detail, environment constraints, implementation stages, file-level tasks, tests and hand-off notes may be maintained under `迭代升级/` as needed for efficient and accurate work. Markdown is not required; use compact YAML/JSON/text when that is easier for Agents to query. Create or keep only information that prevents repeated investigation or directly improves execution, link useful files from `AI执行入口.md`, and remove stale duplication. These files do not require a timeline entry and must never be copied into `迭代记录与问题.md` unless the user later approves their product problem/solution as a new version.
 

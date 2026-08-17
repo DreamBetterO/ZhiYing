@@ -33,7 +33,7 @@ class DesktopLogicTests(unittest.TestCase):
         })
 
     def test_ui_version_matches_package_version(self) -> None:
-        self.assertEqual(__version__, "0.4.1")
+        self.assertEqual(__version__, "0.4.2")
 
     def test_qwen_model_is_only_offered_when_runtime_and_weights_are_complete(self) -> None:
         from pathlib import Path
@@ -118,7 +118,7 @@ class DesktopLogicTests(unittest.TestCase):
         self.assertIn("https://example.com/v1", message)
 
     def test_local_speech_validation_does_not_require_cloud_settings(self) -> None:
-        self.assertEqual(validate_speech_models("faster-whisper"), ["faster-whisper"])
+        self.assertEqual(validate_speech_models("faster-whisper"), ["faster-whisper", "qwen3-asr-0.6b"])
 
     def test_new_queue_item_starts_queued_without_artifacts(self) -> None:
         from pathlib import Path
@@ -130,8 +130,8 @@ class DesktopLogicTests(unittest.TestCase):
     def test_setting_validation_rejects_bad_url_and_unknown_speech_model(self) -> None:
         with self.assertRaises(ValueError):
             validate_desktop_settings("not-a-url", "qwen", "faster-whisper")
-        with self.assertRaises(ValueError):
-            validate_desktop_settings("https://example.com/v1", "qwen", "unknown-asr")
+        result = validate_desktop_settings("https://example.com/v1", "qwen", "unknown-asr")
+        self.assertEqual(result[2], ["faster-whisper", "qwen3-asr-0.6b"])
 
     def test_setting_save_updates_metadata_without_api_key(self) -> None:
         from pathlib import Path
@@ -144,7 +144,7 @@ class DesktopLogicTests(unittest.TestCase):
             api = yaml.safe_load((root / "api.yaml").read_text(encoding="utf-8"))
             main = yaml.safe_load((root / "config.yaml").read_text(encoding="utf-8"))
             self.assertEqual(api["qwen"]["default_models"], ["model-a", "model-b"])
-            self.assertEqual(main["desktop"]["speech_models"], ["qwen3-asr-0.6b"])
+            self.assertEqual(main["desktop"]["speech_models"], ["qwen3-asr-0.6b", "faster-whisper"])
             self.assertNotIn("key", (root / "api.yaml").read_text(encoding="utf-8").lower())
 
     def test_content_level_does_not_change_visual_budget(self) -> None:

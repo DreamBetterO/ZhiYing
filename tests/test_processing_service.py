@@ -13,10 +13,14 @@ from video_study.progress import ProgressEvent
 
 class ProcessingServiceTests(unittest.TestCase):
     def test_public_dtos_are_secret_safe_and_handle_cancel_is_idempotent(self) -> None:
-        auth = CloudAuthorization(True, "secret", "https://example.com/v1", ("model",), max_calls=2)
+        auth = CloudAuthorization(
+            True, "secret", "https://example.com/v1", ("model",),
+            max_calls=2, editorial_brief="按主题重组",
+        )
         request = ProcessingRequest(Path("lesson.mp4"), cloud=auth)
         self.assertNotIn("secret", repr(auth))
         self.assertNotIn("secret", repr(request))
+        self.assertEqual(auth.legacy_settings({})["_runtime_editorial_brief"], "按主题重组")
         handle = ProcessingHandle()
         handle.cancel(); handle.cancel()
         self.assertTrue(handle.cancelled())

@@ -22,6 +22,11 @@ class AggregateTests(unittest.TestCase):
         self.assertTrue(all(len(_aggregate_prompt(chunk, "推荐", intermediate=True)) <= 60000 for chunk in chunks))
         self.assertLess(max(map(len, chunks)) - min(map(len, chunks)), 3000)
 
+    def test_aggregate_prompt_accepts_ephemeral_editorial_brief(self) -> None:
+        prompt = _aggregate_prompt("point_0001: 内容", "推荐", editorial_brief="按主题重组，突出易错点。")
+        self.assertIn("整理偏好", prompt)
+        self.assertIn("按主题重组，突出易错点。", prompt)
+
     def test_source_accepts_document_v2_without_persisted_legacy_body(self) -> None:
         v2 = v1_to_v2({
             "schema_version": 1,

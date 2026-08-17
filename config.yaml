@@ -5,7 +5,7 @@ paths:
   model_dir: models/faster-whisper-small
 api_config: api.yaml
 asr:
-  engine: qwen3-asr-0.6b
+  engine: faster-whisper
   model_id: Systran/faster-whisper-small
   device: auto
   compute_type: int8_float16
@@ -16,6 +16,7 @@ asr:
   qwen_model_dir: models/qwen3-asr-0.6b-hf
   qwen_runner: scripts/qwen_asr_runner.py
   qwen_chunk_seconds: 60
+  qwen_max_rtf: 0.75
   hotwords:
   - 医学
   - 解剖
@@ -65,9 +66,9 @@ render:
   offline_points_per_section: 2
 desktop:
   speech_models:
-  - qwen3-asr-0.6b
   - faster-whisper
-  content_level: 推荐
+  - qwen3-asr-0.6b
+  content_level: 精简
   visual_teaching_level: enhanced
   watermark:
     text: powed by Fx

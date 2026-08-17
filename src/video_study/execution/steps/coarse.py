@@ -90,6 +90,49 @@ def _cancelled_exception(exc: BaseException) -> bool:
     return isinstance(exc, ExecutionCancelled) or type(exc).__name__ == "TaskCancelled"
 
 
+def _duration_from_probe(probe: Mapping[str, Any]) -> float:
+    return max(0.0, float(probe.get("format", {}).get("duration", 0.0) or 0.0))
+
+
+def _source_duration_seconds(context: ProcessingContext) -> float:
+    manifest_path = context.workspace.artifact_paths(SOURCE_MANIFEST)[0]
+    if manifest_path.is_file():
+        try:
+            return max(0.0, float(_json(manifest_path).get("duration_seconds", 0.0) or 0.0))
+        except (OSError, ValueError, json.JSONDecodeError):
+            pass
+    return max(0.0, float(context.source.duration_seconds or 0.0))
+
+
+def _validate_audio_duration_coverage(context: ProcessingContext, step_id: str, audio_path: Path) -> None:
+    source_duration = _source_duration_seconds(context)
+    if source_duration <= 60.0:
+        return
+    try:
+        audio_duration = _duration_from_probe(context.services.port("media").probe(audio_path))
+    except Exception as exc:
+        raise ValueError(f"无法读取提取音频的时长，已停止后续转写：{type(exc).__name__}: {exc}") from exc
+
+    min_duration = source_duration * 0.95
+    if audio_duration + 1.0 >= min_duration:
+        return
+
+    coverage = (audio_duration / source_duration) if source_duration else 0.0
+    message = (
+        "音频提取不完整："
+        f"源视频 {source_duration:.1f}s，提取音频 {audio_duration:.1f}s，覆盖率 {coverage:.1%}。"
+        "这通常表示源视频音频流损坏或 ffmpeg 解码提前中断；"
+        "已停止 ASR 和文档生成，避免生成截断的视频回看链接。"
+    )
+    _emit(
+        context, step_id, "audio", "error", message, "audio_extract_incomplete",
+        source_duration_seconds=round(source_duration, 3),
+        audio_duration_seconds=round(audio_duration, 3),
+        coverage_ratio=round(coverage, 4),
+    )
+    raise ValueError(message)
+
+
 @dataclass
 class SourceProbeStep:
     spec = StepSpec(
@@ -139,7 +182,7 @@ class SourceProbeStep:
 @dataclass
 class AudioExtractStep:
     spec = StepSpec(
-        "audio.extract", 1, dependencies=("source.probe",),
+        "audio.extract", 2, dependencies=("source.probe",),
         inputs=(SOURCE_MANIFEST,), outputs=(AUDIO_FLAC,),
         config_keys=(), remote_cost=RemoteCost.LOCAL_HEAVY,
         owner="video_study.execution.steps.coarse",
@@ -181,9 +224,11 @@ class AudioExtractStep:
             artifacts=(ArtifactRef(AUDIO_FLAC, output),),
         )
 
-    def validate(self, _context, outcome: StepOutcome) -> None:
-        if not outcome.artifacts[0].path.is_file() or outcome.artifacts[0].path.stat().st_size == 0:
+    def validate(self, context, outcome: StepOutcome) -> None:
+        audio_path = outcome.artifacts[0].path
+        if not audio_path.is_file() or audio_path.stat().st_size == 0:
             raise ValueError("音频 Artifact 缺失或为空")
+        _validate_audio_duration_coverage(context, self.spec.step_id, audio_path)
 
 
 @dataclass
@@ -217,18 +262,24 @@ class TranscriptDecodeStep:
         audio_seconds = max(1.0, float(manifest.get("duration_seconds", 0.0) or 0.0))
         options = dict(context.options.asr)
         options["_duration_seconds"] = audio_seconds
-        engines = list(options.pop("_engine_chain", (options.get("engine", "faster-whisper"),)))
+        engines = list(options.pop("engine_chain", None) or (options.get("engine", "faster-whisper"),))
         _stage_progress(context, "asr", "正在执行本地语音识别", 30)
         last_error: BaseException | None = None
         transcript: dict[str, Any] | None = None
         started = time.monotonic()
+        used_engine: str | None = None
         for index, engine in enumerate(engines):
             current = {**options, "engine": engine, "context": str(manifest.get("title", ""))}
             _stage_progress(context, "asr", f"正在使用 {engine} 执行语音识别", 20)
 
+            last_percent = [20]
+
             def progress(fraction: float) -> None:
                 bounded = max(0.0, min(1.0, fraction))
-                _stage_progress(context, "asr", "正在执行本地语音识别", 20 + int(bounded * 40))
+                percent = 20 + int(bounded * 40)
+                if percent != last_percent[0]:
+                    last_percent[0] = percent
+                    _stage_progress(context, "asr", "正在执行本地语音识别", percent)
                 _task_progress(context, ProgressEvent(
                     "asr", "audio_second", bounded * audio_seconds, audio_seconds, False,
                     task_id="asr.transcribe", cache_state="miss", bucket=f"{engine}|{options.get('device', 'auto')}",
@@ -240,6 +291,7 @@ class TranscriptDecodeStep:
                     cancel_check=context.services.cancelled,
                     progress=progress,
                 )
+                used_engine = engine
                 break
             except BaseException as exc:
                 if _cancelled_exception(exc):
@@ -249,22 +301,25 @@ class TranscriptDecodeStep:
                     _emit(
                         context, self.spec.step_id, "asr", "warning",
                         f"语音模型 {engine} 失败，已降级到 {engines[index + 1]}：{type(exc).__name__}: {exc}",
-                        "asr_engine_fallback", failed_engine=engine, next_engine=engines[index + 1],
+                        "asr_attempt_degraded", failed_engine=engine, next_engine=engines[index + 1],
                     )
         if transcript is None:
             raise last_error or RuntimeError("所有语音模型均不可用")
-        engine = str(transcript.get("engine") or engines[0])
+        engine = str(transcript.get("engine") or used_engine or engines[0])
+        degraded = used_engine != engines[0] or bool(transcript.get("fallbacks"))
         _task_progress(context, ProgressEvent(
             "asr", "audio_second", audio_seconds, audio_seconds, False,
             max(0.001, time.monotonic() - started) / audio_seconds,
             task_id="asr.transcribe", cache_state="miss", bucket=f"{engine}|{transcript.get('device', options.get('device', 'auto'))}",
         ))
         return StepOutcome(
-            self.spec.step_id, context.run_id, StepStatus.SUCCEEDED,
+            self.spec.step_id, context.run_id,
+            StepStatus.DEGRADED if degraded else StepStatus.SUCCEEDED,
             artifacts=(ArtifactRef(TRANSCRIPT_RAW, output),),
             diagnostics={
                 "engine": transcript.get("engine"), "device": transcript.get("device"),
                 "compute_type": transcript.get("compute_type"),
+                "degraded": degraded,
             },
         )
 

@@ -56,11 +56,12 @@ def validate_desktop_settings(base_url: str, llm_value: str, speech_value: str) 
 
 
 def validate_speech_models(speech_value: str) -> list[str]:
-    speech_models = model_names(speech_value) or ["qwen3-asr-0.6b", "faster-whisper"]
-    unknown = [name for name in speech_models if name not in {"faster-whisper", "qwen3-asr-0.6b"}]
-    if unknown:
-        raise ValueError(f"尚未接入的语音模型：{'、'.join(unknown)}")
-    return speech_models
+    """接收首选引擎名称，返回首选 + 后备的完整引擎链。"""
+    primary = str(speech_value or "").strip()
+    if primary not in {"faster-whisper", "qwen3-asr-0.6b"}:
+        primary = "faster-whisper"
+    fallback = "qwen3-asr-0.6b" if primary == "faster-whisper" else "faster-whisper"
+    return [primary, fallback]
 
 
 def validate_input(value: DesktopSettingsInput) -> ValidatedDesktopSettings:

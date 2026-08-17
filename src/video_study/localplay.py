@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 from .config import AppConfig
 from .runtime import find_tool
 from .execution.artifacts import WorkspaceCatalog
+from .utils import background_process_kwargs
 
 
 SCHEME = "video-study"
@@ -29,7 +30,7 @@ def launch_local_player(video: Path, seconds: int | float = 0) -> bool:
         subprocess.Popen(
             [ffplay, "-ss", f"{start:.3f}", "-i", str(video), "-autoexit", "-window_title", video.name],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            **background_process_kwargs(),
         )
         return True
     os.startfile(video)  # type: ignore[attr-defined]

@@ -13,6 +13,31 @@ from typing import Any, Callable
 from .artifacts import SOURCE_MANIFEST, WorkspaceLayout, _atomic_write_json
 
 
+_ASR_EVENT_CODES = frozenset({
+    "asr_attempt_started",
+    "asr_model_load_started",
+    "asr_model_load_completed",
+    "asr_chunk_completed",
+    "asr_attempt_degraded",
+    "asr_attempt_succeeded",
+    "asr_attempt_failed",
+    "asr_attempt_cancelled",
+    "asr_model_loading",
+    "asr_completed",
+    "asr_cuda_fallback",
+    "asr_engine_fallback",
+})
+
+_LOG_DETAIL_KEYS = (
+    "status", "cache_reason", "error_code", "duration_seconds",
+    "attempt_id", "engine", "device", "compute_type",
+    "chunk_index", "chunk_total", "exit_code",
+    "failed_engine", "next_engine",
+)
+
+_SUMMARY_MIN_DELTA = 8
+
+
 class RunEventJournal:
     """每次运行的完整、无密钥执行日志单写入者。"""
 
@@ -54,6 +79,7 @@ class RunEventJournal:
         self.finished = False
         self._sequence = 0
         self._started_monotonic = 0.0
+        self._last_summary_sequence = 0
         self._lock = threading.RLock()
 
     @staticmethod
@@ -130,6 +156,15 @@ class RunEventJournal:
     def publish(self, event: dict[str, Any]) -> None:
         with self._lock:
             row = dict(self._sanitize(event))
+            code = str(row.get("code", ""))
+            if not row.get("type") or row.get("type") == "runtime":
+                if code in _ASR_EVENT_CODES:
+                    row["type"] = "asr"
+                elif code.startswith("asr_"):
+                    row["type"] = "asr"
+            if not row.get("step_id") or row.get("step_id") == "runtime":
+                if code in _ASR_EVENT_CODES or code.startswith("asr_"):
+                    row.setdefault("step_id", "transcript.decode")
             self._sequence += 1
             row.setdefault("timestamp", self._now())
             row.setdefault("run_id", self.run_id)
@@ -151,7 +186,7 @@ class RunEventJournal:
             with self.jsonl_path.open("a", encoding="utf-8") as stream:
                 stream.write(json.dumps(row, ensure_ascii=False, sort_keys=True, default=str) + "\n")
             details = []
-            for key in ("status", "cache_reason", "error_code", "duration_seconds"):
+            for key in _LOG_DETAIL_KEYS:
                 value = row.get(key)
                 if value not in (None, ""):
                     details.append(f"{key}={value}")
@@ -162,15 +197,24 @@ class RunEventJournal:
                     f"{row.get('step_id', 'runtime')} {row.get('code', 'runtime_event')} "
                     f"{row.get('message', '')}{suffix}\n"
                 )
+            should_summary = False
             if row.get("type") == "step_state":
                 self._update_state(row)
                 self._update_legacy_manifest(row)
-                if self.started_at and not self.finished:
+                should_summary = True
+            elif row.get("type") == "step_lifecycle":
+                should_summary = True
+            elif row.get("level") in {"warning", "error"}:
+                should_summary = True
+            if should_summary and self.started_at and not self.finished:
+                delta = self._sequence - self._last_summary_sequence
+                is_terminal = row.get("code") in {
+                    "step_succeeded", "step_degraded", "step_failed",
+                    "step_cancelled", "step_cached", "step_skipped",
+                }
+                if is_terminal or delta >= _SUMMARY_MIN_DELTA:
                     self._write_summary("running")
-            elif row.get("type") == "step_lifecycle" and self.started_at and not self.finished:
-                self._write_summary("running")
-            elif row.get("level") in {"warning", "error"} and self.started_at and not self.finished:
-                self._write_summary("running")
+                    self._last_summary_sequence = self._sequence
             callback = self.callback
         if callback:
             callback(dict(row))
@@ -288,6 +332,29 @@ class RunEventJournal:
         try:
             _atomic_write_json(manifest_path, manifest)
         except OSError:
-            # 兼容 manifest 可能被桌面进程或安全软件短暂占用；执行事实已写入
-            # JSONL/state，不能让这份派生索引反向破坏业务 Step 的终态。
             return
+
+    @staticmethod
+    def derive_interrupted(summary: dict[str, Any]) -> str:
+        """检查一个 summary 是否应从 running 派生为 interrupted。
+
+        进程崩溃或强退无法写终态时，下一次读取用此方法判断：
+        如果 summary 状态仍为 running 且其 owner PID 已不存在，则派生为 interrupted。
+        """
+        if summary.get("status") != "running":
+            return str(summary.get("status", "unknown"))
+        metadata = summary.get("metadata") or {}
+        runtime = metadata.get("runtime") or {}
+        pid = runtime.get("process_id")
+        if pid is None:
+            return "interrupted"
+        try:
+            import psutil
+            if not psutil.pid_exists(int(pid)):
+                return "interrupted"
+        except ImportError:
+            try:
+                os.kill(int(pid), 0)
+            except (OSError, ProcessLookupError):
+                return "interrupted"
+        return "running"
