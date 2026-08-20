@@ -1,5 +1,17 @@
 schema_version: 1
 errors:
+  - {prefix: URL_INVALID, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
+  - {prefix: SOURCE_UNSUPPORTED_SITE, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
+  - {prefix: SOURCE_UNAVAILABLE, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
+  - {prefix: SOURCE_NOT_VIDEO, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
+  - {prefix: SOURCE_LOGIN_REQUIRED, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
+  - {prefix: SOURCE_REGION_LOCKED, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
+  - {prefix: SOURCE_DRM, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
+  - {prefix: SOURCE_LIVE_UNSUPPORTED, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
+  - {prefix: DOWNLOAD_TIMEOUT, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
+  - {prefix: DOWNLOAD_TOO_LARGE, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
+  - {prefix: DOWNLOAD_INCOMPLETE, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
+  - {prefix: DOWNLOAD_FAILED, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
   - {prefix: SOURCE, owner: video_study.execution.steps.coarse, first_artifact: source.manifest, tests: [tests/test_coarse_pipeline.py], safe_rerun_from: source.probe}
   - {prefix: AUDIO, owner: video_study.execution.steps.coarse, first_artifact: audio.flac, tests: [tests/test_coarse_pipeline.py], safe_rerun_from: audio.extract}
   - {prefix: TRANSCRIPT_DECODE, owner: video_study.execution.steps.coarse, first_artifact: transcript.raw, tests: [tests/test_fine_pipeline.py], safe_rerun_from: transcript.decode}

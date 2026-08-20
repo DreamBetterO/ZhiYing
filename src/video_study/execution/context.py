@@ -49,6 +49,8 @@ class VideoSource:
     fingerprint: str
     duration_seconds: float
     size_bytes: int
+    source_url: str = ""
+    display_title: str = ""
 
     def __post_init__(self) -> None:
         resolved = self.path.expanduser().resolve()
@@ -164,6 +166,8 @@ class ProcessingContext:
                 "fingerprint": self.source.fingerprint,
                 "duration_seconds": self.source.duration_seconds,
                 "size_bytes": self.source.size_bytes,
+                "source_url": self.source.source_url,
+                "display_title": self.source.display_title,
             },
             "workspace": {
                 "root": str(self.workspace.root),

@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from types import MappingProxyType
 from typing import Any, Callable, Iterable, Mapping, Protocol, TYPE_CHECKING
+from urllib.parse import urlsplit
 
 if TYPE_CHECKING:
     from .context import ProcessingContext
@@ -417,6 +418,23 @@ class WorkspaceEntry:
         return self.layout.artifact_paths(DOCUMENT_V2)[0]
 
 
+def _normalize_for_url_match(url: str) -> str:
+    """轻量 URL 规范化用于缓存命中比较：补协议、去尾斜杠、去跟踪参数。"""
+    raw = str(url or "").strip()
+    if not raw:
+        return ""
+    if "://" not in raw:
+        raw = "https://" + raw
+    try:
+        parts = urlsplit(raw)
+    except ValueError:
+        return ""
+    if not parts.netloc:
+        return ""
+    path = parts.path.rstrip("/")
+    return f"{parts.scheme}://{parts.netloc.lower()}{path}"
+
+
 class WorkspaceCatalog:
     def __init__(self, workspace_root: Path, *, project_root: Path | None = None) -> None:
         self.workspace_root = workspace_root.expanduser().resolve()
@@ -454,6 +472,17 @@ class WorkspaceCatalog:
                 return entry
         return None
 
+    def find_by_url(self, url: str) -> WorkspaceEntry | None:
+        """按规范化链接命中既有 Workspace（下载前即可命中，避免重复下载/重复 ASR）。"""
+        expected = _normalize_for_url_match(url)
+        if not expected:
+            return None
+        for entry in self.entries():
+            actual = _normalize_for_url_match(str(entry.manifest.get("source_url", "")))
+            if actual and actual == expected:
+                return entry
+        return None
+
     def document_for_manifest(self, manifest_path: Path) -> Path:
         resolved = manifest_path.expanduser().resolve()
         if resolved.parent.parent != self.workspace_root:
@@ -464,16 +493,33 @@ class WorkspaceCatalog:
         return layout.artifact_paths(DOCUMENT_V2)[0]
 
     def delete_video(self, source: Path, output_root: Path | None = None) -> bool:
+        """清除派生产物；链接源（D4）保留下载文件（workspace/<id>/source/），视作原视频。"""
         entry = self.find_by_source(source)
         if not entry:
             return False
-        self._safe_remove(entry.layout.video_root, self.workspace_root)
+        if str(entry.manifest.get("source_url") or ""):
+            self._delete_url_source_derivatives(entry, self.workspace_root)
+        else:
+            self._safe_remove(entry.layout.video_root, self.workspace_root)
         if output_root is not None:
             resolved_output = output_root.expanduser().resolve()
             target = resolved_output / str(entry.manifest["video_id"])
             if target.exists():
                 self._safe_remove(target, resolved_output)
         return True
+
+    def _delete_url_source_derivatives(self, entry: WorkspaceEntry, workspace_root: Path) -> None:
+        """链接源：删除除 source/ 下载目录外的全部派生产物，保留原视频文件。"""
+        video_root = entry.layout.video_root
+        resolved_root = workspace_root.resolve()
+        self._assert_safe_root(resolved_root)
+        if not video_root.is_dir():
+            return
+        keep = video_root / "source"
+        for child in tuple(video_root.iterdir()):
+            if child.resolve() == keep.resolve():
+                continue
+            self._safe_remove(child, workspace_root)
 
     def clear(self) -> int:
         self._assert_safe_root(self.workspace_root)

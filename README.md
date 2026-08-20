@@ -48,8 +48,8 @@ MP4 → 音频/关键帧 → 带时间戳转写 JSON → 知识 JSON
 src/video_study/   产品源码
 tests/             自动化测试
 scripts/           开发与渲染辅助脚本
-docs/              当前文档索引
-迭代升级/          执行事实、已批准版本与现行架构任务书
+docs/              项目索引与执行入口
+docs/迭代升级/     执行事实、已批准版本与现行架构任务书
 icon/              桌面窗口图标
 Resource/ 视频/    用户输入数据
 workspace/ output/ 可恢复中间数据与最终文档
@@ -68,4 +68,4 @@ models/            本地模型和运行时
 git diff --check
 ```
 
-详细的项目交接、执行事实和现行架构说明见 [项目文档索引](docs/README.md)。
+详细的项目交接、执行事实和现行架构说明见 [项目索引](docs/项目索引.md)。

@@ -24,7 +24,7 @@ class DesktopController:
 
     def add(self, paths: list[Path]) -> None:
         self._require_idle("添加视频")
-        existing = {item.path.resolve() for item in self.items}
+        existing = {item.path.resolve() for item in self.items if item.path is not None}
         for raw in paths:
             path = raw.expanduser().resolve()
             if path not in existing:
@@ -36,6 +36,65 @@ class DesktopController:
                 self.items.append(item)
                 existing.add(path)
         self._emit("queue")
+
+    def add_url(self, url: str) -> None:
+        """添加链接源：后台预检+下载，完成后进入「已就绪」，发布 source_ready 事件。"""
+        self._require_idle("添加链接")
+        source_url = str(url or "").strip()
+        if not source_url:
+            raise ValueError("链接不能为空")
+        if any(item.source_kind == "url" and item.source_url == source_url for item in self.items):
+            raise ValueError("该链接已在队列中")
+        item = QueueItem(source_kind="url", source_url=source_url, selected=False)
+        item.status, item.stage = "下载中", "downloading"
+        self.items.append(item)
+        self._emit("queue")
+
+        def worker() -> None:
+            try:
+                def download_progress(event) -> None:
+                    percent = int(event.get("percent") or 0)
+                    item.progress = max(0, min(100, percent))
+                    item.detail = (
+                        "正在合并音视频" if event.get("phase") == "merge"
+                        else f"下载中 {percent}%"
+                    )
+                    self._emit("progress", item, "正在下载视频", item.detail)
+
+                acquired = self.service.download_url(
+                    source_url, progress=download_progress,
+                    cancel_check=lambda: self.state == DesktopState.CANCELLING,
+                )
+                if self.state == DesktopState.CANCELLING:
+                    item.status, item.stage = "已取消", "cancelled"
+                    self._emit("queue", item, "下载已取消")
+                    return
+                item.path = Path(str(acquired["path"]))
+                item.detail_title = str(acquired.get("title") or item.source_url)
+                item.detail = ""
+                prior_result = self.service.cached_result(item.path)
+                if prior_result:
+                    item.status, item.stage, item.progress = "已完成", "completed", 100
+                    item.result = prior_result.to_legacy()
+                    message = "已复用既有处理结果，无需重新整理"
+                else:
+                    item.status, item.stage, item.progress = "已就绪", "ready", 100
+                    download_cached = bool(acquired.get("cached"))
+                    message = (
+                        "已复用本地缓存，无需重新下载，可勾选后点击『本地整理』开始处理"
+                        if download_cached else
+                        "视频已下载完成，可勾选后点击『本地整理』开始处理"
+                    )
+                self._emit("source_ready", item, message)
+                self._emit("queue", item, message)
+            except BaseException as exc:
+                item.status, item.stage = "失败", "failed"
+                item.message = str(exc)
+                item.detail = ""
+                self._emit("error", item, str(exc))
+                self._emit("queue", item, str(exc))
+
+        threading.Thread(target=worker, name="video-study-url-download", daemon=True).start()
 
     def remove_selected(self) -> None:
         self._require_idle("移除视频")
@@ -89,14 +148,14 @@ class DesktopController:
                 for item in selected:
                     if self.state == DesktopState.CANCELLING:
                         break
-                    cached = self.service.cached_result(item.path)
+                    cached = self.service.cached_result(item.resolved_path) if item.path is not None else None
                     if cached:
                         self._complete_item(item, cached)
                         continue
                     self.current_item = item
                     item.status = "处理中"
                     item.begin()
-                    request: ProcessingRequest = request_factory(item.path)
+                    request: ProcessingRequest = request_factory(item)
                     handle = self.service.process(request)
                     self._handle = handle
                     if self.state == DesktopState.CANCELLING:
@@ -217,10 +276,11 @@ class DesktopController:
         threading.Thread(target=worker, name="video-study-local-aggregate", daemon=True).start()
 
     def clear_selected_cache(self) -> None:
-        """清除所选视频的 Workspace、Output 和失效的派生聚合结果；保留原视频。"""
+        """清除所选视频的 Workspace、Output 和失效的派生聚合结果；保留原视频与链接源下载文件。"""
         self._require_idle("清除缓存")
         for item in [value for value in self.items if value.checked]:
-            self.service.delete_video_workspace(item.path)
+            if item.path is not None:
+                self.service.delete_video_workspace(item.path)
             item.result = {}
             item.stage, item.status, item.progress = "queued", "等待中", 0
             item.message, item.started_at, item.elapsed, item.eta, item.estimating = "", None, 0.0, None, False
@@ -292,7 +352,9 @@ class DesktopController:
     def _item(self, path: Path) -> QueueItem:
         resolved = path.resolve()
         for item in self.items:
-            if item.path.resolve() == resolved:
+            if item.path is not None and item.path.resolve() == resolved:
+                return item
+            if item.source_url and Path(item.source_url).resolve() == resolved:
                 return item
         raise KeyError(path)
 

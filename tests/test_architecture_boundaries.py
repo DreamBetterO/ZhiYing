@@ -141,7 +141,7 @@ class ArchitectureBoundaryTests(unittest.TestCase):
 
     def test_third_party_and_process_imports_stay_in_infrastructure_adapters(self) -> None:
         subprocess_allowed = {
-            "asr.py", "localplay.py", "media.py", "render.py", "utils.py",
+            "asr.py", "localplay.py", "media.py", "render.py", "source.py", "utils.py",
             "execution/adapters/vision.py",
         }
         openai_allowed = {"providers.py"}

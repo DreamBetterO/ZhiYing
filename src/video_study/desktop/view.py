@@ -17,13 +17,15 @@ from .settings import (
     qwen_asr_ready,
     save_api_credentials,
     save_desktop_settings,
+    save_source_download_dir,
+    source_download_dir,
     validate_desktop_settings,
     validate_speech_models,
 )
 
 
 PRIMARY_UI_ACTIONS = (
-    "add", "toggle_all", "remove", "clear_selected_cache", "clear_cache",
+    "add", "add_link", "toggle_all", "remove", "clear_selected_cache", "clear_cache",
     "local", "cloud", "cancel", "aggregate", "local_aggregate", "open_output", "open_video",
     "open_markdown", "open_docx", "open_pdf", "open_aggregate", "settings",
 )
@@ -107,12 +109,12 @@ class DesktopView:
             pass
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
-        width = min(1380, max(980, screen_width - 80))
+        width = min(1380, max(1040, screen_width - 80))
         height = min(940, max(700, screen_height - 100))
         left = max(0, (screen_width - width) // 2)
         top = max(0, (screen_height - height) // 2)
         self.root.geometry(f"{width}x{height}+{left}+{top}")
-        self.root.minsize(min(980, screen_width - 20), min(680, screen_height - 40))
+        self.root.minsize(min(1040, screen_width - 20), min(680, screen_height - 40))
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         dpi = max(96.0, float(self.root.winfo_fpixels("1i")))
         self.root.tk.call("tk", "scaling", dpi / 72.0)
@@ -189,12 +191,14 @@ class DesktopView:
         toolbar = ttk.Frame(outer)
         toolbar.pack(fill="x", pady=(0, 10))
         self.add_button = ttk.Button(toolbar, text="＋ 添加视频", style="Accent.TButton", command=self.add_videos)
+        self.add_link_button = ttk.Button(toolbar, text="＋ 添加链接", style="Accent.TButton", command=self.add_link_dialog)
         self.select_all_button = ttk.Button(toolbar, text="全选", style="Soft.TButton", command=self.toggle_all)
         self.remove_button = ttk.Button(toolbar, text="移除所选", command=self.remove_selected)
         self.clear_selected_button = ttk.Button(toolbar, text="清除所选缓存", style="Danger.TButton", command=self.clear_selected_cache)
         self.clear_cache_button = ttk.Button(toolbar, text="清理全部缓存", style="Danger.TButton", command=self.clear_workspace)
         for button, pad in (
-            (self.add_button, (0, 0)), (self.select_all_button, (20, 0)),
+            (self.add_button, (0, 0)), (self.add_link_button, (8, 0)),
+            (self.select_all_button, (20, 0)),
             (self.remove_button, (8, 0)), (self.clear_selected_button, (8, 0)), (self.clear_cache_button, (8, 0)),
         ):
             button.pack(side="left", padx=pad)
@@ -202,13 +206,13 @@ class DesktopView:
 
         card = ttk.Frame(outer, style="Card.TFrame", padding=1)
         card.pack(fill="both", expand=True)
-        columns = ("order", "check", "name", "status", "stage", "progress", "elapsed", "tokens")
+        columns = ("order", "check", "source", "name", "status", "stage", "progress", "elapsed", "tokens")
         self.tree = ttk.Treeview(card, columns=columns, show="headings", selectmode="browse", height=9)
         headings = {
-            "order": "顺序", "check": "选择", "name": "视频文件", "status": "状态", "stage": "当前步骤",
+            "order": "顺序", "check": "选择", "source": "来源", "name": "视频文件", "status": "状态", "stage": "当前步骤",
             "progress": "进度", "elapsed": "已用", "tokens": "Token（入 / 出 / 总）",
         }
-        widths = {"order": 52, "check": 58, "name": 300, "status": 100, "stage": 135, "progress": 62, "elapsed": 75, "tokens": 155}
+        widths = {"order": 46, "check": 46, "source": 46, "name": 170, "status": 80, "stage": 115, "progress": 50, "elapsed": 60, "tokens": 225}
         for column in columns:
             self.tree.heading(column, text=headings[column])
             self.tree.column(column, width=widths[column], minwidth=50, anchor="w" if column == "name" else "center", stretch=column == "name")
@@ -223,7 +227,7 @@ class DesktopView:
         self._drag_row: str | None = None
         self.empty_panel = ttk.Frame(card, style="Card.TFrame")
         ttk.Label(self.empty_panel, text="还没有视频", style="Card.TLabel", font=("Microsoft YaHei UI", 14, "bold")).pack()
-        ttk.Label(self.empty_panel, text="点击“添加视频”可一次选择多个本地视频", style="Card.TLabel").pack(pady=(5, 0))
+        ttk.Label(self.empty_panel, text="点击“添加视频”选择本地视频，或“添加链接”粘贴视频链接", style="Card.TLabel").pack(pady=(5, 0))
 
         preferences = ttk.Frame(outer, style="Card.TFrame", padding=(14, 11))
         preferences.pack(fill="x", pady=(12, 0))
@@ -271,18 +275,22 @@ class DesktopView:
 
         self.progress = ttk.Progressbar(outer, maximum=100)
         self.progress.pack(fill="x", pady=(5, 0))
-        status_row = ttk.Frame(outer)
-        status_row.pack(fill="x", pady=(6, 0))
-        ttk.Label(status_row, textvariable=self.status, style="Sub.TLabel").pack(side="left", fill="x", expand=True)
+        log_frame = ttk.Frame(outer)
+        log_frame.pack(fill="x", pady=(6, 0))
         self.log = tk.Text(
-            outer, height=3, wrap="word", relief="flat", bg=self.BG, fg=self.MUTED,
+            log_frame, height=2, wrap="word", relief="flat", bg=self.BG, fg=self.MUTED,
             font=("Microsoft YaHei UI", 9), padx=0, pady=4,
         )
-        self.log.pack(fill="x")
-        self.log.insert("end", "等待任务。真实云端请求只会在展示数据、端点、模型链和预算并获得授权后发起。")
+        log_scroll = ttk.Scrollbar(log_frame, orient="vertical", command=self.log.yview)
+        self.log.configure(yscrollcommand=log_scroll.set)
+        self.log.pack(side="left", fill="x", expand=True)
+        log_scroll.pack(side="right", fill="y")
+        self._log_history_limit = 200
+        self.log.configure(state="normal")
+        self.log.insert("end", "请选择本地视频；源文件不会上传或复制")
         self.log.configure(state="disabled")
         self._buttons = [
-            self.add_button, self.select_all_button,
+            self.add_button, self.add_link_button, self.select_all_button,
             self.remove_button, self.clear_selected_button,
             self.clear_cache_button, self.settings_button, self.local_button, self.cloud_button,
             self.local_aggregate_button, self.aggregate_button,
@@ -307,6 +315,78 @@ class DesktopView:
         if paths:
             self._command(lambda: self.controller.add([Path(path) for path in paths]))
 
+    def add_link_dialog(self) -> None:
+        """「＋ 添加链接」对话框：粘贴链接 → 下载到本地缓存 → 已就绪（不自动开始整理）。"""
+        if not self.config.raw.get("source", {}).get("enabled", True):
+            messagebox.showwarning("链接源未启用", "当前配置已关闭链接源获取（source.enabled=false）")
+            return
+        dialog = tk.Toplevel(self.root)
+        dialog.title("添加视频链接")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.resizable(True, True)
+        frame = ttk.Frame(dialog, style="Card.TFrame", padding=18)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(
+            frame, text="添加视频链接", style="Card.TLabel",
+            font=("Microsoft YaHei UI", 14, "bold"),
+        ).pack(anchor="w")
+        ttk.Label(
+            frame,
+            text="支持视频页面链接、直链、HLS 流或 B 站 BV/av 号；"
+                 "首次使用请注意：仅下载您有权访问的内容。当前暂不支持抖音链接。",
+            style="Card.TLabel", wraplength=560, justify="left",
+        ).pack(anchor="w", pady=(6, 10))
+        self._link_url_var = tk.StringVar()
+        entry = ttk.Entry(frame, textvariable=self._link_url_var, width=72)
+        entry.pack(fill="x")
+        entry.focus_set()
+
+        hint = tk.StringVar(value="")
+        ttk.Label(frame, textvariable=hint, style="Card.TLabel", foreground="#2f7d55").pack(anchor="w", pady=(8, 4))
+
+        def on_submit(_event=None) -> str | None:
+            url = self._link_url_var.get().strip()
+            if not url:
+                messagebox.showwarning("链接为空", "请先粘贴视频链接", parent=dialog)
+                return "break"
+            try:
+                self.controller.add_url(url)
+            except (ValueError, RuntimeError) as exc:
+                messagebox.showwarning("无法添加", str(exc), parent=dialog)
+                return "break"
+            hint.set("已加入队列：下载完成后会提示「已就绪」，勾选后点击『本地整理』开始处理")
+            dialog.destroy()
+            return "break"
+
+        entry.bind("<Return>", on_submit)
+        # 左端：「修改保存地址」设置（与右侧操作按钮分开）
+        left_buttons = ttk.Frame(frame, style="Card.TFrame")
+        left_buttons.pack(side="left", anchor="w", pady=(12, 0))
+
+        def choose_save_dir() -> None:
+            current = source_download_dir(self.config)
+            chosen = filedialog.askdirectory(
+                parent=dialog, title="选择视频链接保存地址",
+                initialdir=str(current) if current.is_dir() else str(self.config.root),
+            )
+            if not chosen:
+                return
+            try:
+                save_source_download_dir(self.config, Path(chosen))
+            except (OSError, ValueError) as exc:
+                messagebox.showwarning("无法保存地址", str(exc), parent=dialog)
+
+        ttk.Button(left_buttons, text="修改保存地址", command=choose_save_dir).pack(side="left")
+
+        buttons = ttk.Frame(frame, style="Card.TFrame")
+        buttons.pack(side="right", anchor="e", pady=(12, 0))
+        ttk.Button(buttons, text="取消", command=dialog.destroy).pack(side="left", padx=(0, 8))
+        ttk.Button(buttons, text="解析并下载", style="Accent.TButton", command=on_submit).pack(side="left")
+        dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+        dialog.update_idletasks()
+        dialog.geometry(f"{max(620, dialog.winfo_reqwidth())}x{dialog.winfo_reqheight()}")
+
     def remove_selected(self) -> None:
         self._command(self.controller.remove_selected)
 
@@ -321,13 +401,20 @@ class DesktopView:
         except ValueError as exc:
             messagebox.showerror("设置无效", str(exc))
             return
-        self._command(lambda: self.controller.start(lambda path: ProcessingRequest(
-            path,
-            content_level=self.content_level.get(),
-            visual_level=VISUAL_TEACHING_LEVELS[self.visual_level.get()],
-            speech_models=tuple(speech),
-            cloud=cloud,
-        )))
+        self._command(lambda: self.controller.start(self._request_factory(cloud)))
+
+    def _request_factory(self, cloud: CloudAuthorization | None):
+        def build(item: QueueItem) -> ProcessingRequest:
+            common = dict(
+                content_level=self.content_level.get(),
+                visual_level=VISUAL_TEACHING_LEVELS[self.visual_level.get()],
+                speech_models=tuple(validate_speech_models(self._speech_engine.get())),
+                cloud=cloud,
+            )
+            if item.source_kind == "url" and item.source_url:
+                return ProcessingRequest(url=item.source_url, **common)
+            return ProcessingRequest(video=item.resolved_path, **common)
+        return build
 
     def _cloud_authorization(self, *, aggregate: bool) -> CloudAuthorization:
         base, models, _speech = validate_desktop_settings(
@@ -443,7 +530,7 @@ class DesktopView:
         ttk.Label(frame, text="模型与云端设置", style="Card.TLabel", font=("Microsoft YaHei UI", 15, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 12))
         fields = (
             ("API URL", self.base_url, False), ("API Key", self.api_key, True),
-            ("语言模型链", self.models, False),
+            ("云端模型", self.models, False),
         )
         for row, (label, variable, secret) in enumerate(fields, start=1):
             ttk.Label(frame, text=label, style="Card.TLabel").grid(row=row, column=0, sticky="w", padx=(0, 10), pady=5)
@@ -466,7 +553,7 @@ class DesktopView:
         remember_var = tk.BooleanVar(value=self.remember_key.get())
         chk = tk.Checkbutton(
             frame,
-            text="记住 API Key（仅写入本机 .env）",
+            text="记住 API Key",
             variable=remember_var,
             font=("Microsoft YaHei UI", 9),
             bg=self.CARD, fg="#4d353a", activebackground=self.CARD, activeforeground="#4d353a",
@@ -475,7 +562,7 @@ class DesktopView:
         chk.grid(row=6, column=1, sticky="w", pady=(8, 3))
         ttk.Label(
             frame,
-            text="保存只更新本地配置，不会自动联网测试；每次真实云请求仍需单独授权。",
+            text="保存会更新本地配置",
             style="Card.TLabel",
         ).grid(row=7, column=0, columnspan=2, sticky="w", pady=(2, 12))
         buttons = ttk.Frame(frame, style="Card.TFrame")
@@ -498,7 +585,7 @@ class DesktopView:
                 self.models.set("，".join(models))
                 self._speech_engine.set(speech_internal)
                 self.remember_key.set(remember_var.get())
-                self.status.set("设置已保存；未发起任何云端请求")
+                self._set_status("设置已保存", "未发起任何云端请求")
                 dialog.destroy()
             except (OSError, ValueError) as exc:
                 messagebox.showerror("设置未保存", str(exc), parent=dialog)
@@ -559,7 +646,9 @@ class DesktopView:
             f"确定清空全部中间缓存？\n\n{workspace}\n\n最终输出和原视频会保留；重新处理时需要重建缓存。",
         ):
             return
-        self._command(lambda: self.status.set(f"已清理 {self.controller.clear_workspace()} 项缓存；最终输出已保留"))
+        self._command(lambda: self._set_status(
+            f"已清理 {self.controller.clear_workspace()} 项缓存", "最终输出已保留",
+        ))
 
     def _single_selected(self, *, require_result: bool = False) -> QueueItem | None:
         selected = [item for item in self.controller.items if item.checked]
@@ -580,7 +669,12 @@ class DesktopView:
     def open_video(self) -> None:
         item = self._single_selected()
         if item is not None:
-            self._open_path(item.path)
+            if item.source_kind == "url" and item.path is not None:
+                self._open_path(item.path)  # 打开下载后的本地缓存文件，不跳网页
+            elif item.source_kind == "url":
+                messagebox.showinfo("尚未就绪", "链接视频尚未下载完成，请等待「已就绪」后再打开")
+            else:
+                self._open_path(item.path)
 
     def open_output(self) -> None:
         selected = [item for item in self.controller.items if item.checked and item.result]
@@ -607,7 +701,7 @@ class DesktopView:
         column = self.tree.identify_column(event.x)
         if row and column == "#2" and self.controller.state not in _RUNNING_STATES:
             item = self.controller.items[int(row)]
-            self._command(lambda: self.controller.select(item.path, not item.checked))
+            self._command(lambda: self.controller.select(item.resolved_path, not item.checked))
             return "break"
         self._drag_row = row if row else None
         return None
@@ -647,23 +741,37 @@ class DesktopView:
                 self.status.set(event.message)
             changed = True
         if changed:
-            self._update_status_display(latest_message, latest_detail)
+            self._append_log(latest_message, latest_detail)
             self._refresh()
         delay = 1 if not self.controller.events.empty() else 80
         self._drain_after_id = self.root.after(delay, self._drain_events)
 
-    def _update_status_display(self, message: str, detail: str) -> None:
-        """两行独立显示：第一行业务消息，第二行进度/建议。"""
-        self.log.configure(state="normal")
-        self.log.delete("1.0", "end")
+    def _set_status(self, message: str, detail: str = "") -> None:
+        """更新状态文案并追加日志行。"""
+        self.status.set(message)
+        self._append_log(message, detail)
+
+    def _append_log(self, message: str, detail: str = "") -> None:
+        """追加日志行到历史，保留滚动回看能力；自动滚动到底部。"""
         lines = []
         if message:
             lines.append(message)
         if detail and detail != message:
             lines.append(detail)
         if not lines:
-            lines.append("等待任务。真实云端请求只会在展示数据、端点、模型链和预算并获得授权后发起。")
-        self.log.insert("end", "\n".join(lines[:2]))
+            return
+        self.log.configure(state="normal")
+        current = self.log.get("1.0", "end-1c")
+        entry = "\n".join(lines)
+        if current:
+            self.log.insert("end", "\n" + entry)
+        else:
+            self.log.insert("end", entry)
+        # 限制历史行数，防止无限增长
+        line_count = int(self.log.index("end-1c").split(".")[0])
+        if line_count > self._log_history_limit:
+            self.log.delete("1.0", f"{line_count - self._log_history_limit}.0")
+        self.log.see("end")
         self.log.configure(state="disabled")
 
     def _values(self, item: QueueItem, position: int) -> tuple[str, ...]:
@@ -674,8 +782,13 @@ class DesktopView:
             f"{int(usage.get('total_tokens', 0)):,}"
         )
         stage = STAGE_LABELS.get(item.stage, item.stage)
+        source_label = "链接" if item.source_kind == "url" else "本地"
+        if item.source_kind == "url":
+            name = item.detail_title or item.source_url
+        else:
+            name = item.path.name if item.path is not None else ""
         return (
-            str(position), "✓" if item.checked else "☐", item.path.name, item.status, stage,
+            str(position), "✓" if item.checked else "☐", source_label, name, item.status, stage,
             f"{item.progress}%", format_duration(item.elapsed), tokens,
         )
 

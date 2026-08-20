@@ -125,6 +125,9 @@ def run_compatible_pipeline(
     task_progress=None,
     cancel_check=None,
     event=None,
+    source_url: str = "",
+    display_title: str = "",
+    video_id: str | None = None,
 ) -> dict[str, Any]:
     """P4 生产 composition root；把旧公开参数编译为不可变 Context。"""
     import json
@@ -151,7 +154,11 @@ def run_compatible_pipeline(
     if not source_path.is_file():
         raise FileNotFoundError(f"视频不存在：{source_path}")
     fingerprint = quick_fingerprint(source_path)
-    video_id = f"{safe_name(source_path.stem, 48)}-{fingerprint}"
+    if video_id:
+        resolved_video_id = video_id
+    else:
+        resolved_video_id = f"{safe_name(source_path.stem, 48)}-{fingerprint}"
+    video_id = resolved_video_id
     output_root = config.path("paths", "output_dir")
     layout = WorkspaceLayout(config.path("paths", "workspace_dir"), video_id, output_root)
     run_id = uuid.uuid4().hex
@@ -285,6 +292,7 @@ def run_compatible_pipeline(
     )
     source = VideoSource(
         source_path, video_id, f"sha256:{fingerprint}", 0.0, source_path.stat().st_size,
+        source_url=source_url, display_title=display_title,
     )
     services = build_runtime_services(
         project_root=config.root,
@@ -436,3 +444,158 @@ def run_compatible_pipeline(
 def discover_configured_videos(config) -> list[Path]:
     from ..media import discover_videos
     return discover_videos(config.path("paths", "input_dir"))
+
+
+def acquire_source_from_url(
+    config,
+    url: str,
+    *,
+    source_port=None,
+    progress=None,
+    event=None,
+    cancel_check=None,
+) -> dict[str, Any]:
+    """V5.0 链接源获取：预检 → 下载到本地缓存（或命中已下载缓存）。
+
+    返回：
+    - 命中缓存：{"path", "title", "url", "video_id", "cached": True}
+    - 新下载：   {"path", "title", "url", "video_id", "cached": False,
+                 "duration_seconds", "size_bytes", "extractor", "format"}
+    下载完成前先做 ffprobe 时长一致性校验（acquire 内），失败抛 SourceError。
+
+    下载保存根目录由 ``source.download_dir`` 配置决定（默认项目根 ``视频/``，
+    可在桌面「添加视频链接」对话框左侧「保存地址」设置并持久化）。
+
+    ``progress`` 为单参下载事件回调（Mapping：phase/percent/total_bytes/speed_bytes）。
+    """
+    import os
+
+    from ..source import YtDlpSourceAdapter
+    from ..utils import safe_name
+    from .artifacts import WorkspaceCatalog
+
+    source_cfg = dict(config.raw.get("source", {}))
+    if not source_cfg.get("enabled", True):
+        raise RuntimeError("链接源获取已禁用（source.enabled=false）")
+
+    adapter = source_port or YtDlpSourceAdapter()
+    candidate = adapter.preflight(
+        url, options=source_cfg, cancel_check=cancel_check or (lambda: False),
+    )
+    source_url = str(candidate.get("url") or "")
+    display_title = str(candidate.get("title") or "")
+
+    catalog = WorkspaceCatalog(
+        config.path("paths", "workspace_dir"), project_root=config.root,
+    )
+    existing = catalog.find_by_url(source_url)
+    if existing:
+        local = Path(str(existing.manifest.get("source_path") or ""))
+        if local.is_file():
+            return {
+                "path": str(local), "title": display_title, "url": source_url,
+                "video_id": str(candidate.get("video_id") or ""), "cached": True,
+            }
+
+    video_id = _stable_source_video_id(candidate)
+    download_root = _source_download_dir(config, source_cfg)
+    download_dir = download_root / video_id / "source"
+    download_dir.mkdir(parents=True, exist_ok=True)
+    target = download_dir / safe_name(display_title)
+
+    def download_progress(event_payload) -> None:
+        if progress:
+            progress(event_payload)
+        if event:
+            event({
+                "type": "runtime", "step_id": "source.acquire", "stage": "source",
+                "level": "info", "code": "source_downloading", "message": "正在下载视频",
+                "event": dict(event_payload),
+            })
+
+    acquired = adapter.acquire(
+        candidate, target,
+        options=source_cfg, cancel_check=cancel_check or (lambda: False),
+        progress=download_progress,
+    )
+    return {
+        "path": str(acquired["path"]), "title": display_title, "url": source_url,
+        "video_id": str(acquired.get("video_id") or str(candidate.get("video_id") or "")),
+        "cached": False,
+        "duration_seconds": float(acquired.get("duration_seconds") or 0.0),
+        "size_bytes": int(acquired.get("size_bytes") or 0),
+        "extractor": str(acquired.get("extractor") or ""),
+        "format": str(acquired.get("format") or ""),
+    }
+
+
+def run_compatible_pipeline_from_url(
+    config,
+    url: str,
+    *,
+    force: bool = False,
+    force_summary: bool = False,
+    cloud_summary: bool | None = None,
+    force_asr: bool = False,
+    qwen_settings: dict[str, Any] | None = None,
+    asr_settings: dict[str, Any] | None = None,
+    progress=None,
+    task_progress=None,
+    cancel_check=None,
+    event=None,
+    source_port=None,
+) -> dict[str, Any]:
+    """V5.0 链接源入口（方式一，最小侵入）：预检 → 下载到本地缓存 → 复用 15 步流水线。
+
+    - ``source.enabled: false`` 时拒绝调用（回滚开关）。
+    - 已下载过的链接（``find_by_url`` 命中）直接复用本地文件，不重复下载/重复 ASR。
+    - 下载完成并经 ffprobe 时长一致性校验（acquire 内）后进入 ``run_compatible_pipeline``。
+    """
+    from ..source import SourceError  # noqa: F401  (错误在 acquire 内抛出)
+    from ..utils import safe_name  # noqa: F401  (供稳定身份使用)
+
+    def download_progress(event_payload) -> None:
+        if progress:
+            percent = int(event_payload.get("percent") or 0)
+            progress("source.acquire", f"下载：{percent}%", percent)
+
+    acquired = acquire_source_from_url(
+        config, url,
+        source_port=source_port, progress=download_progress, event=event, cancel_check=cancel_check,
+    )
+    downloaded = Path(str(acquired["path"]))
+    return run_compatible_pipeline(
+        config, downloaded,
+        force=force, force_summary=force_summary, cloud_summary=cloud_summary,
+        force_asr=force_asr, qwen_settings=qwen_settings, asr_settings=asr_settings,
+        progress=progress, task_progress=task_progress,
+        cancel_check=cancel_check, event=event,
+        source_url=str(acquired.get("url") or ""),
+        display_title=str(acquired.get("title") or ""),
+        video_id=str(acquired.get("video_id") or ""),
+    )
+
+
+def _stable_source_video_id(candidate: Mapping[str, Any]) -> str:
+    """URL 源稳定身份：优先站点 id（如 B 站 BV 号），通用直链用规范化 URL 哈希。"""
+    import hashlib
+
+    from ..utils import safe_name
+
+    source_id = str(candidate.get("video_id") or "").strip()
+    if source_id and source_id not in {"url", "none"}:
+        return safe_name(source_id, 48)
+    url = str(candidate.get("url") or "")
+    digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]
+    return safe_name(f"url-{digest}", 48)
+
+
+def _source_download_dir(config, source_cfg: Mapping[str, Any]) -> Path:
+    """链接源下载保存根目录：优先 source.download_dir，默认项目根/视频。"""
+    import os
+
+    value = str(source_cfg.get("download_dir") or "视频").strip()
+    path = Path(os.path.expandvars(value))
+    if not path.is_absolute():
+        path = config.root / path
+    return path.expanduser().resolve()

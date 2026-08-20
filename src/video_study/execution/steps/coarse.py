@@ -162,6 +162,8 @@ class SourceProbeStep:
             "fingerprint": context.source.fingerprint.removeprefix("sha256:"),
             "duration_seconds": duration,
             "size_bytes": context.source.size_bytes,
+            "source_url": context.source.source_url,
+            "display_title": context.source.display_title,
             "created_at": _now(),
             "probe": probe,
             "stages": {},

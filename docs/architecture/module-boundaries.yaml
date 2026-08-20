@@ -34,12 +34,20 @@ modules:
     tests: [tests/test_knowledge_planning.py, tests/test_cloud_payload.py, tests/test_knowledge_organizer.py, tests/test_knowledge_adapter.py]
   - id: middleware
     owner: video_study.execution.ports
-    public_interfaces: [video_study.execution.ports:MediaPort, video_study.execution.ports:SpeechPort, video_study.execution.ports:VisionPort, video_study.execution.ports:CloudJsonPort, video_study.execution.ports:DocumentPort]
+    public_interfaces: [video_study.execution.ports:MediaPort, video_study.execution.ports:SourcePort, video_study.execution.ports:SpeechPort, video_study.execution.ports:VisionPort, video_study.execution.ports:CloudJsonPort, video_study.execution.ports:DocumentPort]
     allowed_dependencies: [execution.contracts]
     forbidden_dependencies: [desktop, tkinter]
     artifacts: []
     steps: []
     tests: [tests/test_execution_ports.py]
+  - id: source
+    owner: video_study.source
+    public_interfaces: [video_study.source:YtDlpSourceAdapter, video_study.source:SourceError, video_study.source:parse_progress_line]
+    allowed_dependencies: [runtime, utils]
+    forbidden_dependencies: [desktop, knowledge, openai, tkinter]
+    artifacts: []
+    steps: []
+    tests: [tests/test_source_acquisition.py, tests/test_source_integration.py]
   - id: rendering
     owner: video_study.render
     public_interfaces: [video_study.render:DocumentAdapter, video_study.render:render_markdown, video_study.render:render_pdf_fallback]

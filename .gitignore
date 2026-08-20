@@ -10,6 +10,7 @@ models/
 workspace/
 output/
 packing/
+tools/
 
 # Build and temporary artifacts
 build/

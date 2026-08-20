@@ -19,7 +19,10 @@ class DesktopState(str, Enum):
 
 @dataclass
 class QueueItem:
-    path: Path
+    path: Path | None = None
+    source_kind: str = "local"          # local / url
+    source_url: str = ""                # 链接源原始 URL（仅 source_kind == "url"）
+    detail_title: str = ""              # 链接源真实标题（下载完成后由 controller 回填）
     selected: bool = True
     status: str = "等待中"
     stage: str = "queued"
@@ -32,13 +35,24 @@ class QueueItem:
     estimating: bool = False
     result: dict[str, Any] = field(default_factory=dict)
 
+    @property
+    def resolved_path(self) -> Path:
+        if self.path is not None:
+            return self.path
+        if self.source_url:
+            return Path(self.source_url)
+        raise ValueError("队列项缺少本地路径与来源链接")
+
     def begin(self) -> None:
+        """开始新一轮处理：重置计时与进度展示，保证上一阶段（下载/整理）的 100% 不延续。"""
         self.started_at = time.monotonic()
         self.elapsed = 0.0
         self.eta = None
         self.estimating = True
-        self.message = "正在准备"
+        self.progress = 0
+        self.stage = "queued"
         self.detail = ""
+        self.message = "正在准备"
 
     def update_elapsed(self) -> None:
         if self.started_at is not None:

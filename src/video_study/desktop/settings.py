@@ -49,7 +49,7 @@ def validate_desktop_settings(base_url: str, llm_value: str, speech_value: str) 
         raise ValueError("API URL 必须是有效的 http(s) 地址，且不能包含用户名或密码")
     llm_models = model_names(llm_value)
     if not llm_models or len(llm_models) > 5 or any(len(name) > 160 for name in llm_models):
-        raise ValueError("语言模型链需要包含 1–5 个有效模型名称")
+        raise ValueError("大模型链需要包含 1–5 个有效模型名称")
     speech_models = validate_speech_models(speech_value)
 
     return base_url, llm_models, speech_models
@@ -150,3 +150,31 @@ def save_api_credentials(config: AppConfig, api_key: str, base_url: str) -> None
     env_path = config.root / ".env"
     set_key(str(env_path), qwen.get("api_key_env", "QWEN_API_KEY"), api_key.strip(), quote_mode="always")
     set_key(str(env_path), qwen.get("base_url_env", "QWEN_BASE_URL"), base_url.strip(), quote_mode="always")
+
+
+def source_download_dir(config: AppConfig) -> Path:
+    """链接源下载保存根目录：优先配置 source.download_dir，默认项目根/视频。"""
+    value = str(config.raw.get("source", {}).get("download_dir") or "视频").strip()
+    path = Path(os.path.expandvars(value))
+    if not path.is_absolute():
+        path = config.root / path
+    return path.expanduser().resolve()
+
+
+def save_source_download_dir(config: AppConfig, directory: Path) -> Path:
+    """持久化链接源下载保存目录到 config.yaml 的 source.download_dir。"""
+    resolved = Path(directory).expanduser().resolve()
+    if not resolved.is_dir():
+        raise ValueError(f"保存地址不是有效目录：{resolved}")
+    config_path = config.root / "config.yaml"
+    data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    source = data.setdefault("source", {})
+    if not isinstance(source, dict):
+        raise ValueError("配置文件 source 段不是映射，已停止保存")
+    source["download_dir"] = str(resolved)
+    temporary = config_path.with_suffix(config_path.suffix + ".tmp")
+    temporary.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    yaml.safe_load(temporary.read_text(encoding="utf-8"))
+    temporary.replace(config_path)
+    config.raw.setdefault("source", {})["download_dir"] = str(resolved)
+    return resolved

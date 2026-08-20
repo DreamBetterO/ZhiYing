@@ -26,12 +26,17 @@ class CloudAuthorization:
 
 @dataclass(frozen=True)
 class ProcessingRequest:
-    video: Path
+    video: Path | None = None
+    url: str | None = None
     action: str = "process"
     content_level: str = "推荐"
     visual_level: str = "auto"
     speech_models: tuple[str, ...] = ("faster-whisper",)
     cloud: CloudAuthorization | None = field(default=None, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if (self.video is None) == (self.url is None):
+            raise ValueError("ProcessingRequest 必须且只能提供 video 或 url 之一")
 
 
 @dataclass(frozen=True)

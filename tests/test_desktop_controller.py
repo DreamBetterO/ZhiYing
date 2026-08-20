@@ -15,23 +15,41 @@ def result(path: Path) -> ProcessingResult:
 
 
 class FakeService:
-    def __init__(self, cached=False, fail=False, hold=False) -> None:
+    def __init__(self, cached=False, fail=False, hold=False, download=None, hold_on_call=None) -> None:
         self.cached = cached; self.fail = fail; self.hold = hold; self.deleted = []; self.cleared = 0
+        self.download = download
+        self.hold_on_call = hold_on_call  # 第 N 次 process 调用时挂起（用于观察 RUNNING 状态）
+        self.process_calls = 0
 
     def cached_result(self, video):
         return result(video.parent) if self.cached else None
 
     def process(self, request):
         handle = ProcessingHandle()
+        if self.hold_on_call is not None and self.process_calls == self.hold_on_call:
+            self.process_calls += 1
+            return handle
+        self.process_calls += 1
         if self.hold:
             return handle
         if self.fail: handle.fail(RuntimeError("boom"))
-        else: handle.finish(result(request.video.parent))
+        else:
+            base = request.video.parent if request.video is not None else Path(".")
+            handle.finish(result(base))
         return handle
+
+    def download_url(self, url, *, progress=None, cancel_check=None):
+        if self.download is not None:
+            return self.download(url, progress=progress, cancel_check=cancel_check)
+        raise NotImplementedError("测试未配置 download_url")
 
     def aggregate(self, request): return result(Path("."))
     def delete_video_workspace(self, video): self.deleted.append(video)
     def clear_workspace(self): self.cleared += 1; return 2
+
+
+def make_request(item):
+    return ProcessingRequest(item.path)
 
 
 class DesktopControllerTests(unittest.TestCase):
@@ -44,15 +62,15 @@ class DesktopControllerTests(unittest.TestCase):
         for cached in (False, True):
             controller = DesktopController(FakeService(cached=cached))
             controller.add([Path("lesson.mp4")])
-            controller.start(lambda path: ProcessingRequest(path))
+            controller.start(make_request)
             self.wait_state(controller, DesktopState.COMPLETED)
             self.assertEqual(controller.items[0].stage, "completed")
 
     def test_failure_cancel_and_repeated_cancel(self) -> None:
         failed = DesktopController(FakeService(fail=True)); failed.add([Path("bad.mp4")])
-        failed.start(lambda path: ProcessingRequest(path)); self.wait_state(failed, DesktopState.FAILED)
+        failed.start(make_request); self.wait_state(failed, DesktopState.FAILED)
         held = DesktopController(FakeService(hold=True)); held.add([Path("hold.mp4")])
-        held.start(lambda path: ProcessingRequest(path))
+        held.start(make_request)
         deadline = time.time() + 1
         while time.time() < deadline and held.state != DesktopState.RUNNING: time.sleep(.01)
         held.cancel(); held.cancel()
@@ -92,7 +110,7 @@ class DesktopControllerTests(unittest.TestCase):
     def test_reorder_is_rejected_while_running(self) -> None:
         controller = DesktopController(FakeService(hold=True))
         controller.add([Path("a.mp4"), Path("b.mp4")])
-        controller.start(lambda path: ProcessingRequest(path))
+        controller.start(make_request)
         deadline = time.time() + 1
         while time.time() < deadline and controller.state != DesktopState.RUNNING: time.sleep(.01)
         with self.assertRaisesRegex(RuntimeError, "处理中不能调整视频顺序"):
@@ -157,6 +175,141 @@ class DesktopControllerTests(unittest.TestCase):
         })
 
         self.assertEqual(item.progress, 50)
+
+    def test_add_url_downloads_then_ready_and_emits_source_ready(self) -> None:
+        from video_study.desktop.models import UiEvent
+
+        def download(url, *, progress=None, cancel_check=None):
+            progress({"phase": "download", "percent": 100, "total_bytes": 10, "speed_bytes": None})
+            return {"path": "C:/downloaded/测试视频.mp4", "title": "测试视频", "url": url, "video_id": "BV1cmTu6mEL3", "cached": False}
+
+        controller = DesktopController(FakeService(download=download))
+        controller.add_url("https://www.bilibili.com/video/BV1cmTu6mEL3")
+        deadline = time.time() + 1
+        while time.time() < deadline and controller.items[0].status != "已就绪": time.sleep(.01)
+
+        item = controller.items[0]
+        self.assertEqual(item.stage, "ready")
+        self.assertEqual(item.progress, 100)
+        self.assertEqual(item.detail_title, "测试视频")
+        kinds = [event.kind for event in list(controller.events.queue)]
+        self.assertIn("source_ready", kinds)
+
+    def test_add_url_cached_reuses_without_download_message(self) -> None:
+        def download(url, *, progress=None, cancel_check=None):
+            return {"path": "C:/cached/测试视频.mp4", "title": "测试视频", "url": url, "video_id": "BV1cmTu6mEL3", "cached": True}
+
+        controller = DesktopController(FakeService(download=download))
+        controller.add_url("https://www.bilibili.com/video/BV1cmTu6mEL3")
+        deadline = time.time() + 1
+        while time.time() < deadline and controller.items[0].status != "已就绪": time.sleep(.01)
+        events = list(controller.events.queue)
+        ready = next(event for event in events if event.kind == "source_ready")
+        self.assertIn("已复用本地缓存", ready.message)
+
+    def test_add_url_failure_marks_failed(self) -> None:
+        def download(url, *, progress=None, cancel_check=None):
+            raise RuntimeError("[DOWNLOAD_INCOMPLETE] 下载文件不完整")
+
+        controller = DesktopController(FakeService(download=download))
+        controller.add_url("https://www.bilibili.com/video/BV1cmTu6mEL3")
+        deadline = time.time() + 1
+        while time.time() < deadline and controller.items[0].status != "失败": time.sleep(.01)
+
+        item = controller.items[0]
+        self.assertEqual(item.stage, "failed")
+        self.assertIn("下载文件不完整", item.message)
+
+    def test_add_url_restores_completed_result_when_workspace_cached(self) -> None:
+        """链接源下载完成后，如果已有完整处理缓存，应恢复「已完成」状态。"""
+        def download(url, *, progress=None, cancel_check=None):
+            return {"path": "C:/cached/测试视频.mp4", "title": "测试视频", "url": url, "video_id": "BV1cmTu6mEL3", "cached": True}
+
+        controller = DesktopController(FakeService(cached=True, download=download))
+        controller.add_url("https://www.bilibili.com/video/BV1cmTu6mEL3")
+        deadline = time.time() + 1
+        while time.time() < deadline and controller.items[0].status != "已完成": time.sleep(.01)
+
+        item = controller.items[0]
+        self.assertEqual(item.stage, "completed")
+        self.assertEqual(item.progress, 100)
+        self.assertTrue(item.result)
+        events = list(controller.events.queue)
+        ready = next(event for event in events if event.kind == "source_ready")
+        self.assertIn("已复用既有处理结果", ready.message)
+
+    def test_add_url_duplicate_rejected(self) -> None:
+        from video_study.desktop.models import QueueItem
+        controller = DesktopController(FakeService())
+        controller.items.append(QueueItem(source_kind="url", source_url="https://x.example/v"))
+        with self.assertRaises(ValueError):
+            controller.add_url("https://x.example/v")
+
+    def test_url_item_ready_then_processing_uses_url_request(self) -> None:
+        from video_study.desktop.models import QueueItem
+
+        captured = {}
+
+        def download(url, *, progress=None, cancel_check=None):
+            return {"path": "C:/downloaded/测试视频.mp4", "title": "测试视频", "url": url, "video_id": "BV1cmTu6mEL3", "cached": False}
+
+        service = FakeService(download=download)
+        controller = DesktopController(service)
+        controller.add_url("https://www.bilibili.com/video/BV1cmTu6mEL3")
+        deadline = time.time() + 1
+        while time.time() < deadline and controller.items[0].status != "已就绪": time.sleep(.01)
+        item = controller.items[0]
+        item.checked = True
+
+        def make_url_request(item):
+            captured["request"] = ProcessingRequest(
+                url=item.source_url, content_level="推荐",
+            ) if item.source_kind == "url" else ProcessingRequest(item.path)
+            return captured["request"]
+
+        controller.start(make_url_request)
+        self.wait_state(controller, DesktopState.COMPLETED)
+        self.assertEqual(captured["request"].url, "https://www.bilibili.com/video/BV1cmTu6mEL3")
+        self.assertIsNone(captured["request"].video)
+
+    def test_ready_url_item_restarts_progress_when_processing_begins(self) -> None:
+        """下载完成（已就绪/100%）后开始整理，进度应重新从 0 开始。"""
+        def download(url, *, progress=None, cancel_check=None):
+            return {"path": "C:/downloaded/测试视频.mp4", "title": "测试视频", "url": url, "video_id": "BV1cmTu6mEL3", "cached": False}
+
+        controller = DesktopController(FakeService(download=download, hold=True))
+        controller.add_url("https://www.bilibili.com/video/BV1cmTu6mEL3")
+        deadline = time.time() + 1
+        while time.time() < deadline and controller.items[0].status != "已就绪": time.sleep(.01)
+        item = controller.items[0]
+        self.assertEqual(item.progress, 100)          # 下载阶段结束
+        item.checked = True
+
+        controller.start(make_request)
+        deadline = time.time() + 1
+        while time.time() < deadline and controller.state != DesktopState.RUNNING: time.sleep(.01)
+
+        self.assertEqual(item.progress, 0)            # 新阶段开始，进度重新开始
+        self.assertEqual(item.stage, "queued")
+        controller.cancel()
+
+    def test_completed_item_restarts_progress_on_cloud_refine(self) -> None:
+        """本地整理完成（100%）后再点云端优化（同一 controller），进度应重新从 0 开始。"""
+        service = FakeService(hold_on_call=1)  # 第 2 次 start 挂起，便于观察 RUNNING
+        controller = DesktopController(service)
+        controller.add([Path("lesson.mp4")])
+        controller.start(make_request)
+        self.wait_state(controller, DesktopState.COMPLETED)
+        item = controller.items[0]
+        self.assertEqual(item.progress, 100)          # 本地整理完成
+        item.checked = True
+
+        controller.start(make_request)                # 云端优化：同一 controller 再次 start
+        deadline = time.time() + 1
+        while time.time() < deadline and controller.state != DesktopState.RUNNING: time.sleep(.01)
+
+        self.assertEqual(item.progress, 0)            # 云端精炼新阶段，进度重新开始
+        controller.cancel()
 
 
 if __name__ == "__main__":

@@ -28,6 +28,28 @@ class MediaPort(Protocol):
     ) -> Mapping[str, Any]: ...
 
 
+class SourcePort(Protocol):
+    """视频链接源获取端口：预检（爬虫式查找+判定）与完整下载（含完整性校验）。"""
+
+    def preflight(
+        self,
+        url: str,
+        *,
+        options: Mapping[str, Any] | None = None,
+        cancel_check: Callable[[], bool] | None = None,
+    ) -> Mapping[str, Any]: ...
+
+    def acquire(
+        self,
+        candidate: Mapping[str, Any],
+        target: Path,
+        *,
+        options: Mapping[str, Any] | None = None,
+        cancel_check: Callable[[], bool] | None = None,
+        progress: Callable[[Mapping[str, Any]], None] | None = None,
+    ) -> Mapping[str, Any]: ...
+
+
 class SpeechPort(Protocol):
     def probe_capability(self) -> Mapping[str, Any]: ...
     def decode(

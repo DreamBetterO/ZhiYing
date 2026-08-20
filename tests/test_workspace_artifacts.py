@@ -14,6 +14,7 @@ from video_study.execution.artifacts import (
     FRAMES_SELECTED,
     LegacyArtifactAdapter,
     FileArtifactStore,
+    SOURCE_MANIFEST,
     STANDARD_ARTIFACTS,
     WorkspaceCatalog,
     WorkspaceLayout,
@@ -271,6 +272,43 @@ class WorkspaceCatalogTests(unittest.TestCase):
             self.assertTrue(video.is_file())
             self.assertFalse(work.exists())
             self.assertFalse(output.exists())
+
+    def test_delete_url_source_keeps_downloaded_file_but_removes_derivatives(self) -> None:
+        """TC-014（D4）：链接源清除所选缓存保留下载文件（source/），只清派生产物。"""
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            workspace = root / "workspace"
+            video_id = "BV1cmTu6mEL3"
+            layout = WorkspaceLayout(workspace, video_id)
+            source_dir = layout.video_root / "source"
+            source_dir.mkdir(parents=True)
+            downloaded = source_dir / "测试视频.mp4"
+            downloaded.write_bytes(b"video-bytes")
+            (layout.video_root / "transcript").mkdir()
+            (layout.video_root / "transcript" / "transcript.json").write_text("{}", encoding="utf-8")
+            (layout.video_root / "knowledge").mkdir()
+            (layout.video_root / "knowledge" / "document.json").write_text("{}", encoding="utf-8")
+            manifest = layout.artifact_paths(SOURCE_MANIFEST)[0]
+            manifest.write_text(json.dumps({
+                "schema_version": 1, "video_id": video_id, "title": "测试视频",
+                "source_path": str(downloaded), "fingerprint": "abc",
+                "duration_seconds": 616.0, "size_bytes": 12,
+                "source_url": "https://www.bilibili.com/video/BV1cmTu6mEL3",
+                "stages": {},
+            }, ensure_ascii=False), encoding="utf-8")
+            output = root / "output" / video_id
+            output.mkdir(parents=True)
+            (output / "lesson.pdf").write_bytes(b"pdf")
+            catalog = WorkspaceCatalog(workspace, project_root=root)
+
+            self.assertTrue(catalog.delete_video(downloaded, root / "output"))
+
+            self.assertTrue(downloaded.is_file())                      # D4：下载文件保留
+            self.assertFalse((layout.video_root / "transcript").exists())
+            self.assertFalse((layout.video_root / "knowledge").exists())
+            self.assertFalse((layout.video_root / "manifest.json").exists())
+            self.assertFalse(output.exists())
+            self.assertTrue(source_dir.is_dir())
 
 
 if __name__ == "__main__":

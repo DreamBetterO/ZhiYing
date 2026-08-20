@@ -1,0 +1,32 @@
+change_id: v5-1-desktop-experience-patch
+phase: implemented_validated
+status: implemented_validated
+approved_at: "2026-08-19 Asia/Shanghai"
+baseline:
+  version: "0.5.0"
+  last_completed_change: v5-0-video-link-source-acquisition
+  v5_0_summary: "implemented_validated_pending_portable_release - V5.0 视频链接源获取已完成 P1-P5 验收、P6 离线验收通过；便携发行包重建待单独执行"
+  tests_passed: 408
+  dirty_worktree: "保留用户/前序 Agent 已有改动；本状态文件只记录当前交接事实"
+summary:
+  version_type: "小版本补丁（桌面体验修复）"
+  fixes:
+    - "缓存恢复：manifest stages.render 仅记录 markdown，cached_result 要求三者齐全返回 None，导致移除视频重加后状态/token/文件打开权限丢失。修复后扫描 output 目录补全 docx/pdf；add_url 也调用 cached_result 恢复已完成状态。"
+    - "Token 列宽度：窗口默认/最小宽度 980→1040；列宽大幅调整（name 300→170、tokens 155→225）。"
+    - "日志重叠：移除独立 status 标签（与日志第一行重复）；日志改为 2 行固定高度 + 垂直滚动条 + 追加式历史回看（最多 200 行）。"
+  documents:
+    - "修改文件：src/video_study/application/processing.py、src/video_study/desktop/controller.py、src/video_study/desktop/view.py"
+    - "测试：tests/test_desktop.py、tests/test_desktop_controller.py"
+  validation:
+    unittest: "408 用例全绿"
+    compileall: "通过"
+    git_diff_check: "通过；仅既有 CRLF warning"
+boundaries:
+  cloud_requests_authorized: false
+  online_smoke_authorized: false
+  portable_rebuild_authorized: false
+  secrets_read: false
+  web_surface_added: false
+next:
+  - "便携发行包重建（增量更新，需单独授权）"
+  - "V5.0 便携包重建仍是前置条件"

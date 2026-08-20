@@ -27,13 +27,13 @@ from video_study.desktop.view import PRIMARY_UI_ACTIONS
 class DesktopLogicTests(unittest.TestCase):
     def test_primary_ui_keeps_all_product_actions_mounted(self) -> None:
         self.assertEqual(set(PRIMARY_UI_ACTIONS), {
-            "add", "toggle_all", "remove", "clear_selected_cache", "clear_cache",
+            "add", "add_link", "toggle_all", "remove", "clear_selected_cache", "clear_cache",
             "local", "cloud", "cancel", "aggregate", "local_aggregate", "open_output", "open_video",
             "open_markdown", "open_docx", "open_pdf", "open_aggregate", "settings",
         })
 
     def test_ui_version_matches_package_version(self) -> None:
-        self.assertEqual(__version__, "0.4.2")
+        self.assertEqual(__version__, "0.5.1")
 
     def test_qwen_model_is_only_offered_when_runtime_and_weights_are_complete(self) -> None:
         from pathlib import Path
@@ -212,3 +212,25 @@ class DesktopLogicTests(unittest.TestCase):
             result = DefaultProcessingService(config).cached_result(video)
             self.assertEqual(result.video_id, "lesson-id")
             self.assertEqual(result.mode, "cloud_summary")
+
+    def test_cached_result_scans_output_dir_when_manifest_render_incomplete(self) -> None:
+        """manifest.stages.render 可能只有 markdown，docx/pdf 应从 output 目录扫描补全。"""
+        from video_study.application.processing import DefaultProcessingService
+        from pathlib import Path
+        with TemporaryDirectory() as directory:
+            root = Path(directory); video = root / "lesson.mp4"; video.write_bytes(b"video")
+            work = root / "workspace" / "lesson-id"; output = root / "output" / "lesson-id"
+            (work / "knowledge").mkdir(parents=True); output.mkdir(parents=True)
+            (output / "lesson.md").write_bytes(b"x")
+            (output / "lesson.docx").write_bytes(b"x")
+            (output / "lesson.pdf").write_bytes(b"x")
+            manifest = {"video_id": "lesson-id", "source_path": str(video), "stages": {"render": {"markdown": str(output / "lesson.md")}}}
+            (work / "manifest.json").write_text(__import__("json").dumps(manifest), encoding="utf-8")
+            (work / "knowledge" / "document.json").write_text('{"mode":"cloud_summary","cloud_usage":{"total_tokens":100}}', encoding="utf-8")
+            config = AppConfig(root, {"paths": {"workspace_dir": "workspace", "output_dir": "output"}})
+            result = DefaultProcessingService(config).cached_result(video)
+            self.assertIsNotNone(result)
+            self.assertEqual(result.video_id, "lesson-id")
+            self.assertTrue(Path(result.docx).is_file())
+            self.assertTrue(Path(result.pdf).is_file())
+            self.assertEqual(result.cloud_usage.get("total_tokens"), 100)

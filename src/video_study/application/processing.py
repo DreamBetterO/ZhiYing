@@ -12,7 +12,6 @@ from urllib.parse import urlparse
 from ..aggregate import aggregate_documents, local_aggregate_documents
 from ..config import AppConfig
 from ..execution.artifacts import WorkspaceCatalog, read_document_v2
-from ..pipeline import process_video
 from ..progress import EtaEstimator, ProgressEvent
 from .requests import AggregateRequest, ProcessingHandle, ProcessingRequest, ProcessingResult
 
@@ -55,6 +54,7 @@ def resolve_cloud_authorization(
 class ProcessingService(Protocol):
     def cached_result(self, video: Path) -> ProcessingResult | None: ...
     def process(self, request: ProcessingRequest) -> ProcessingHandle: ...
+    def download_url(self, url: str, *, progress=None, cancel_check=None) -> dict: ...
     def aggregate(self, request: AggregateRequest) -> ProcessingResult: ...
     def local_aggregate(
         self, results: tuple[ProcessingResult, ...], *, cancel_check=None,
@@ -72,13 +72,38 @@ class DefaultProcessingService:
         entry = self.catalog.find_by_source(video)
         if not entry:
             return None
-        render = entry.manifest.get("stages", {}).get("render", {})
-        paths = {kind: Path(str(render.get(kind, ""))) for kind in ("markdown", "docx", "pdf")}
-        if not all(path.is_file() for path in paths.values()) or not entry.document_path.is_file():
+        if not entry.document_path.is_file():
             return None
         try:
             document = read_document_v2(entry.document_path)
         except (OSError, ValueError, json.JSONDecodeError):
+            return None
+        render = entry.manifest.get("stages", {}).get("render", {})
+        output_dir_str = str(self.config.raw.get("paths", {}).get("output_dir", "")).strip()
+        if output_dir_str:
+            output_dir = Path(output_dir_str)
+            if not output_dir.is_absolute():
+                output_dir = self.config.root / output_dir
+            output_dir = output_dir / entry.layout.video_id
+        else:
+            output_dir = Path()
+
+        def _find_render_file(kind: str, ext: str) -> Path:
+            manifest_path = Path(str(render.get(kind, "")))
+            if manifest_path.is_file():
+                return manifest_path
+            if output_dir.is_dir():
+                for file in output_dir.iterdir():
+                    if file.suffix.lower() == f".{ext}" and file.is_file():
+                        return file
+            return Path()
+
+        paths = {
+            "markdown": _find_render_file("markdown", "md"),
+            "docx": _find_render_file("docx", "docx"),
+            "pdf": _find_render_file("pdf", "pdf"),
+        }
+        if not paths["markdown"].is_file():
             return None
         return ProcessingResult(
             str(entry.manifest.get("video_id", "")), entry.manifest_path,
@@ -107,8 +132,9 @@ class DefaultProcessingService:
                     payload["eta_seconds"] = estimator.estimate()
                     handle.publish({"type": "task_progress", "event": payload})
 
-                result = process_video(
-                    config, request.video, force=force,
+                runner = self._process_runner(request, config)
+                result = runner(
+                    config, request, force=force,
                     force_summary=request.action == "knowledge",
                     force_asr=request.action == "asr",
                     cloud_summary=bool(request.cloud and request.cloud.authorized),
@@ -127,6 +153,19 @@ class DefaultProcessingService:
 
         threading.Thread(target=worker, name="video-study-processing", daemon=True).start()
         return handle
+
+    def _process_runner(self, request: ProcessingRequest, config: AppConfig):
+        from ..execution.bootstrap import run_compatible_pipeline, run_compatible_pipeline_from_url
+
+        if request.url:
+            return lambda cfg, req, **kwargs: run_compatible_pipeline_from_url(cfg, req.url, **kwargs)
+        return lambda cfg, req, **kwargs: run_compatible_pipeline(cfg, req.video, **kwargs)
+
+    def download_url(self, url: str, *, progress=None, cancel_check=None) -> dict:
+        from ..execution.bootstrap import acquire_source_from_url
+        return dict(acquire_source_from_url(
+            self.config, url, progress=progress, cancel_check=cancel_check,
+        ))
 
     def aggregate(self, request: AggregateRequest) -> ProcessingResult:
         if not request.cloud.authorized:

@@ -136,8 +136,18 @@ def extract_audio(video: Path, output: Path, force: bool = False, cancel_check=N
 
 def check_tools() -> dict[str, str | bool]:
     result: dict[str, str | bool] = {}
-    for command in ("ffmpeg", "ffprobe", "node", "npm"):
+    for command in ("ffmpeg", "ffprobe", "node", "npm", "yt-dlp"):
         result[command] = find_tool(command) or False
+    if result["yt-dlp"]:
+        try:
+            version = subprocess.run(
+                [str(result["yt-dlp"]), "--version"],
+                capture_output=True, text=True, check=True, encoding="utf-8", errors="replace",
+                timeout=10, **background_process_kwargs(),
+            ).stdout.strip()
+            result["yt_dlp_version"] = version.splitlines()[0] if version else "unknown"
+        except (OSError, subprocess.SubprocessError):
+            result["yt_dlp_version"] = None
     try:
         gpu = subprocess.run(
             ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"],

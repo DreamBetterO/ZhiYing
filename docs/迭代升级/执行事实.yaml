@@ -1,6 +1,42 @@
 purpose: "供执行 Agent 按需检索；不是用户版本时间线"
 schema_version: 1
 
+v5_1_desktop_experience_patch_2026_08_19:
+  status: "implemented_and_validated"
+  product_version: "0.5.1"
+  baseline_version: "0.5.0"
+  fixes:
+    cached_result_scan_output_dir:
+      root_cause: "manifest stages.render 只记录 markdown 路径，docx/pdf 缺失；cached_result 要求三者全部存在于 manifest 才返回结果，因此返回 None"
+      fix: "cached_result 先检查 document.json 存在性，再从 manifest 取 render 路径，缺失时扫描 output/<video_id>/ 目录补全 .md/.docx/.pdf；只要 markdown 存在即返回结果"
+      files: ["src/video_study/application/processing.py"]
+    add_url_cached_restore:
+      root_cause: "add_url 下载完成后未调用 cached_result，链接源视频移除重加后无法恢复已完成状态"
+      fix: "add_url worker 在下载完成后调用 cached_result(item.path)，命中则恢复已完成状态（status/stage/progress/result）"
+      files: ["src/video_study/desktop/controller.py"]
+    token_column_width:
+      root_cause: "窗口宽度 980 + 列宽总和 951px，Token 列被挤压显示不全"
+      fix: "窗口默认/最小宽度 980→1040；列宽大幅调整（name 300→170、tokens 155→225，其余列同步缩减）"
+      files: ["src/video_study/desktop/view.py"]
+    log_overlap_and_history:
+      root_cause: "独立 status_row 标签与日志第一行内容重复，height=3 导致视觉上多出一行"
+      fix: "移除独立 status 标签；日志 Text height=2 + 垂直滚动条；新增 _append_log 追加式记录（不替换），自动滚动到底部，保留最近 200 行可滚动回看"
+      files: ["src/video_study/desktop/view.py"]
+  tests_added:
+    - "test_cached_result_scans_output_dir_when_manifest_render_incomplete (test_desktop.py)"
+    - "test_add_url_restores_completed_result_when_workspace_cached (test_desktop_controller.py)"
+  validation:
+    unittest: "408 用例全绿"
+    compileall: "通过"
+    git_diff_check: "通过；仅既有 CRLF warning"
+    cloud_requests: 0
+    cloud_tokens: 0
+  boundaries:
+    - "未读取或输出 .env；未发起云端请求"
+    - "未增加 Web UI、HTTP 服务、端口或 serve 命令"
+    - "保持 JSON → Markdown → Word → PDF、时间戳和 video-study://"
+    - "便携发行包重建需单独授权"
+
 architecture:
   knowledge_layer:
     - schema
@@ -40,6 +76,40 @@ known_edges:
 validation_guidance:
   - "优先复用已有 ASR、帧和知识缓存，不无理由重跑长视频"
   - "无云端授权时使用 fixture/fake provider 验证程序链路，不伪装成真实模型质量验证"
+
+v5_0_p5_online_smoke:
+  time: "2026-08-21"
+  authorized: true
+  toolchain:
+    yt_dlp: "tools/yt-dlp.exe 存在（18,226,085 字节），版本 2026.07.04"
+    ffmpeg_ffprobe: "随包可用；check_tools 全 True"
+  anchors:
+    - {name: "W3C sintel trailer", url: "https://media.w3.org/2010/05/sintel/trailer.mp4", result: "OK", detail: "健康检查 200/4.17MB；yt-dlp 预检 title=trailer/ext=mp4；项目 SourcePort 真实下载 4,372,373 字节；ffprobe 52.208s / h264 854px / aac 音轨（默认 UA）；进度事件流正常"}
+    - {name: "test-videos.co.uk 720p 10s", url: "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4", result: "OK", detail: "健康检查 200/969,201 字节；yt-dlp 下载 946.49KiB；ffprobe 10.0s / h264 1280x720 / 无音轨（只能测下载/抽帧）"}
+    - {name: "Mux HLS m3u8", url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", result: "OK", detail: "健康检查 200/752B playlist；yt-dlp 预检 title=x36xhzz/634s/5 formats/Generic；--simulate 验证 bv*[height<=1080]+ba/b 降级链选 1080（≤封顶）"}
+    - {name: "B 站 BV1cmTu6mEL3", url: "https://www.bilibili.com/video/BV1cmTu6mEL3", result: "阶段性风控", detail: "本次冒烟期间页面 412 Precondition Failed、view API 握手超时（探索方案 §8.6 已记录为阶段性风控/网络抖动，重试未恢复）；yt-dlp 首页 Unsupported URL 正常（非视频页负面样本通过）；preflight 将 412 分类为 DOWNLOAD_TIMEOUT「站点临时风控，请稍后重试」（P5 实测后修正分类，新增 L0 断言）"}
+  negative_samples:
+    - {name: "B 站首页（非视频页）", result: "OK", detail: "yt-dlp Unsupported URL → 映射 SOURCE_UNSUPPORTED_SITE 文案"}
+    - {name: "随机无效 BV", result: "风控拦截", detail: "412 被 DOWNLOAD_TIMEOUT 分类拦截，不崩溃"}
+  cleanup: "所有样本放 tmp/p5_smoke 并已删除；tmp 无 mp4/冒烟残留"
+  classification_fix: "classify_ytdlp_error 增加 412/Precondition Failed/429/too many requests → DOWNLOAD_TIMEOUT（此前误落 SOURCE_UNAVAILABLE）；tests/test_source_acquisition.py::test_ytdlp_412_ratelimit_maps_to_timeout_not_unavailable"
+
+v5_0_p6_l3_ui_equivalent_chain:
+  time: "2026-08-21"
+  sample: "W3C trailer（52.2s/4.37MB/aac，默认 UA）"
+  path: "粘贴链接 -> 预检 -> 真实下载 -> 已就绪（source_ready 等价）-> 15 步流水线 -> Markdown/Word/PDF -> video-study:// 回看"
+  result:
+    video_id: "trailer"
+    manifest: "workspace/trailer/manifest.json"
+    source_url: "https://media.w3.org/2010/05/sintel/trailer.mp4"
+    source_path: "workspace/trailer/source/trailer（下载文件在 Workspace 生命周期内，find_by_url 命中）"
+    outputs: "output/trailer/trailer.{md,docx,pdf}"
+    pdf_mode: "built_in"
+    asr: "faster-whisper cuda int8_float16（真实解码）"
+    cloud_requests: 0
+    play_link: "video-study://play/trailer?t=11 存在；play_protocol_url 经 find_by_video_id -> manifest.source_path -> 本地文件定位"
+    cache_reuse: "find_by_url('https://media.w3.org/2010/05/sintel/trailer.mp4') 命中同一 workspace"
+  cleanup: "下载样本在 workspace（产品生命周期产物，保留）；tmp/p6_l3_smoke.py 为验证脚本"
 
 v2_2_verified:
   time: "2026-08-10 17:49:44 +08:00"

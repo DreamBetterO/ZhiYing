@@ -19,6 +19,7 @@ STAGE_LABELS = {
     "queued": "等待中", "source": "源文件", "audio": "音频", "asr": "语音识别",
     "transcript": "转写", "frames": "关键画面", "knowledge": "知识整理",
     "document": "文档组装", "visual": "视觉核验", "render": "文档生成",
+    "downloading": "下载中", "ready": "已就绪", "source.acquire": "下载视频",
     "source.probe": "1/15 源文件检查", "audio.extract": "2/15 音频提取",
     "transcript.decode": "3/15 语音识别", "transcript.normalize": "4/15 转写规范化",
     "frames.candidates": "5/15 候选画面", "frames.select": "6/15 关键画面",

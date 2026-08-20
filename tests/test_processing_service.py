@@ -73,7 +73,7 @@ class ProcessingServiceTests(unittest.TestCase):
                     "docx": "a.docx", "pdf": "a.pdf",
                 }
 
-            with patch("video_study.application.processing.process_video", side_effect=fake_process):
+            with patch("video_study.execution.bootstrap.run_compatible_pipeline", side_effect=fake_process):
                 handle = DefaultProcessingService(config).process(ProcessingRequest(video))
                 events = []
                 handle.subscribe(events.append)
@@ -81,6 +81,45 @@ class ProcessingServiceTests(unittest.TestCase):
 
             self.assertEqual(events[0]["event"]["stage"], "audio")
             self.assertEqual(events[0]["event"]["eta_seconds"], 3)
+
+    def test_service_routes_url_request_to_from_url_runner(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "models").mkdir()
+            config = AppConfig(root, {
+                "paths": {"workspace_dir": "workspace", "output_dir": "output", "model_dir": "models"},
+                "source": {"enabled": True},
+                "qwen": {}, "asr": {}, "frames": {}, "render": {},
+            })
+
+            def fake_from_url(_config, url, **kwargs):
+                self.assertEqual(url, "https://example.com/video")
+                return {"video_id": "url-id", "manifest": "m.json", "markdown": "a.md", "docx": "a.docx", "pdf": "a.pdf"}
+
+            with patch("video_study.execution.bootstrap.run_compatible_pipeline_from_url", side_effect=fake_from_url):
+                handle = DefaultProcessingService(config).process(ProcessingRequest(url="https://example.com/video"))
+                result = handle.wait(1)
+
+            self.assertEqual(result.video_id, "url-id")
+
+    def test_service_download_url_delegates_to_acquire_source(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "models").mkdir()
+            config = AppConfig(root, {
+                "paths": {"workspace_dir": "workspace", "output_dir": "output", "model_dir": "models"},
+                "source": {"enabled": True},
+                "qwen": {}, "asr": {}, "frames": {}, "render": {},
+            })
+
+            def fake_acquire(_config, url, **kwargs):
+                return {"path": "C:/v.mp4", "title": "T", "url": url, "video_id": "id", "cached": False}
+
+            with patch("video_study.execution.bootstrap.acquire_source_from_url", side_effect=fake_acquire):
+                acquired = DefaultProcessingService(config).download_url("https://example.com/video")
+
+            self.assertEqual(acquired["cached"], False)
+            self.assertEqual(acquired["video_id"], "id")
 
 
 if __name__ == "__main__":
