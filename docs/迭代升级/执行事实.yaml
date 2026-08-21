@@ -1,6 +1,343 @@
 purpose: "供执行 Agent 按需检索；不是用户版本时间线"
 schema_version: 1
 
+v6_1_glm_capability_and_test_isolation_2026_08_21:
+  written_at: "2026-08-21 16:02 Asia/Shanghai"
+  status: completed
+  delivered:
+    - "glm-5.2 原生工具探针通过后，api.yaml 将其置于默认模型首位并注册 tool_native；其余模型保持 structured_only"
+    - "新增配置合同测试，确保首模型与能力注册不会静默漂移"
+    - "特征测试不再读取会被合法后续运行更新的 workspace/output；V6.0 失败事实改读不可变 CP61-0 黄金清单"
+  concurrent_runtime_observation:
+    - "离线验收期间检测到高数-定积分定义 Workspace 出现独立新运行 4d91a285bef34982bbc89f3ce1f438fb（15:36:59→15:40:40）"
+    - "该运行改写了历史 Workspace/Output，使旧的路径型『冻结样本』断言失效；本轮未回滚或删除该运行产物"
+    - "运行记录显示 cloud_authorized=true、knowledge.plan/units=cloud succeeded，Editorial v3.1 最终 local_deterministic degraded；该运行不是本次两条探针命令，真实用量未写入 editorial-session"
+  validation:
+    focused: "44 passed；OK(expected failures=5)"
+    unittest: "602 passed；OK(expected failures=5) in 96.253s"
+    compileall: passed
+    pip_check: "No broken requirements found；既有 ~ransformers invalid distribution warning"
+    yaml_parse: passed
+    git_diff_check: "passed；仅既有 LF/CRLF warning"
+
+v6_1_cloud_tool_probe_glm_2026_08_21:
+  written_at: "2026-08-21 15:34 Asia/Shanghai"
+  status: completed
+  scope: "用户逐次确认后的 glm-5.2 单模型原生工具调用探针"
+  request:
+    endpoint: "阿里云百炼 OpenAI-compatible endpoint（已在授权提示披露）"
+    data: "仅合成 chapter_probe/unit_probe、编辑指令和 planning 阶段受限工具 schema"
+    model: glm-5.2
+    max_requests: 1
+    output_cap: 2000
+    real_course_data: false
+    image_uploads: 0
+  result:
+    network_requests: 1
+    finish_reason: stop
+    tool_call: get_renderer_capabilities
+    native_tool_call: true
+    usage:
+      prompt_tokens: 527
+      completion_tokens: 70
+      total_tokens: 597
+  production_capability_update:
+    - "api.yaml 默认模型首位调整为已实测的 glm-5.2"
+    - "glm-5.2 注册为 tool_native；deepseek-v4-flash-0731、kimi-k2.6、qwen3.7-plus 保持 structured_only"
+    - "未发起真实课程链路、第三次云请求、图片上传或长视频重跑"
+  artifact: "tmp/v61-cloud-tool-probe-glm-result.json"
+
+v6_1_cloud_tool_probe_2026_08_21:
+  written_at: "2026-08-21 15:30 Asia/Shanghai"
+  status: completed_degraded
+  scope: "用户逐次确认后的 V6.1 原生工具调用最小真实云探针"
+  request:
+    endpoint: "阿里云百炼 OpenAI-compatible endpoint（已在授权提示披露）"
+    data: "仅合成 chapter_probe/unit_probe、编辑指令和 planning 阶段受限工具 schema"
+    model_chain: "deepseek-v4-flash-0731 → glm-5.2 → kimi-k2.6 → qwen3.7-plus"
+    output_cap: 2000
+    real_course_data: false
+    image_uploads: 0
+  result:
+    network_requests: 1
+    first_model: deepseek-v4-flash-0731
+    first_model_result: "BadRequestError；端点拒绝当前原生工具调用请求"
+    successful_responses: 0
+    later_models_network_requests: 0
+    local_budget_issue: "探针把 max_tool_turns 设为 1；首请求占用后，后三模型在发网前被 ToolCallError 拒绝，但 calls_used 预占计数显示为 4"
+    token_usage_reported: 0
+    capability_conclusion: "尚不能确认模型链支持 tool_native；不得据此宣称 structured_only 已实测"
+  correction:
+    - "探针脚本的 max_tool_turns 已改为与最多模型尝试数一致；未自动重发请求"
+    - "审计结果保存在 tmp/v61-cloud-tool-probe-result.json，不含密钥或原始响应"
+  next_authorization: "如继续，需对第二次真实请求重新披露并确认；建议仅对 glm-5.2 发一个强制工具调用探针，最多 1 请求/2000 output tokens"
+
+v6_1_cp7_image_render_chain_repair_2026_08_21:
+  written_at: "2026-08-21 15:26 Asia/Shanghai"
+  status: completed
+  scope: "Document v3.1 图片证据到 Markdown/Word/PDF 的生产插入链路"
+  diagnosis:
+    - "Word 已消费 visual-evidence figure map 并嵌入媒体；生产 Markdown 未传 figure map，退化为 visual_id 伪路径"
+    - "Word 转 PDF 可继承嵌图；built-in v3.1 PDF fallback 只输出图注，未绘制图片"
+  delivered:
+    - "DocumentPort 显式接收 source_document；生产渲染步骤与聚合入口把权威 document-v3.json 传给 Markdown/PDF"
+    - "visual-evidence 图片路径解析限制在项目根目录内，忽略缺失或越界文件；Markdown 输出项目相对路径"
+    - "built-in v3.1 PDF fallback 按页面可用宽高等比缩放并居中插图"
+    - "新增生产三端回归：Markdown 相对路径、DOCX media、PDF Image XObject 同时断言"
+  validation:
+    regression_first_failure: "TypeError：DocumentAdapterV31 不接受 source_document；证明生产断点"
+    focused: "27 passed in 47.499s"
+    unittest: "603 passed；OK(expected failures=7) in 92.546s"
+    compileall: passed
+    pip_check: "No broken requirements found；既有 ~ransformers invalid distribution warning"
+    git_diff_check: "passed；仅既有 LF/CRLF warning"
+    cloud_requests: 0
+    cloud_image_uploads: 0
+    long_video_reruns: 0
+  cloud_gate: "用户已给出云测意向授权；首个真实请求的精确数据、端点、模型链与预算已披露，等待逐次确认后执行"
+
+v6_1_cp7_offline_acceptance_partial_2026_08_21:
+  written_at: "2026-08-21 15:12 Asia/Shanghai"
+  status: awaiting_user_quality_confirmation
+  scope: "CP61-7 黄金 replay、视觉门、UI 等价链路与完整离线验收"
+  delivered:
+    - "两份冻结高数 Workspace 均通过 local/structured replay/tool replay 三能力生产入口与临时 Markdown/Word/PDF 审计"
+    - "强视觉黄金三路径均恰好 1 张职责图片；弱视觉三路径均 0 张，不做最近帧兜底"
+    - "修复无 unit 归属场景因空 ID 相交而被多个知识点重复插图；按 scene/evidence/frame 稳定键全篇只消费一次"
+    - "桌面降级终态保留三端输出，并展示真实 degradation_summary"
+    - "本地正常调用 0；structured replay 正常 2；tool replay 正常 2（Blueprint 工具 + Writer）；cache/replay 真实 Token=0"
+    - "生成两份独立 CP61-7 审阅 PDF，不覆盖历史 Workspace/正式 per-video Output"
+  validation:
+    focused_ui_render_tests: "77 passed"
+    unittest: "603 passed；OK(expected failures=7) in 92.546s（含后续图片生产链路回归）"
+    compileall: passed
+    pip_check: "No broken requirements found；既有 ~ransformers invalid distribution warning"
+    yaml_parse: passed
+    git_diff_check: "passed；仅既有 LF/CRLF warning"
+    cloud_requests: 0
+    cloud_image_uploads: 0
+    asr_vlm_loads: 0
+    long_video_reruns: 0
+  visual_review:
+    definition: "1 页 A4；无裁切、重叠、乱码；内容偏密，疑似转写点明确标记待核对"
+    example: "1 页 A4；无裁切、重叠、乱码；内容简洁、留白较多，未人工填充"
+    logical_reopen: "pypdf 可重新打开并完整抽取标题；2 个 PDF 各 1 页"
+  pending_gate: "需要用户确认两个高数成品方向达到接受门；未确认前 CP61-7 保持 in_progress"
+
+v6_1_cp6_diagnostics_migration_2026_08_21:
+  written_at: "2026-08-21 15:00 Asia/Shanghai"
+  status: completed
+  scope: "CP61-6 诊断、历史只读迁移与故障矩阵"
+  delivered:
+    - "诊断输出新增 V6.1 graph/tool/policy/blueprint/document/renderer 版本、provider capability、model chain、tool turns、Token、cache hits"
+    - "诊断输出新增 provenance、degradation/error codes、quality issue/component/revision、公式/OMML/图片/来源/页面统计及责任节点局部重跑建议"
+    - "修复未注册路径回退 Workspace 根目录导致缺失 V6.1 Artifact 被误报 present"
+    - "历史 v2 与 pre-v3.1 v3 Workspace 只读分类；不转换旧 Checkpoint、不删除 Workspace、不覆盖 Output"
+    - "10 个工具错误码从目标占位移入 active problem index，并建立机器可校验 fault matrix"
+    - "工具 provider 超时由 tool_native 有界降级 structured_only；连续 no-progress 有界降级且不再 silent success"
+    - "未知工具/多 mutation 在 ToolNode 前拒绝；invalid args、错误码与降级原因进入有界 editorial.session"
+  validation:
+    unittest: "598 passed；OK(expected failures=7) in 98.331s"
+    compileall: passed
+    pip_check: "No broken requirements found；既有 ~ransformers invalid distribution warning"
+    git_diff_check: "passed；仅既有 LF/CRLF warning"
+    cloud_requests: 0
+    asr_vlm_loads: 0
+    long_video_reruns: 0
+  cached_workspace_gate:
+    - "高数-定积分定义：run_status=succeeded，migration=legacy_v3_read_only，建议从 evidence.reconcile 生成 V6.1 新链"
+    - "高数-例题讲解：run_status=succeeded，migration=legacy_v3_read_only，建议从 evidence.reconcile 生成 V6.1 新链"
+    - "两次诊断均只读；未覆盖 Workspace/Output"
+  next: "CP61-7 黄金、UI 等价链路与完整离线验收"
+
+v6_1_cp5_production_integration_2026_08_21:
+  written_at: "2026-08-21 14:46 Asia/Shanghai"
+  status: completed
+  scope: "CP61-5 生产 EditorialAgentSubgraph、Document v3.1 原生渲染、状态/缓存/聚合切换"
+  delivered:
+    - "23 节点生产拓扑切为 editorial.policy/evidence.reconcile/document.blueprint/document.write/document.assemble/document.validate，旧 document.plan/chapter.* 不再 active"
+    - "DocumentAdapterV31 成为生产 DocumentPort；render.verify 读取 Document v3.1 并执行跨格式/OMML/路径审计"
+    - "真实 KnowledgeUnit.evidence_refs 通过 LessonPlan evidence_spans 编译为 source_refs/source_links，保留 video-study:// 时间定位"
+    - "空规划不再生成空文档：使用首个 transcript 证据形成可追溯最小章节，并准确标记 degraded"
+    - "单视频终态与桌面队列保留 degraded；不再统一显示 succeeded/已完成"
+    - "Word relationship ID、OOXML 时间与 PDF 时间归一化，相同输入三端产物可字节级 replay"
+    - "AggregateGraph 原生写 Document v3.1，并保留 cloud_usage/model/source_refs 的只读投影"
+    - "document.blueprint 成为生产 EditorialAgentSubgraph 入口；新增有界 editorial.session Artifact，后续确定性节点提交章节、Document 与质量报告"
+    - "能力门固定为 tool_native → structured_only → local_deterministic；未知模型默认 structured_only，云禁用时 CloudPort 构造为 0"
+    - "Blueprint 与 Writer 正常云路径各一次受控调用；工具/结构化失败记录实际 capability、model_chain、usage 与 degradation_reasons"
+    - "OpenAICloudToolAdapter 仅在已授权且模型能力标记 tool_native 时惰性构造；工具 schema、轮次与 Token 预算继续由 StageBudget 限制"
+  validation:
+    unittest: "590 passed；OK(expected failures=7) in 97.652s"
+    compileall: passed
+    pip_check: "No broken requirements found；既有 ~ransformers invalid distribution warning"
+    git_diff_check: "passed；仅既有 LF/CRLF warning"
+    cloud_requests: 0
+    asr_vlm_loads: 0
+  cached_workspace_gate:
+    - "高数-定积分定义：只读缓存重放，local_deterministic，3 章，quality/render valid，tool_turns=0"
+    - "高数-例题讲解：只读缓存重放，local_deterministic，1 章，quality/render valid，tool_turns=0"
+    - "未覆盖原 Workspace/Output；未触发 ASR、抽帧、VLM 或云请求"
+  next: "CP61-6 诊断、迁移与故障矩阵"
+
+v6_1_cp4_editorial_agent_subgraph_2026_08_21:
+  status: "completed"
+  product_version: "1.0.0rc1"
+  phase: "CP61-4 / editorial_agent_subgraph"
+  production_behavior_changed: false
+  deliverables:
+    - "src/video_study/editorial/tools.py：只读观察工具（lookup_evidence/lookup_visual_facts/get_renderer_capabilities/get_page_detail）+ 提交候选工具（submit_blueprint/submit_chapter/submit_patch/finish_editing）+ 分阶段 @tool 绑定 + validate_patch（revision 守卫/白名单/issue 范围）"
+    - "src/video_study/editorial/writer.py：compose_chapter + write_chapters_in_batches（章指纹缓存）"
+    - "src/video_study/editorial/patch.py：apply_patch（add/remove/replace/move/set_layout_hint/set_style_token；单操作；整篇替换/任意指针/docx_xml 禁止）"
+    - "src/video_study/editorial/agent.py：EditorialState（有界小数据）+ build_editorial_agent（LangGraph StateGraph；ToolNode 一等节点；blueprint.agent/tools/validate/commit→chapter.write→assemble→preview→quality→revision→patch→finalize；显式条件路由；checkpointer 可选）"
+    - "tests/test_v61_editorial_graph.py：9 项（direct submit=1 次、observe+submit=2 次、invalid→retry、audit pass 无 critic、audit fail→patch→rerender→pass、revision conflict→degraded、三路径同合同、writer 缓存、checkpoint 恢复 0 新增工具调用）"
+  gate_evidence:
+    - "真实云请求=0；scripted/replay provider"
+    - "ToolNode 以一等图节点运行（langgraph 注入 tools 配置，tool_call_id 正确往返）"
+    - "patch 冲突/违规不应用；云禁用时 local_deterministic 完整产出"
+  boundaries:
+    - "子图未挂生产 VideoGraph（CP61-5）；未发云请求；未改生产步骤"
+    - "未变更模型/依赖；未构建便携包"
+  next: "CP61-5 生产集成（切换前向用户汇报）"
+
+v6_1_cp3_cloud_tool_port_2026_08_21:
+  status: "completed"
+  product_version: "1.0.0rc1"
+  phase: "CP61-3 / cloud_tool_port_and_capability_gate"
+  production_behavior_changed: false
+  deliverables:
+    - "src/video_study/execution/tool_calling.py：ToolTurn（content/tool_calls/invalid_tool_calls/model/attempts/usage/finish_reason/safe_error_code）；StageBudget（调用/Token/工具轮次/返回大小/修订保留）；ModelCapabilityRegistry（unknown/tool_native/structured_only/unavailable，默认 structured_only）；工具错误码 10 个；同一调用单修改工具策略；planning/revision 分阶段 schema；OpenAI 兼容 invoke_turn adapter；工具返回有界截断"
+    - "src/video_study/execution/ports.py：CloudToolPort 协议（保留 CloudJsonPort）"
+    - "tests/test_v61_tool_protocol.py：25 项（content-only/单工具/非法 args/未知工具/多修改/tool_call_id 往返/budget/能力门禁/provider 失败/截断 + langgraph ToolNode+SQLite Checkpoint 恢复）"
+  gate_evidence:
+    - "真实云请求=0；全部 fake/replay"
+    - "langgraph 1.2.11 ToolNode + @tool + SqliteSaver：AIMessage.tool_calls → ToolMessage → Checkpoint 恢复通过"
+    - "ToolTurn 序列化无 api_key/authorization/raw_response"
+    - "未新增依赖：langchain-core 1.6.0 为 langgraph 既有传递依赖"
+  boundaries:
+    - "未接业务 Agent（CP61-4）；未改生产步骤；未发云请求"
+    - "未变更模型/依赖；未构建便携包"
+  next: "CP61-4 EditorialAgentSubgraph 与有限编辑循环"
+
+v6_1_cp2_native_v31_renderers_2026_08_21:
+  status: "completed"
+  product_version: "1.0.0rc1"
+  phase: "CP61-2 / native_v31_renderers_and_quality"
+  production_behavior_changed: false
+  deliverables:
+    - "src/video_study/render_v31.py：Markdown 原生 v3.1、Word 原生 v3.1（node）、PDF（Word 转换或 built-in v3.1 fallback）、resolve_v31_figures、count_word_omml、component_statistics、markdown_contains_absolute_path"
+    - "scripts/render_docx_v31.mjs：docx 9.7.1 Math 类生成 Word 原生 OMML；LaTeX 子集解析（\\frac/^/_/\\sqrt/希腊字母/∫∑∏ 等）"
+    - "src/video_study/editorial/quality.py：QualityReport v2（intent/evidence/math/visual/render）+ PageAuditReport v1 + audit_render_outputs"
+    - "tests/test_v61_native_renderers.py（8）+ tests/test_v61_quality.py（8）：组件映射参数化、OMML 计数一致、PDF 页渲染、forbidden 不注入、v2 只读拒绝、跨格式 parity"
+  gate_evidence:
+    - "真实高数-例题讲解：本地链 → v3.1 → Markdown/Word/PDF；equations=1、Word OMML=1 一致；无旧栏目；无绝对路径泄露"
+    - "真实高数-定积分定义：equations=0、OMML=0 一致（本地保守不补造公式）；images=3；quality/render/page=valid"
+    - "v3.1 候选路径无 v3_to_v2；renderer 不注入旧业务模板（无 内容导览/学习目标/课程复习/固定编号/看图重点）"
+  boundaries:
+    - "未切生产（V6.0 adapter 仍是 active 渲染路径）；未发云请求；未加载 ASR/VLM"
+    - "未修改既有 render.py 生产逻辑；未变更依赖（node/docx 9.7.1 为既有环境）"
+  next: "CP61-3 CloudToolPort 与模型能力门禁（mock/replay）"
+
+v6_1_cp1_local_editorial_protocol_2026_08_21:
+  status: "completed"
+  product_version: "1.0.0rc1"
+  phase: "CP61-1 / local_editorial_protocol"
+  production_behavior_changed: false
+  authorization: "用户 2026-08-21 授权一次性连续推进 CP61-1→CP61-5（source_code_implementation=true）"
+  deliverables:
+    - "src/video_study/editorial/policy.py：EditorialPolicy v1（required/preferred/forbidden + 机器可验证谓词 forbidden_hits/required_missing）"
+    - "src/video_study/editorial/intent.py：LocalIntentCompiler（最小意图集合；unmatched_hints→partially_satisfied）"
+    - "src/video_study/editorial/evidence.py：EvidenceCorrectionOverlay v1（不可变 transcript；数学领域高频近音表；accepted/unresolved）"
+    - "src/video_study/editorial/blueprint.py：DocumentBlueprint v2（无 source_section；只引用真实 unit；布局受限）"
+    - "src/video_study/editorial/document.py：Document v3.1 组件树模型与 validator（contract_version=document-v3.1）"
+    - "src/video_study/editorial/local.py：LocalBlueprintPolicy/LocalDocumentComposer/LocalDeterministicRepair"
+    - "src/video_study/execution/artifacts.py：V61_ARTIFACTS（4 个新 ArtifactId，未并入 STANDARD_ARTIFACTS）"
+    - "tests/test_v61_{editorial_policy,evidence_overlay,blueprint,local_editor,artifacts}.py"
+  gate_evidence:
+    - "532 passed in 101.265s；OK(expected failures=7)；460 基线无回归"
+    - "真实高数-定积分定义：141 条纠错候选，v3.1 正文 0 个已知 ASR 错词"
+    - "真实高数-例题讲解：0 个 ASR 错词，无本地绝对路径泄露，blueprint mode=case"
+    - "forbidden 内容导览/学习目标/课程复习/固定编号 → 产物无对应组件"
+    - "复杂意图（双栏/风格等）→ partially_satisfied"
+  boundaries:
+    - "未接生产；未发起云请求；未加载 ASR/VLM；未修改既有生产步骤"
+    - "未改动 STANDARD_ARTIFACTS；未删除/覆盖历史 Workspace/Output"
+    - "未变更模型/依赖；未构建便携包"
+  next: "CP61-2 Document v3.1 原生三端渲染与质量审计"
+
+v6_1_cp0_baseline_and_contract_2026_08_21:
+  status: "completed"
+  product_version: "1.0.0rc1"
+  phase: "CP61-0 / baseline_and_contract"
+  production_behavior_changed: false
+  baseline:
+    graph_version: "v6-document-v3-1"
+    document_contract: "document-v3（schema_version=3，非 v3.1）"
+    python_env: "conda ImageT10（Python 3.11.15）"
+    dependencies: "langgraph 1.2.11；langgraph-checkpoint-sqlite 3.1.1；numpy 2.2.6；torch 2.4.1+cu121"
+    git_head: "1646d2a"
+    worktree: "dirty（V6.0 未提交实现 + 本 CP 新增）"
+  frozen_workspaces:
+    - "workspace/高数-定积分定义-be06877a42cf（run 2b48a72d；knowledge.units degraded/offline；document-v3 mode=cloud_summary 伪报）"
+    - "workspace/高数-例题讲解-a5c1f2d59bf3（run 14d84772）"
+    - "digest 与 Artifact 引用见 docs/迭代升级/CP61-0黄金清单.yaml"
+  deliverables:
+    - "docs/迭代升级/CP61-0黄金清单.yaml（输入 digest、Artifact refs、已知问题、黄金期望）"
+    - "tests/fixtures/v61/{math_concept,math_example,strong_visual,weak_visual}.json + README.md"
+    - "tests/test_v61_characterization.py：7 契约断言（expectedFailure，CP61-1/2/5 翻绿时移除装饰器）+ 8 行为钉住"
+    - "tests/test_v61_contracts.py：11 通过（版本/工具/预算/终态/provenance/追溯矩阵）"
+    - "docs/diagnostics/problem-index.yaml：v61_target_errors 占位（未切 active owner）"
+  characterization_findings:
+    - "document.plan 是旧 section 机械包装（source_section 原样复制，全部 layout=full_width）"
+    - "生产渲染经 v3_to_v2 适配；renderer 硬编码注入 内容导览/学习目标/课程复习/知识主线/关键规则清单/待回看/看图重点/固定章节编号"
+    - "两份高数 docx 的 OMML=0（无 m:oMath）"
+    - "定积分定义 knowledge.units 降级为 offline，document-v3 mode 仍为 cloud_summary（伪报云端）"
+    - "render.verify 只校验文件存在且非空"
+    - "正文含 圆寒数/长数/级分/阶段/便上线级分 等 ASR 错词；markdown 泄露本地绝对图片路径"
+  validation:
+    unittest: "486 passed in 78.980s；OK(expected failures=7)；460 基线无回归 + 26 新增（19 通过、7 按预期失败）"
+    compileall: "passed（__pycache__ 写入需完整权限；会话沙箱限制）"
+    pip_check: "No broken requirements found"
+    git_diff_check: "passed；仅既有 LF/CRLF 提示"
+    yaml_parse: "CP61-0黄金清单 / problem-index 占位解析通过"
+    cloud_requests: 0
+    asr_vlm_loads: 0
+  environment_notes:
+    - "会话沙箱拒绝 0o700 临时目录访问（tempfile.mkdtemp 默认 0o700）与 __pycache__ 写入；"
+    - "验收运行使用 tmp/testenv/sitecustomize.py（os.mkdir 0o700→0o777）+ TEMP=tmp/testtmp；compileall 经完整权限执行一次。"
+    - "正常环境（非沙箱）无需 shim；09:54 文档验证 460 passed 即正常环境结果。"
+  boundaries:
+    - "未读取或输出 .env；未发起真实云请求；未加载 ASR/VLM 模型；未修改生产代码"
+    - "未重跑长视频；未变更模型/依赖；未构建便携包"
+    - "未删除/覆盖任何历史 Workspace/Output"
+  next: "CP61-1 需要 source_code_implementation 授权；从 EditorialPolicy/LocalIntentCompiler/EvidenceCorrectionOverlay/DocumentBlueprint v2 开始。"
+
+v6_0_cp8_ui_runtime_fix_2026_08_20:
+  status: "implemented_and_ui_validated"
+  product_version: "1.0.0rc1"
+  problem: "启动桌面版.cmd 激活 ImageT10 后仍硬编码执行 .venv/Scripts/video-study.exe；该 .venv 缺少 langgraph，云端授权后进入 GraphRuntime 才报 ModuleNotFoundError。"
+  fixes:
+    - "桌面启动器改为使用已激活 ImageT10 的 python -m video_study，并显式注入 src。"
+    - "启动 UI 前预检 langgraph 与 langgraph.checkpoint.sqlite，依赖缺失时立即给出可操作错误。"
+    - "批处理控制层保持纯 ASCII，避免传统 cmd.exe 将 UTF-8 中文字节误解析为命令。"
+    - "README 桌面启动方式同步为 ImageT10 运行时。"
+  regression_test: "test_desktop_launcher_uses_activated_conda_python_for_v6_runtime"
+  ui_validation:
+    video: "视频/test/高数-例题讲解.mp4"
+    prompt: "此为考研高数例题讲解，文档形成为列题+思路讲解"
+    path: "真实双击启动器 → 添加视频对话框 → 云端优化授权对话框 → 桌面队列完成"
+    runtime_python: "D:/Anaconda/envs/envs/ImageT10/python.exe"
+    run_id: "14d847727b464972880fc7e28d8c6069"
+    result: "succeeded；UI 显示已完成/100%，无 ModuleNotFoundError"
+    cloud_usage: "3010 prompt + 1997 completion = 5007 lineage tokens；本次命中已验证缓存，新增云请求和 token 均为 0"
+  validation:
+    unittest: "460 passed in 18.226s"
+    compileall: "passed"
+    pip_check: "No broken requirements found；既有 ~ransformers warning 保留"
+    git_diff_check: "passed"
+  boundaries:
+    - "未读取或输出 .env；未下载或更改模型；未构建便携包。"
+    - "未清理历史 Workspace；真实 UI 测试复用已验证云端缓存。"
+
 v5_1_desktop_experience_patch_2026_08_19:
   status: "implemented_and_validated"
   product_version: "0.5.1"
@@ -36,6 +373,161 @@ v5_1_desktop_experience_patch_2026_08_19:
     - "未增加 Web UI、HTTP 服务、端口或 serve 命令"
     - "保持 JSON → Markdown → Word → PDF、时间戳和 video-study://"
     - "便携发行包重建需单独授权"
+
+v6_0_cp0_2026_08_20:
+  status: "validated"
+  product_version: "0.5.1"
+  phase: "P0 / CP0"
+  production_behavior_changed: false
+  baseline:
+    unittest: "408 passed in 9.965s"
+    compileall: "passed"
+    git_diff_check: "passed; only existing CRLF warnings"
+    pip_check: "failed before change: imagecodecs 2026.3.6 and opencv-python 4.13.0.92 require numpy>=2, installed numpy is 1.26.4; invalid ~ransformers distribution warning"
+  read_only_diagnostics:
+    - "workspace/高数-2d5be9b875cb: succeeded; 15 standard artifacts present; cache reasons CACHE_HIT"
+    - "workspace/trailer: succeeded; 15 standard artifacts present; cache reasons CACHE_HIT"
+  fixtures:
+    root: "tests/fixtures/v6"
+    scenarios: [single_video_success, cache_hit, cancellation, node_failure, source_entrypoints, aggregate_modes]
+  tests_added:
+    - "tests/test_v6_contracts.py: 4 passed"
+  checkpointer_selection:
+    adapter: "langgraph-checkpoint-sqlite / SqliteSaver"
+    proposed_versions: "langgraph>=1.0.10,<2; langgraph-checkpoint-sqlite>=3.0.1,<4"
+    local_probe: "stdlib sqlite persistence and reference-only payload test passed"
+    installation: "authorized and installed: langgraph 1.2.11; langgraph-checkpoint-sqlite 3.1.1"
+    security: "validated with JsonPlusSerializer(allowed_msgpack_modules=[])"
+    windows_connection: "SqliteSaver may checkpoint on LangGraph worker threads; sqlite3.connect requires check_same_thread=False"
+  authorization_used:
+    cloud_requests: 0
+    model_download_or_change: false
+    long_video_rerun: false
+    dependency_install_or_reinstall: true
+    portable_rebuild: false
+  next: "P1 NodeExecutor failure tests; dependency-install authorization is required only before P2"
+
+v6_0_environment_upgrade_2026_08_20:
+  status: "validated"
+  authorization: "user explicitly authorized LangGraph/Checkpointer installation and NumPy upgrade"
+  installed:
+    numpy: "2.2.6"
+    langgraph: "1.2.11"
+    langgraph_checkpoint_sqlite: "3.1.1"
+  compatibility:
+    cv2_import: "4.13.0 passed"
+    imagecodecs_import: "2026.3.6 passed"
+    pip_check: "No broken requirements found"
+    full_unittest_before_real_sqlite_probe: "412 passed"
+    sqlite_probe: "tests.test_v6_contracts: 4 passed"
+  remaining_environment_hygiene:
+    - "pip continues to warn about pre-existing invalid ~ransformers and ~umpy distribution directories; no package is missing according to pip check"
+  prohibited_actions_not_used:
+    cloud_requests: 0
+    model_download_or_change: false
+    long_video_rerun: false
+
+v6_0_cp1_2026_08_20:
+  status: "validated"
+  phase: "P1 / CP1"
+  files:
+    - "src/video_study/execution/node_executor.py"
+    - "src/video_study/execution/runner.py"
+    - "tests/test_pipeline_runner.py"
+  result: "PipelineRunner is DAG scheduling/state aggregation only; NodeExecutor is the sole node transaction path"
+  fault_windows:
+    - "invalid cache artifact: failed without execute"
+    - "commit failure: failed without cache record"
+    - "after commit before cache record: committed artifact retained and failed reported"
+  validation:
+    unittest: "50 passed in 27.839s"
+    compileall: "passed"
+    pip_check: "No broken requirements found"
+    git_diff_check: "passed; existing CRLF warnings only"
+  production_cutover: false
+  next: "P2 single-video LangGraph parity runtime"
+
+v6_0_cp2_2026_08_20:
+  status: "validated"
+  phase: "P2 / CP2"
+  files:
+    - "src/video_study/execution/graph_runtime.py"
+    - "src/video_study/execution/graph_state.py"
+    - "src/video_study/execution/checkpointing.py"
+    - "src/video_study/execution/terminal_events.py"
+    - "tests/test_pipeline_runner.py"
+    - "tests/test_coarse_pipeline.py"
+    - "tests/test_v6_contracts.py"
+  contracts:
+    - "15 current business steps execute through LangGraph and shared NodeExecutor"
+    - "Graph state persists bounded ArtifactRef projections, not StepOutcome/runtime services/secrets"
+    - "same graph version resumes after middle-node interrupt without rerunning completed nodes"
+    - "graph version mismatch requires a new thread"
+    - "real offline fixture outputs and stable terminal events match Runner"
+  validation:
+    unittest: "70 passed in 9.670s"
+    compileall: "passed"
+    pip_check: "No broken requirements found"
+    git_diff_check: "passed; existing CRLF warnings only"
+  production_cutover: false
+  next: "P3 SourceGraph, JobGraph, AggregateGraph and Application production cutover"
+
+v6_0_cp3_cp4_2026_08_20:
+  status: "validated"
+  time: "2026-08-20 16:18 Asia/Shanghai"
+  phases: ["P3 / CP3", "P4 / CP4"]
+  implementation:
+    - "SourceGraph unifies local resolve and URL preflight/acquire/verify"
+    - "JobGraph owns sequential multi-video execution, stop-and-preserve-completed policy, and aggregate routing"
+    - "AggregateGraph owns local/cloud aggregate validation, execution, and finalization"
+    - "Application exposes JobRequest/JobResult/JobHandle and submits one Graph job"
+    - "Desktop Controller no longer performs cache bypass or per-video business scheduling"
+    - "run_compatible_pipeline uses LangGraph plus strict local SQLite checkpoint"
+    - "PipelineRunner and execution/runner.py removed; active architecture contracts point to GraphRuntime"
+  validation:
+    unittest: "439 passed in 14.387s"
+    targeted_cp4: "54 passed in 6.708s"
+    compileall: "passed"
+    cloud_requests: 0
+    model_downloads: 0
+    long_video_reruns: 0
+  production_cutover: true
+  next: "P5 local decision, model routing, ASR/visual evidence quality"
+
+v6_0_cp5_cp7_release_candidate_2026_08_20:
+  status: "validated_release_candidate"
+  time: "2026-08-20 16:50 Asia/Shanghai"
+  product_version: "1.0.0rc1"
+  phases: ["P5 / CP5", "P6 / CP6", "P7 / CP7", "P8 offline gate"]
+  quality_and_models:
+    - "VisualEvidence consumes frames.candidates instead of global frames.selected"
+    - "LocalDecisionPolicy provides none/supportive/required routing and bounded ASR review candidates"
+    - "ModelAdvisor tasks are whitelist-gated; hard permission/budget/cache decisions remain deterministic"
+    - "GPU and Word resources are process-wide serial leases"
+    - "shared cloud budget opens a circuit after repeated provider failures; image authorization defaults false"
+  document_v3:
+    - "DocumentPlan capability manifest and stable chapter IDs"
+    - "chapter.compose/validate/repair are independent cached nodes with max one deterministic repair"
+    - "Document v3 is the only new canonical write; v2 is read-only adapter input"
+    - "render.markdown/render.word/render.pdf/render.verify are separate Graph nodes"
+    - "local and cloud aggregate outputs also write Document v3"
+  migration_and_diagnostics:
+    - "diagnose_workspace reports current_v3 versus legacy_v2_read_only without modifying historical workspaces"
+    - "SQLite graph checkpoint versions and counts are inspected read-only"
+    - "math formula, strong visual, and weak visual machine golden fixtures pass"
+    - "existing 高数 workspace diagnosed read-only: 15 historical artifacts, 600 candidate frames, no rerun"
+  validation:
+    unittest: "455 passed in 17.338s"
+    compileall: "passed"
+    pip_check: "No broken requirements found; existing ~ransformers invalid-distribution warning remains"
+    git_diff_check: "passed; existing CRLF warnings only"
+    cloud_requests: 0
+    cloud_tokens: 0
+    model_downloads: 0
+    long_video_reruns: 0
+    portable_builds: 0
+  remaining_release_gate: "user confirmation required before 1.0.0 and version timeline entry"
+
 
 architecture:
   knowledge_layer:
@@ -601,6 +1093,56 @@ v4_0_architecture_delivery_2026_08_13:
     - "未增加 Web UI、HTTP 服务、端口或 serve 命令"
     - "保持 JSON -> Markdown -> Word -> PDF、时间戳和 video-study://"
     - "未追加或改写迭代记录与问题.md 的 V4.0 用户批准记录"
+v6_0_cp8_real_full_chain_2026_08_20:
+  status: "validated_release_candidate"
+  time: "2026-08-20 17:30 Asia/Shanghai"
+  product_version: "1.0.0rc1"
+  sample: "视频/test/高数-例题讲解.mp4"
+  request:
+    editorial_brief: "此为考研高数例题讲解，文档形成为列题+思路讲解"
+    ui_equivalent_path: "ProcessingRequest -> JobGraph -> GraphRuntime -> 23 nodes"
+    cloud_endpoint: "阿里云百炼 OpenAI-compatible endpoint（URL 已在运行授权提示中披露）"
+    model: "deepseek-v4-flash-0731"
+    image_upload: false
+  repaired_issues:
+    - "render.word 新 staging 子目录未创建，Document v3 临时 v2 视图写入失败"
+    - "高数积分/根号/换元/凑微分未进入确定性强视觉门禁"
+    - "云 writer 缺少公式等价关系、运算顺序与常数因子完整性约束"
+    - "局部云重跑用当前 budget snapshot 覆盖缓存规划用量，导致 token 谱系少计"
+    - "include_full_transcript=false 仅对 Markdown 生效，Word/PDF 仍附完整转写"
+    - "PDF 来源链接与前一页解题步骤分离"
+  final_runtime:
+    run_status: "succeeded"
+    graph_version: "v6-document-v3-1"
+    steps_recorded: 23
+    source_duration_seconds: 140.019002
+    audio_coverage_ratio: 1.0
+    asr: "faster-whisper / cuda / int8_float16 / 71 segments"
+    visual: "Qwen3-VL session initialized once；不满足全部像素条件的候选保持 no_match，未进入文档"
+    document: "schema_version=3, mode=cloud_summary"
+    cloud_usage:
+      planning_tokens: 2415
+      organizing_tokens: 2592
+      total_tokens: 5007
+      request_cap: 5
+      cap_changed: false
+  artifacts:
+    markdown: "output/高数-例题讲解-a5c1f2d59bf3/高数-例题讲解.md"
+    docx: "output/高数-例题讲解-a5c1f2d59bf3/高数-例题讲解.docx"
+    pdf: "output/高数-例题讲解-a5c1f2d59bf3/高数-例题讲解.pdf"
+    protocol_links: "2 links resolved through desktop-equivalent logic to 0s and 43s"
+    pdf_visual_qa: "2 pages；无裁切、重叠、黑块、孤立来源链接或完整转写泄漏"
+  validation:
+    unittest: "459 passed in 17.061s"
+    compileall: "passed"
+    pip_check: "No broken requirements found；既有 ~ransformers warning 保留"
+    git_diff_check: "passed"
+  boundaries:
+    - "未读取或输出 .env；未上传视频或图片"
+    - "未下载或更改模型；未构建便携包"
+    - "历史 Workspace 未删除；指定 Workspace 为 current_v3"
+  next: "用户确认后将 1.0.0rc1 提升为 1.0.0 并追加用户版本时间线"
+
 v4_1_delivery_2026_08_14:
   status: "implemented_and_cloud_validated"
   product_version: "0.4.1"

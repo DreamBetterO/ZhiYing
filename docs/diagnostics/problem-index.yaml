@@ -25,9 +25,24 @@ errors:
   - {prefix: COURSE_IR, owner: video_study.execution.steps.knowledge, first_artifact: knowledge.course_ir, tests: [tests/test_cloud_payload.py], safe_rerun_from: knowledge.course_ir}
   - {prefix: KNOWLEDGE_UNITS, owner: video_study.execution.steps.knowledge, first_artifact: knowledge.units, tests: [tests/test_knowledge_organizer.py, tests/test_cloud_payload.py], safe_rerun_from: knowledge.units}
   - {prefix: KNOWLEDGE_SELFCHECK, owner: video_study.execution.steps.knowledge, first_artifact: knowledge.selfcheck, tests: [tests/test_knowledge_selfcheck.py], safe_rerun_from: knowledge.selfcheck}
-  - {prefix: DOCUMENT_ASSEMBLE, owner: video_study.execution.steps.knowledge, first_artifact: document.v2, tests: [tests/test_knowledge_adapter.py, tests/test_render_content_blocks.py], safe_rerun_from: document.assemble}
-  - {prefix: RENDER, owner: video_study.execution.steps.coarse, first_artifact: document.v2, tests: [tests/test_coarse_pipeline.py, tests/test_pdf_conversion.py], safe_rerun_from: render.bundle}
-  - {prefix: RUN_CANCELLED, owner: video_study.execution.runner, first_artifact: state/pipeline-state.json, tests: [tests/test_pipeline_runner.py], safe_rerun_from: failed_step}
+  - {prefix: EDITORIAL_POLICY, owner: video_study.execution.steps.editorial_steps, first_artifact: editorial.policy, tests: [tests/test_v61_editorial_policy.py], safe_rerun_from: editorial.policy}
+  - {prefix: EVIDENCE_RECONCILE, owner: video_study.execution.steps.editorial_steps, first_artifact: evidence.corrections, tests: [tests/test_v61_evidence_overlay.py], safe_rerun_from: evidence.reconcile}
+  - {prefix: DOCUMENT_BLUEPRINT, owner: video_study.execution.steps.editorial_steps, first_artifact: document.blueprint, tests: [tests/test_v61_local_editor.py, tests/test_v61_editorial_graph.py], safe_rerun_from: document.blueprint}
+  - {prefix: DOCUMENT_WRITE, owner: video_study.execution.steps.editorial_steps, first_artifact: document.chapter_v31, tests: [tests/test_v61_local_editor.py, tests/test_v61_editorial_graph.py], safe_rerun_from: document.write}
+  - {prefix: DOCUMENT_ASSEMBLE, owner: video_study.execution.steps.editorial_steps, first_artifact: document.v3, tests: [tests/test_v61_local_editor.py], safe_rerun_from: document.assemble}
+  - {prefix: DOCUMENT_VALIDATE, owner: video_study.execution.steps.editorial_steps, first_artifact: document.validation, tests: [tests/test_v61_quality.py, tests/test_v61_local_editor.py], safe_rerun_from: document.validate}
+  - {prefix: TOOL_UNKNOWN, owner: video_study.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
+  - {prefix: TOOL_ARGS_INVALID, owner: video_study.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
+  - {prefix: TOOL_SCOPE_VIOLATION, owner: video_study.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
+  - {prefix: TOOL_RESULT_TOO_LARGE, owner: video_study.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
+  - {prefix: TOOL_MULTIPLE_MUTATIONS, owner: video_study.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
+  - {prefix: TOOL_REVISION_CONFLICT, owner: video_study.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_editorial_graph.py], safe_rerun_from: document.write}
+  - {prefix: TOOL_BUDGET_EXCEEDED, owner: video_study.execution.tool_calling, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
+  - {prefix: TOOL_PROVIDER_UNSUPPORTED, owner: video_study.execution.tool_calling, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
+  - {prefix: TOOL_NO_PROGRESS, owner: video_study.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_editorial_graph.py], safe_rerun_from: document.blueprint}
+  - {prefix: TOOL_CHECKPOINT_SERIALIZATION_FAILED, owner: video_study.execution.checkpointing, first_artifact: state/graph-checkpoints.sqlite3, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
+  - {prefix: RENDER, owner: video_study.execution.steps.coarse, first_artifact: render.markdown.draft, tests: [tests/test_coarse_pipeline.py, tests/test_pdf_conversion.py], safe_rerun_from: render.markdown}
+  - {prefix: RUN_CANCELLED, owner: video_study.execution.graph_runtime, first_artifact: state/pipeline-state.json, tests: [tests/test_pipeline_runner.py], safe_rerun_from: failed_step}
 cache_reasons:
   CACHE_HIT: "产物及指纹有效，无需重跑"
   LEGACY_ADOPTED: "旧 Workspace 已单向认领，无需模型初始化"

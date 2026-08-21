@@ -17,7 +17,13 @@ from ...knowledge.visual_retrieval import build_visual_evidence
 from ...knowledge.visuals import build_frame_semantics
 from ...utils import TaskCancelled
 from ..artifacts import (
-    DOCUMENT_V2,
+    CHAPTER_DRAFTS,
+    CHAPTER_REPAIRED,
+    CHAPTER_VALIDATED,
+    DOCUMENT_PLAN,
+    DOCUMENT_V3,
+    DOCUMENT_VALIDATION,
+    FRAMES_CANDIDATES,
     FRAMES_SELECTED,
     FRAMES_SEMANTICS,
     KNOWLEDGE_COURSE_IR,
@@ -33,6 +39,8 @@ from ..artifacts import (
 )
 from ..context import ProcessingContext
 from ..contracts import ExecutionCancelled, FingerprintMaterial, RemoteCost, StepOutcome, StepSpec, StepStatus
+from ..decision_policy import LocalDecisionPolicy, VisualNeedLevel
+from ..resource_leases import ResourceLeaseManager
 from ..task_groups import FileTaskGroupCache
 
 
@@ -123,12 +131,12 @@ def _cancel(exc: BaseException) -> None:
 @dataclass
 class KnowledgePlanStep:
     spec = StepSpec(
-        "knowledge.plan", 2, dependencies=("transcript.normalize",),
+        "knowledge.plan", 3, dependencies=("transcript.normalize",),
         inputs=(TRANSCRIPT_NORMALIZED,), outputs=(KNOWLEDGE_PLAN,),
         config_keys=("knowledge.content_level", "policy.cloud"), remote_cost=RemoteCost.CLOUD,
         capabilities=("offline", "cloud"), degradation_policy="offline",
         owner="video_study.execution.steps.knowledge", tests=("tests/test_knowledge_planning.py",),
-        error_code_prefix="KNOWLEDGE_PLAN", contract_version="lesson-plan-v1",
+        error_code_prefix="KNOWLEDGE_PLAN", contract_version="lesson-plan-v2",
     )
 
     def fingerprint(self, context, inputs):
@@ -166,8 +174,8 @@ class KnowledgePlanStep:
 @dataclass
 class VisualJobsStep:
     spec = StepSpec(
-        "visual.jobs", 1, dependencies=("knowledge.plan", "frames.select", "transcript.normalize"),
-        inputs=(KNOWLEDGE_PLAN, FRAMES_SELECTED, TRANSCRIPT_NORMALIZED), outputs=(VISUAL_JOBS,),
+        "visual.jobs", 2, dependencies=("knowledge.plan", "frames.candidates", "transcript.normalize"),
+        inputs=(KNOWLEDGE_PLAN, FRAMES_CANDIDATES, TRANSCRIPT_NORMALIZED), outputs=(VISUAL_JOBS,),
         config_keys=("visual.jobs",), owner="video_study.execution.steps.knowledge",
         tests=("tests/test_visual_retrieval.py",), error_code_prefix="VISUAL_JOBS",
         contract_version="visual-jobs-v1",
@@ -175,10 +183,10 @@ class VisualJobsStep:
 
     def fingerprint(self, context, inputs):
         plan_ref = inputs.get(KNOWLEDGE_PLAN)
-        frames_ref = inputs.get(FRAMES_SELECTED)
+        frames_ref = inputs.get(FRAMES_CANDIDATES)
         transcript_ref = inputs.get(TRANSCRIPT_NORMALIZED)
         return FingerprintMaterial({
-            "upstream.frames.selected": frames_ref.digest if frames_ref else "",
+            "upstream.frames.candidates": frames_ref.digest if frames_ref else "",
             "upstream.transcript.normalized": transcript_ref.digest if transcript_ref else "",
             "visual_plan": _visual_plan_digest(plan_ref),
             "visual": dict(context.options.visual),
@@ -190,7 +198,16 @@ class VisualJobsStep:
         duration = max((float(row.get("end_seconds", 0)) for row in transcript.get("segments", [])), default=0.0)
         settings = dict(dict(context.options.visual).get("visual_evidence", {}))
         jobs = collect_visual_jobs(plan, duration, settings)
-        output = _write(staging, VISUAL_JOBS, {"version": 1, "jobs": [job.to_dict() for job in jobs]})
+        policy = LocalDecisionPolicy()
+        need_levels = {
+            unit.plan_id: policy.visual_need(unit).value
+            for unit in plan.all_unit_plans if unit.plan_id
+        }
+        output = _write(staging, VISUAL_JOBS, {
+            "version": 2,
+            "jobs": [job.to_dict() for job in jobs],
+            "need_levels": need_levels,
+        })
         return StepOutcome(self.spec.step_id, context.run_id, StepStatus.SUCCEEDED, artifacts=(ArtifactRef(VISUAL_JOBS, output),))
 
     def validate(self, _context, outcome):
@@ -201,8 +218,8 @@ class VisualJobsStep:
 @dataclass
 class VisualEvidenceStep:
     spec = StepSpec(
-        "visual.evidence", 3, dependencies=("visual.jobs", "knowledge.plan", "frames.select", "transcript.normalize"),
-        inputs=(VISUAL_JOBS, KNOWLEDGE_PLAN, FRAMES_SELECTED, TRANSCRIPT_NORMALIZED), outputs=(VISUAL_EVIDENCE,),
+        "visual.evidence", 4, dependencies=("visual.jobs", "knowledge.plan", "frames.candidates", "transcript.normalize"),
+        inputs=(VISUAL_JOBS, KNOWLEDGE_PLAN, FRAMES_CANDIDATES, TRANSCRIPT_NORMALIZED), outputs=(VISUAL_EVIDENCE,),
         config_keys=("visual.provider",), remote_cost=RemoteCost.LOCAL_HEAVY,
         degradation_policy="offline",
         owner="video_study.execution.steps.knowledge", tests=("tests/test_visual_retrieval.py", "tests/test_vision_providers.py"),
@@ -212,11 +229,11 @@ class VisualEvidenceStep:
     def fingerprint(self, context, inputs):
         plan_ref = inputs.get(KNOWLEDGE_PLAN)
         jobs_ref = inputs.get(VISUAL_JOBS)
-        frames_ref = inputs.get(FRAMES_SELECTED)
+        frames_ref = inputs.get(FRAMES_CANDIDATES)
         transcript_ref = inputs.get(TRANSCRIPT_NORMALIZED)
         return FingerprintMaterial({
             "upstream.visual.jobs": jobs_ref.digest if jobs_ref else "",
-            "upstream.frames.selected": frames_ref.digest if frames_ref else "",
+            "upstream.frames.candidates": frames_ref.digest if frames_ref else "",
             "upstream.transcript.normalized": transcript_ref.digest if transcript_ref else "",
             "visual_plan": _visual_plan_digest(plan_ref),
             "visual": dict(context.options.visual),
@@ -224,7 +241,12 @@ class VisualEvidenceStep:
 
     def execute(self, context, inputs, staging):
         plan = LessonPlan.from_dict(_read(_input(inputs, KNOWLEDGE_PLAN)).get("plan", {}))
-        frames = _read(_input(inputs, FRAMES_SELECTED))
+        frames_ref = _input(inputs, FRAMES_CANDIDATES)
+        frames = _read(frames_ref)
+        candidate_dir = frames_ref.path.parent / "candidates"
+        for row in frames.get("candidates", []):
+            if not row.get("path") and row.get("file"):
+                row["path"] = str((candidate_dir / str(row["file"])).resolve())
         transcript = _read(_input(inputs, TRANSCRIPT_NORMALIZED))
         settings = dict(dict(context.options.visual).get("visual_evidence", {}))
         runtime_state: dict[str, Any] = {}
@@ -238,16 +260,34 @@ class VisualEvidenceStep:
             port = context.services.port("vision")
             session = port.open_session(settings)
             return session.provider, ""
+
+        levels = [LocalDecisionPolicy().visual_need(unit) for unit in plan.all_unit_plans]
+        visual_need = (
+            VisualNeedLevel.REQUIRED if VisualNeedLevel.REQUIRED in levels else
+            VisualNeedLevel.SUPPORTIVE if VisualNeedLevel.SUPPORTIVE in levels else
+            VisualNeedLevel.NONE
+        )
+
+        def run_visual(provider):
+            from ..graphs.visual_graph import VisualGraph
+            return VisualGraph().run(
+                visual_need,
+                execute=lambda: build_visual_evidence(
+                    plan, frames, transcript, staging, settings,
+                    task_cache=task_cache,
+                    provider_factory=provider,
+                    cancel_check=context.services.cancelled,
+                    event_sink=context.services.event_sink,
+                    progress_sink=context.services.progress_sink,
+                    runtime_state=runtime_state,
+                ),
+            )["evidence"]
         try:
-            evidence = build_visual_evidence(
-                plan, frames, transcript, staging, settings,
-                task_cache=task_cache,
-                provider_factory=provider_factory,
-                cancel_check=context.services.cancelled,
-                event_sink=context.services.event_sink,
-                progress_sink=context.services.progress_sink,
-                runtime_state=runtime_state,
-            )
+            if visual_need == VisualNeedLevel.NONE:
+                evidence = run_visual(provider_factory)
+            else:
+                with ResourceLeaseManager.acquire("gpu", cancel_check=context.services.cancelled):
+                    evidence = run_visual(provider_factory)
         except BaseException as exc:
             _cancel(exc)
             degraded_reason = f"{type(exc).__name__}: {exc}"
@@ -256,15 +296,7 @@ class VisualEvidenceStep:
                 "stage": "visual", "level": "warning", "code": "visual_evidence_offline_fallback",
                 "message": f"本地视觉增强未完成，已降级为无视觉模型证据并继续生成文档：{degraded_reason}",
             })
-            evidence = build_visual_evidence(
-                plan, frames, transcript, staging, settings,
-                task_cache=task_cache,
-                provider_factory=lambda: (None, degraded_reason),
-                cancel_check=context.services.cancelled,
-                event_sink=context.services.event_sink,
-                progress_sink=context.services.progress_sink,
-                runtime_state=runtime_state,
-            )
+            evidence = run_visual(lambda: (None, degraded_reason))
             runtime_state.update({
                 "degraded": True,
                 "degradation_reason": degraded_reason,
@@ -339,13 +371,13 @@ class CourseIRStep:
 @dataclass
 class KnowledgeUnitsStep:
     spec = StepSpec(
-        "knowledge.units", 2,
+        "knowledge.units", 3,
         dependencies=("knowledge.plan", "knowledge.course_ir", "frames.semantics", "visual.evidence", "transcript.normalize"),
         inputs=(KNOWLEDGE_PLAN, KNOWLEDGE_COURSE_IR, FRAMES_SEMANTICS, VISUAL_EVIDENCE, TRANSCRIPT_NORMALIZED),
         outputs=(KNOWLEDGE_UNITS,), config_keys=("knowledge.units",), remote_cost=RemoteCost.CLOUD,
         capabilities=("offline", "cloud"), degradation_policy="offline",
         owner="video_study.execution.steps.knowledge", tests=("tests/test_knowledge_organizer.py", "tests/test_cloud_payload.py"),
-        error_code_prefix="KNOWLEDGE_UNITS", contract_version="knowledge-units-v1",
+        error_code_prefix="KNOWLEDGE_UNITS", contract_version="knowledge-units-v2",
     )
 
     def fingerprint(self, context, inputs):
@@ -425,14 +457,14 @@ class KnowledgeSelfcheckStep:
 
 
 @dataclass
-class DocumentAssembleStep:
+class DocumentPlanStep:
     spec = StepSpec(
-        "document.assemble", 1,
+        "document.plan", 2,
         dependencies=("knowledge.units", "knowledge.selfcheck", "visual.evidence", "knowledge.plan", "frames.semantics", "frames.select", "transcript.normalize", "source.probe"),
         inputs=(KNOWLEDGE_UNITS, KNOWLEDGE_SELFCHECK, VISUAL_EVIDENCE, KNOWLEDGE_PLAN, FRAMES_SEMANTICS, FRAMES_SELECTED, TRANSCRIPT_NORMALIZED, SOURCE_MANIFEST),
-        outputs=(DOCUMENT_V2,), owner="video_study.execution.steps.knowledge",
+        outputs=(DOCUMENT_PLAN,), owner="video_study.execution.steps.knowledge",
         capabilities=("offline", "cloud"),
-        tests=("tests/test_knowledge_adapter.py", "tests/test_render_content_blocks.py"), error_code_prefix="DOCUMENT_ASSEMBLE", contract_version="document-v2",
+        tests=("tests/test_document_v3.py",), error_code_prefix="DOCUMENT_PLAN", contract_version="document-plan-v2",
     )
 
     def fingerprint(self, context, inputs):
@@ -440,7 +472,7 @@ class DocumentAssembleStep:
             inputs,
             source_link_base=dict(context.options.render).get("source_link_base", "video-study://play"),
             content_level=context.policy.content_level,
-            version=2,
+            version=3,
         )
 
     def execute(self, context, inputs, staging):
@@ -486,21 +518,142 @@ class DocumentAssembleStep:
             },
             "selfcheck": _read(_input(inputs, KNOWLEDGE_SELFCHECK)),
         }
-        output = _write(staging, DOCUMENT_V2, document)
+        from ...document_v3 import build_document_plan
+        document_plan = build_document_plan(
+            document,
+            mode="cloud" if cloud_info.get("model") else "local",
+        )
+        output = _write(staging, DOCUMENT_PLAN, document_plan)
         capability = "cloud" if cloud_info.get("model") else "offline"
         status = StepStatus.DEGRADED if context.policy.cloud_authorized and capability == "offline" else StepStatus.SUCCEEDED
         return StepOutcome(
             self.spec.step_id, context.run_id, status, capability,
-            (ArtifactRef(DOCUMENT_V2, output),),
+            (ArtifactRef(DOCUMENT_PLAN, output),),
         )
 
     def validate(self, _context, outcome):
-        document = _read(outcome.artifacts[0])
-        if int(document.get("schema_version", 0)) != 2: raise ValueError("Document 必须为 v2")
+        from ...document_v3 import validate_document_plan
+        validate_document_plan(_read(outcome.artifacts[0]))
+
+
+@dataclass
+class ChapterComposeStep:
+    spec = StepSpec(
+        "chapter.compose", 1, dependencies=("document.plan",),
+        inputs=(DOCUMENT_PLAN,), outputs=(CHAPTER_DRAFTS,),
+        owner="video_study.execution.steps.knowledge", tests=("tests/test_document_v3.py",),
+        error_code_prefix="CHAPTER_COMPOSE", contract_version="chapter-components-v1",
+    )
+
+    def fingerprint(self, _context, inputs): return _material(inputs, implementation=1)
+
+    def execute(self, context, inputs, staging):
+        from ...document_v3 import compose_chapters
+        chapters = compose_chapters(_read(_input(inputs, DOCUMENT_PLAN)))
+        output = _write(staging, CHAPTER_DRAFTS, {"version": 1, "chapters": chapters})
+        return StepOutcome(self.spec.step_id, context.run_id, StepStatus.SUCCEEDED, artifacts=(ArtifactRef(CHAPTER_DRAFTS, output),))
+
+    def validate(self, _context, outcome): _read(outcome.artifacts[0])
+
+
+@dataclass
+class ChapterValidateStep:
+    spec = StepSpec(
+        "chapter.validate", 1, dependencies=("chapter.compose",),
+        inputs=(CHAPTER_DRAFTS,), outputs=(CHAPTER_VALIDATED,),
+        owner="video_study.execution.steps.knowledge", tests=("tests/test_document_v3.py",),
+        error_code_prefix="CHAPTER_VALIDATE", contract_version="chapter-validation-v1",
+    )
+
+    def fingerprint(self, _context, inputs): return _material(inputs, implementation=1)
+
+    def execute(self, context, inputs, staging):
+        from ...document_v3 import validate_chapters
+        chapters = _read(_input(inputs, CHAPTER_DRAFTS))["chapters"]
+        issues = validate_chapters(chapters)
+        output = _write(staging, CHAPTER_VALIDATED, {"version": 1, "chapters": chapters, "issues": issues})
+        return StepOutcome(self.spec.step_id, context.run_id, StepStatus.SUCCEEDED, artifacts=(ArtifactRef(CHAPTER_VALIDATED, output),))
+
+    def validate(self, _context, outcome): _read(outcome.artifacts[0])
+
+
+@dataclass
+class ChapterRepairStep:
+    spec = StepSpec(
+        "chapter.repair", 1, dependencies=("chapter.validate",),
+        inputs=(CHAPTER_VALIDATED,), outputs=(CHAPTER_REPAIRED,),
+        owner="video_study.execution.steps.knowledge", tests=("tests/test_document_v3.py",),
+        error_code_prefix="CHAPTER_REPAIR", contract_version="chapter-repair-v1",
+    )
+
+    def fingerprint(self, _context, inputs): return _material(inputs, implementation=1, max_repairs=1)
+
+    def execute(self, context, inputs, staging):
+        from ...document_v3 import repair_chapters
+        value = _read(_input(inputs, CHAPTER_VALIDATED))
+        chapters = repair_chapters(value["chapters"], value["issues"])
+        output = _write(staging, CHAPTER_REPAIRED, {"version": 1, "chapters": chapters, "repair_count": 1 if value["issues"] else 0})
+        return StepOutcome(self.spec.step_id, context.run_id, StepStatus.SUCCEEDED, artifacts=(ArtifactRef(CHAPTER_REPAIRED, output),))
+
+    def validate(self, _context, outcome): _read(outcome.artifacts[0])
+
+
+@dataclass
+class DocumentCompileStep:
+    spec = StepSpec(
+        "document.compile", 1, dependencies=("document.plan", "chapter.repair"),
+        inputs=(DOCUMENT_PLAN, CHAPTER_REPAIRED), outputs=(DOCUMENT_V3,),
+        owner="video_study.execution.steps.knowledge", tests=("tests/test_document_v3.py",),
+        error_code_prefix="DOCUMENT_COMPILE", contract_version="document-v3",
+    )
+
+    def fingerprint(self, _context, inputs): return _material(inputs, implementation=1)
+
+    def execute(self, context, inputs, staging):
+        from ...document_v3 import compile_document_v3
+        document = compile_document_v3(
+            _read(_input(inputs, DOCUMENT_PLAN)),
+            _read(_input(inputs, CHAPTER_REPAIRED))["chapters"],
+        )
+        output = _write(staging, DOCUMENT_V3, document)
+        return StepOutcome(self.spec.step_id, context.run_id, StepStatus.SUCCEEDED, artifacts=(ArtifactRef(DOCUMENT_V3, output),))
+
+    def validate(self, _context, outcome):
+        from ...document_v3 import validate_document_v3
+        validate_document_v3(_read(outcome.artifacts[0]))
+
+
+@dataclass
+class DocumentValidateStep:
+    spec = StepSpec(
+        "document.validate", 1, dependencies=("document.compile",),
+        inputs=(DOCUMENT_V3,), outputs=(DOCUMENT_VALIDATION,),
+        owner="video_study.execution.steps.knowledge", tests=("tests/test_document_v3.py",),
+        error_code_prefix="DOCUMENT_VALIDATE", contract_version="document-v3-validation-v1",
+    )
+
+    def fingerprint(self, _context, inputs): return _material(inputs, implementation=1)
+
+    def execute(self, context, inputs, staging):
+        from ...document_v3 import validate_document_v3
+        validate_document_v3(_read(_input(inputs, DOCUMENT_V3)))
+        output = _write(staging, DOCUMENT_VALIDATION, {"version": 1, "valid": True, "issues": []})
+        return StepOutcome(self.spec.step_id, context.run_id, StepStatus.SUCCEEDED, artifacts=(ArtifactRef(DOCUMENT_VALIDATION, output),))
+
+    def validate(self, _context, outcome):
+        if not _read(outcome.artifacts[0]).get("valid"): raise ValueError("Document v3 validation failed")
 
 
 def build_knowledge_steps():
+    """V6.1 生产链：knowledge.units 后进入 v3.1 编辑步骤（CP61-5 切换）。
+
+    旧 document.plan → chapter.compose/validate/repair → document.compile 生产拓扑
+    已由 editorial.policy → evidence.reconcile → document.blueprint → document.write
+    → document.assemble → document.validate 替换；旧步骤代码保留为历史只读。
+    """
+    from .editorial_steps import build_editorial_steps
     return (
         KnowledgePlanStep(), VisualJobsStep(), VisualEvidenceStep(), FrameSemanticsStep(),
-        CourseIRStep(), KnowledgeUnitsStep(), KnowledgeSelfcheckStep(), DocumentAssembleStep(),
+        CourseIRStep(), KnowledgeUnitsStep(), KnowledgeSelfcheckStep(),
+        *build_editorial_steps(),
     )

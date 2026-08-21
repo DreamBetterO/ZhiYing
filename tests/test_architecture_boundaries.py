@@ -74,7 +74,7 @@ class ArchitectureBoundaryTests(unittest.TestCase):
     def test_knowledge_and_desktop_do_not_cross_forbidden_boundaries(self) -> None:
         rules = {
             "knowledge": {"video_study.summarize", "video_study.pipeline", "video_study.desktop", "tkinter", "openai", "subprocess"},
-            "desktop": {"video_study.knowledge", "video_study.providers", "video_study.execution.runner", "openai", "subprocess"},
+            "desktop": {"video_study.knowledge", "video_study.providers", "video_study.execution.graph_runtime", "openai", "subprocess"},
         }
         violations: list[str] = []
         for package, forbidden in rules.items():

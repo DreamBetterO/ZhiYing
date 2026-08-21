@@ -117,7 +117,15 @@ def _candidate_rows(work_dir: Path, frames: dict) -> list[dict]:
                 "content_score": round(_content_score(str(path)), 4),
             })
     if not rows:
-        rows = [dict(frame) for frame in frames.get("frames", [])]
+        for frame in (frames.get("candidates") or frames.get("frames") or []):
+            row = dict(frame)
+            path = str(row.get("path") or row.get("file") or "")
+            row["image_id"] = str(row.get("image_id") or row.get("candidate_id") or Path(path).stem)
+            row["path"] = path
+            row["timestamp_seconds"] = float(row.get("timestamp_seconds", 0.0) or 0.0)
+            row["timestamp_label"] = str(row.get("timestamp_label") or hhmmss(row["timestamp_seconds"]))
+            row["content_score"] = float(row.get("content_score", _content_score(path)) or 0.0)
+            rows.append(row)
     return rows
 
 

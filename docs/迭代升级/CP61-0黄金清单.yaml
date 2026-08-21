@@ -1,0 +1,156 @@
+schema_version: 1
+change_id: v6-1-function-calling-editorial-harness
+phase: CP61-0
+frozen_at: "2026-08-21 10:20 Asia/Shanghai"
+status: baseline_frozen_contract_approved
+
+# ============ 1. V6.0 1.0.0rc1 运行基线（实施前唯一可运行事实） ============
+baseline:
+  product_version: "1.0.0rc1"
+  architecture: "V6 LangGraph 23-node full-pipeline runtime"
+  orchestrator: "GraphRuntime → NodeExecutor → ArtifactStore/WorkspaceCache"
+  graph_version: "v6-document-v3-1"            # src/video_study/execution/terminal_events.py
+  document_contract: "document-v3 (schema_version=3, contract_version=document-v3)"
+  blueprint_contract: "document-plan-v2（实现为 schema_version=1，机械包装旧 section）"
+  renderer: "DocumentAdapter 生产路径经 v3_to_v2 适配（render.py）"
+  git_head: "1646d2a v5.1版本更新（V6.0 实现未提交，worktree dirty）"
+  python_env: "conda ImageT10 = D:\\Anaconda\\envs\\envs\\ImageT10"
+  dependencies:
+    langgraph: "1.2.11"
+    langgraph-checkpoint-sqlite: "3.1.1"
+    numpy: "2.2.6"
+    torch: "2.4.1+cu121"
+  pip_check: "No broken requirements found"
+  compileall: "待重跑（首次与并发 unittest 的 pyc 写入冲突，非语法错误）"
+  git_diff_check: "passed；仅既有 LF/CRLF 提示"
+  unittest_baseline: "见执行事实.yaml v6_1_cp0 条目（460 项基线）"
+
+# ============ 2. 冻结 Workspace（只读引用，不复制大文件） ============
+frozen_workspaces:
+  高数-定积分定义-be06877a42cf:
+    run_id: "2b48a72da5d54ddaa445605a009b48f9"
+    duration_seconds: 473.0
+    fingerprint: "be06877a42cf"
+    final_state: "completed（knowledge.units degraded）"
+    pipeline_state_notes:
+      - "knowledge.units: status=degraded, capability=offline"
+      - "knowledge.plan / document.plan: capability=cloud"
+    digests_sha256:
+      manifest.json: "3FFA8B4FC74C1F506EFC411D6EA622A9217E4504D0B64735A3ED1586A194F689"
+      transcript/raw.json: "2FF9EFB2E1D75F806E3DE121A65C9B499F6366FA1267F7C17DA1CF4D3A815BE5"
+      transcript/transcript.json: "22E8A599510552EB043B6C07B19F09AC6DC305056CD10EED0637DCD057F3CFA5"
+      knowledge/course-ir.json: "8FE9780C1E8795FBC54CA30E0C6D19F6743F267E6ADDA5B3939BBCB5A86B5134"
+      knowledge/lesson-plan.json: "77022BE37DBCE28FDC97FCF6DF37FDE4BC61F1A851958817EFCCA2B1C84FE3B1"
+      knowledge/knowledge-units.json: "A7B846E795C213F3AA12B8C431CF2232D15295D52DF8E1C000BAFF7BD1578CC1"
+      knowledge/document-plan.json: "561F931AA4D9EC5512ECC4E3B9C03FDF7888F155FA4A780BFEC3277429164850"
+      knowledge/document-v3.json: "D395B5FB96856A5F6AF82DA9EAB204A2E6CD280CD23345FFF08C6FF5723EDB20"
+      knowledge/visual-evidence.json: "6C8DD26F299F595CC86B25078735D42D6AC3A23F521F8D43210745A084B9874F"
+      knowledge/chapters/validated.json: "ABBFF564F67E2269ABE54F1188DACD6FC05E76A121ECEA51AD6E290AF645A112"
+      state/pipeline-state.json: "B3A3ACADF41B256DAC9809185257DF3D7214A7B5025F4531E8984DFBB3FD1B92"
+    artifact_refs:
+      - "transcript/raw.json + transcript/transcript.json（166 segments）"
+      - "knowledge/course-ir.json / lesson-plan.json / knowledge-units.json"
+      - "knowledge/document-plan.json / document-v3.json / chapters/{drafts,validated,repaired}.json"
+      - "knowledge/visual-evidence.json + images/candidates/*.jpg + images/selected/frame_001.jpg"
+      - "state/render/{高数-定积分定义}.md/.docx/.pdf"
+  高数-例题讲解-a5c1f2d59bf3:
+    run_id: "14d847727b464972880fc7e28d8c6069（多 run 之一，其余 7 个 run 保留）"
+    duration_seconds: ~180
+    fingerprint: "a5c1f2d59bf3"
+    final_state: "completed"
+    digests_sha256:
+      manifest.json: "A8B2102C71B57B0F0C867459797AC495F9B9A686122F4985DCE2280BDDD715A6"
+      transcript/raw.json: "D239A99CAAD4D642A78BB6C7889F87BB69905413B020CB0949AAF58BD4307681"
+      transcript/transcript.json: "C1861D9E9A20970D9E6449DAEB4026753ED01DF3F993B158E71B9ADBC514053C"
+      knowledge/course-ir.json: "CB9207012D3F4E9BD1AACA202B65042400CAD53E91C66EBDC10A5174B3D51F2B"
+      knowledge/lesson-plan.json: "C6BAF97B99A8824F36BF8DB9D6E7736C8A76922AA32F90F7125CDC330F616F77"
+      knowledge/knowledge-units.json: "445F0C6DC717913F096F36BAA4004677CEE1F8276860E1280345A42B409A62AC"
+      knowledge/document-plan.json: "65B70E7FCEC129C20F61CAEAF50FC94034C8CCEDDC34F195460C333B560C1183"
+      knowledge/document-v3.json: "0C189F8633002342CE29A127D145DA8486A87A3D4C55168CC823691EC723B444"
+      knowledge/visual-evidence.json: "8597BFD7A95EEDE09886AF6479566E3603E10F9871848A987C273F767C791860"
+      knowledge/chapters/validated.json: "C13538A7F60885D2F5CCB06D2B20B9B56001F6B959977AC3806C7504ED0771DD"
+      state/pipeline-state.json: "8DEAF8BFE1DFD5916A9BEB8DE2EFFF2C2A1138449BBCF7422E46EACF8B7F74C4"
+    artifact_refs:
+      - "transcript/raw.json + transcript/transcript.json"
+      - "knowledge/{course-ir,lesson-plan,knowledge-units,document-plan,document-v3,visual-evidence}.json"
+      - "images/candidates/*.jpg（15）+ images/selected/frame_001.jpg"
+      - "state/render/{高数-例题讲解}.md/.docx/.pdf"
+
+frozen_outputs:
+  高数-定积分定义-be06877a42cf:
+    md: {file: "output/高数-定积分定义-be06877a42cf/高数-定积分定义.md", size: 9438, sha256: "180429EFD5D0EB249523D25B486B10D92D469D2BC10BD33A568EE048C50ECF0A"}
+    docx: {file: "output/高数-定积分定义-be06877a42cf/高数-定积分定义.docx", size: 287765, sha256: "1DCB48B5AA6C5FB8745B513586B94C32C84638AE8BE8A84F48B57EC1A44E35D2", word_omml: 0}
+    pdf: {file: "output/高数-定积分定义-be06877a42cf/高数-定积分定义.pdf", size: 531051, sha256: "EAD6E07F4A2CCAB91B189168C01D0EF67CE69E14CE0D44A42EA9DC0F76EF9B54"}
+  高数-例题讲解-a5c1f2d59bf3:
+    md: {file: "output/高数-例题讲解-a5c1f2d59bf3/高数-例题讲解.md", size: 2284, sha256: "B287779EFAF93784B6FE471B86216D805B906A208994033C60CDCD390F6A5710"}
+    docx: {file: "output/高数-例题讲解-a5c1f2d59bf3/高数-例题讲解.docx", size: 12991, sha256: "E5E8E0E7F5F48A026ACC39D1F66F5F6093BA94F170BA39AC9DE4C9C36EAFBE2F", word_omml: 0}
+    pdf: {file: "output/高数-例题讲解-a5c1f2d59bf3/高数-例题讲解.pdf", size: 115620, sha256: "2579D376E62EC78F0F1212978CD685292F61B61626609B7BDCAA5CF1489B5561"}
+  note: "output/ 与 workspace/state/render/ 同名文件 digest 一致（output 为渲染产物拷贝）"
+
+# ============ 3. 已知问题与证据（V6.0 失败事实） ============
+known_problems:
+  document_plan_is_legacy_wrapper:
+    evidence: "knowledge/document-plan.json：schema_version=1、chapters[].source_section 原样复制旧 section、全部 layout_hint=full_width"
+    code_refs: ["src/video_study/document_v3.py:build_document_plan/compose_chapters"]
+    tests: ["test_v610_plan_contains_legacy_source_section", "test_v61_plan_is_not_legacy_wrapper"]
+  renderer_downgrades_v3_to_v2:
+    evidence: "src/video_study/render.py:DocumentAdapter._legacy_render_view / render_markdown 对 schema_version=3 调用 v3_to_v2；render_word 写 .render-v2.json"
+    code_refs: ["src/video_study/render.py:568-585", "src/video_study/document_v3.py:v3_to_v2"]
+    tests: ["test_v610_renderer_downgrades_v3_to_v2", "test_v61_render_does_not_downgrade_v3_to_v2"]
+  word_omml_zero:
+    evidence: "两份冻结 docx 的 word/document.xml 均无 m:oMath / m:oMathPara（OMML=0），确认公式未原生渲染"
+    code_refs: ["scripts/render_docx.mjs", "src/video_study/render.py"]
+    tests: ["test_v610_frozen_docx_omml_is_zero", "test_v61_word_omml_matches_confirmed_equations"]
+  degraded_units_masked_as_cloud_summary:
+    evidence: "定积分定义样本 knowledge.units status=degraded/capability=offline，但 document-v3.json mode=cloud_summary / model=deepseek-v4-flash-0731；renderer 输出『Qwen 智能整理』"
+    code_refs: ["src/video_study/execution/steps/knowledge.py:DocumentPlanStep 合并 cloud_info", "src/video_study/render.py:166/334"]
+    tests: ["test_v610_frozen_degraded_sample_document_mode_is_cloud_summary", "test_v61_degraded_units_not_labeled_cloud_summary"]
+  render_verify_checks_nonempty_only:
+    evidence: "src/video_study/execution/steps/coarse.py:RenderVerifyStep.validate 仅校验文件存在且非空"
+    code_refs: ["src/video_study/execution/steps/coarse.py:683-687"]
+    tests: ["test_v610_render_verify_accepts_nonempty_files_with_forbidden_content", "test_v61_render_verify_checks_content_and_parity"]
+  raw_asr_errors_in_body:
+    evidence: "定积分定义 markdown 正文含 圆寒数/长数/级分/阶段/便上线级分/寒数 等 ASR 错词（如『圆寒数』=原函数、『级分』=积分）"
+    code_refs: ["workspace/高数-定积分定义-be06877a42cf/state/render/*.md", "knowledge-units.json definition_or_conclusion"]
+    tests: ["test_v610_frozen_markdown_contains_raw_asr_errors"]
+  markdown_leaks_local_absolute_path:
+    evidence: "定积分定义 markdown 图片链接含 D:/Study/实习/视频归纳/workspace/... 本地绝对路径"
+    code_refs: ["knowledge/visual-evidence.json image_path 字段"]
+    tests: ["test_v610_frozen_markdown_leaks_local_absolute_image_path"]
+  renderer_injects_forbidden_legacy_sections:
+    evidence: "renderer 自动注入 内容导览/学习目标/课程复习/知识主线/关键规则清单/待回看与未展开问题/看图重点/这张图帮助理解/固定章节编号（## 01 · 标题）"
+    code_refs: ["src/video_study/render.py:167-221/179-191"]
+    tests: ["test_v61_renderer_does_not_inject_forbidden_legacy_sections"]
+
+# ============ 4. 黄金期望（CP61-7 验收指标；CP61-0 只冻结，不实现） ============
+golden_expectations:
+  高数-定积分定义-be06877a42cf:
+    - "正文不再大段复制 圆寒数/长数/级分/阶段 等错误 ASR（允许来源引用中出现）"
+    - "confirmed 公式进入 equation 组件，Word OMML 数 >= equation 组件数；无法确认的公式显式降级并记录 issue"
+    - "用户 forbidden 内容导览/学习目标/课程复习时，产物中旧栏目出现次数 = 0"
+    - "document-v3.json contract_version = document-v3.1；mode 不得为 cloud_summary（knowledge.units 曾降级）"
+    - "图片具有 role/source/caption/alt，去重通过；页面无孤行/异常留白/溢出"
+    - "三端语义一致；Markdown 不泄露本地绝对路径"
+  高数-例题讲解-a5c1f2d59bf3:
+    - "例题型按 题目→思路→推导→结论/变式 组织（case 结构）"
+    - "正文不复制口语化原文；公式进入 equation 组件且 Word OMML 匹配"
+    - "三端语义一致"
+  fixtures_golden:
+    - "tests/fixtures/v61/{math_concept,math_example,strong_visual,weak_visual}.json 的 golden 字段全部通过"
+  normal_short_video_budget:
+    - "正常短视频默认 Blueprint + Writer 两次云调用（CP61-7 以 replay 验证）"
+    - "cache replay 新增 Token = 0"
+
+# ============ 5. 本 CP 交付物 ============
+deliverables:
+  fixtures: ["tests/fixtures/v61/math_concept.json", "tests/fixtures/v61/math_example.json", "tests/fixtures/v61/strong_visual.json", "tests/fixtures/v61/weak_visual.json", "tests/fixtures/v61/README.md"]
+  characterization_tests: ["tests/test_v61_characterization.py"]
+  contract_tests: ["tests/test_v61_contracts.py"]
+  problem_index_placeholders: "docs/diagnostics/problem-index.yaml → v61_target_errors（仅占位，不切 active owner）"
+  machine_contract: "docs/迭代升级/V6.1 Function Calling编辑Harness目标合同.yaml（已批准，未变）"
+
+gate_checklist:
+  - "特征测试在 V6.0 上按预期失败（A 部分 expectedFailure）或明确证明旧行为（B 部分通过）"
+  - "现有 460 项基线不因 fixture/合同新增而回归"
+  - "未发云请求、未加载 ASR/VLM、未改生产行为"
+  - "YAML/链接/时间戳与黄金 digest 可复现"

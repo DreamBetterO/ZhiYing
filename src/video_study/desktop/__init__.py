@@ -20,14 +20,18 @@ STAGE_LABELS = {
     "transcript": "转写", "frames": "关键画面", "knowledge": "知识整理",
     "document": "文档组装", "visual": "视觉核验", "render": "文档生成",
     "downloading": "下载中", "ready": "已就绪", "source.acquire": "下载视频",
-    "source.probe": "1/15 源文件检查", "audio.extract": "2/15 音频提取",
-    "transcript.decode": "3/15 语音识别", "transcript.normalize": "4/15 转写规范化",
-    "frames.candidates": "5/15 候选画面", "frames.select": "6/15 关键画面",
-    "knowledge.plan": "7/15 课程规划", "visual.jobs": "8/15 视觉任务",
-    "visual.evidence": "9/15 视觉证据", "frames.semantics": "10/15 画面语义",
-    "knowledge.course_ir": "11/15 课程 IR", "knowledge.units": "12/15 知识单元",
-    "knowledge.selfcheck": "13/15 内容自检", "document.assemble": "14/15 文档组装",
-    "render.bundle": "15/15 文档生成", "completed": "已完成",
+    "source.probe": "1/23 源文件检查", "audio.extract": "2/23 音频提取",
+    "transcript.decode": "3/23 语音识别", "transcript.normalize": "4/23 转写规范化",
+    "frames.candidates": "5/23 候选画面", "frames.select": "6/23 关键画面",
+    "knowledge.plan": "7/23 课程规划", "visual.jobs": "8/23 视觉任务",
+    "visual.evidence": "9/23 视觉证据", "frames.semantics": "10/23 画面语义",
+    "knowledge.course_ir": "11/23 课程 IR", "knowledge.units": "12/23 知识单元",
+    "knowledge.selfcheck": "13/23 内容自检", "editorial.policy": "14/23 编辑政策",
+    "evidence.reconcile": "15/23 证据纠错", "document.blueprint": "16/23 文档蓝图",
+    "document.write": "17/23 章节写作", "document.assemble": "18/23 文档组装",
+    "document.validate": "19/23 文档校验", "render.markdown": "20/23 Markdown",
+    "render.word": "21/23 Word", "render.pdf": "22/23 PDF",
+    "render.verify": "23/23 输出检查", "completed": "已完成",
     "cancelling": "正在取消", "cancelled": "已取消", "failed": "失败",
 }
 
@@ -54,15 +58,15 @@ def cloud_authorization_message(qwen: dict, *, aggregate: bool) -> str:
     planning = min(output, int(budget.get("planning_max_output_tokens", 3200)))
     if aggregate:
         return (
-            "聚合模式会发送所选视频的缓存知识文本与来源 ID。\n"
-            f"请求端点：{endpoint}\n候选模型：{models}\n本次最多 {calls} 次请求；输入不超过 {chars:,} 字符，输出不超过 {output:,} Tokens。\n"
-            "不发送视频、截图或密钥。是否明确授权？"
+            f"上传内容：所选视频的缓存知识文本与来源 ID（不含视频、截图、密钥）\n"
+            f"端点：{endpoint}\n模型链：{models}\n"
+            f"最多 {calls} 次请求　输入 ≤ {chars:,} 字符　输出 ≤ {output:,} Tokens"
         )
     return (
-        "普通模式会发送压缩转写文本与来源块 ID。\n"
-        f"请求端点：{endpoint}\n候选模型：{models}\n每个视频的规划、整理和失败回退全流程共享最多 {calls} 次请求；正常成功路径通常为规划 1 次 + 整理 1 次。\n"
-        f"每次输入不超过 {chars:,} 字符；规划输出不超过 {planning:,} Tokens，整理输出不超过 {output:,} Tokens。\n"
-        "不发送视频、截图或密钥。是否明确授权？"
+        f"上传内容：压缩转写文本与来源块 ID（不含视频、截图、密钥）\n"
+        f"端点：{endpoint}\n模型链：{models}\n"
+        f"每个视频全流程共享最多 {calls} 次请求；正常成功路径通常为规划 1 次 + 整理 1 次（Blueprint + Writer）。\n"
+        f"输入 ≤ {chars:,} 字符　规划 ≤ {planning:,} Tokens　整理 ≤ {output:,} Tokens"
     )
 
 

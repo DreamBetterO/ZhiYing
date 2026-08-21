@@ -1,0 +1,21 @@
+schema_version: 1
+scope: V6.1 EditorialAgentSubgraph offline fault injection
+policy:
+  real_cloud_requests: false
+  legacy_workspace_write: false
+  secrets_or_source_text_in_logs: false
+faults:
+  - {fault: unknown_tool, error_code: TOOL_UNKNOWN, owner: video_study.editorial.tools, suggested_rerun: document.blueprint, tests: [tests/test_v61_tool_protocol.py]}
+  - {fault: invalid_tool_args, error_code: TOOL_ARGS_INVALID, owner: video_study.editorial.tools, suggested_rerun: document.blueprint, tests: [tests/test_v61_tool_protocol.py]}
+  - {fault: tool_scope_violation, error_code: TOOL_SCOPE_VIOLATION, owner: video_study.editorial.tools, suggested_rerun: document.blueprint, tests: [tests/test_v61_tool_protocol.py]}
+  - {fault: oversized_tool_result, error_code: TOOL_RESULT_TOO_LARGE, owner: video_study.editorial.tools, suggested_rerun: document.blueprint, tests: [tests/test_v61_tool_protocol.py]}
+  - {fault: multiple_mutation_calls, error_code: TOOL_MULTIPLE_MUTATIONS, owner: video_study.editorial.tools, suggested_rerun: document.blueprint, tests: [tests/test_v61_tool_protocol.py]}
+  - {fault: revision_conflict, error_code: TOOL_REVISION_CONFLICT, owner: video_study.editorial.tools, suggested_rerun: document.write, tests: [tests/test_v61_editorial_graph.py]}
+  - {fault: tool_budget_exhausted, error_code: TOOL_BUDGET_EXCEEDED, owner: video_study.execution.tool_calling, suggested_rerun: document.blueprint, tests: [tests/test_v61_tool_protocol.py]}
+  - {fault: function_calling_unsupported, error_code: TOOL_PROVIDER_UNSUPPORTED, owner: video_study.execution.tool_calling, suggested_rerun: document.blueprint, tests: [tests/test_v61_tool_protocol.py, tests/test_v61_production_integration.py]}
+  - {fault: repeated_no_progress, error_code: TOOL_NO_PROGRESS, owner: video_study.editorial.tools, suggested_rerun: document.blueprint, tests: [tests/test_v61_editorial_graph.py]}
+  - {fault: checkpoint_serialization, error_code: TOOL_CHECKPOINT_SERIALIZATION_FAILED, owner: video_study.execution.checkpointing, suggested_rerun: document.blueprint, tests: [tests/test_v61_tool_protocol.py]}
+degradation:
+  - {fault: tool_native_provider_failure, path: tool_native_to_structured_only, tests: [tests/test_v61_editorial_graph.py, tests/test_v61_production_integration.py]}
+  - {fault: structured_provider_failure, path: structured_only_to_local_deterministic, tests: [tests/test_v61_production_integration.py]}
+  - {fault: local_mode, path: local_deterministic_no_cloud_port, tests: [tests/test_v61_production_integration.py]}

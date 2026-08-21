@@ -25,7 +25,7 @@ class PipelineCharacterizationTests(unittest.TestCase):
         self.assertEqual(list(inspect.signature(pipeline.process_video).parameters), expected)
         self.assertEqual(list(inspect.signature(pipeline.run_all).parameters), expected)
 
-    def test_process_video_contract_uses_document_v2_and_local_source_url(self) -> None:
+    def test_process_video_contract_uses_document_v3_and_local_source_url(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
             video = root / "lesson.mp4"
@@ -151,9 +151,10 @@ class PipelineCharacterizationTests(unittest.TestCase):
                 "video_id", "manifest", "markdown", "docx", "pdf", "pdf_mode",
                 "mode", "model", "model_attempts", "cloud_usage", "runtime_events",
                 "degradations", "asr_runtime", "visual_runtime", "compute_summary",
+                "status", "editorial_mode", "degradation_summary",
             })
             self.assertTrue(result["video_id"].startswith("lesson-"))
-            self.assertEqual(result["pdf_mode"], "built_in")
+            self.assertEqual(result["pdf_mode"], "built_in_v31")
             self.assertEqual(result["degradations"], [])
             self.assertEqual(
                 [item["code"] for item in events if item.get("type") == "runtime"],
@@ -166,10 +167,12 @@ class PipelineCharacterizationTests(unittest.TestCase):
             self.assertTrue(all(item["level"] == "info" for item in events))
             self.assertTrue(all(item.get("run_id") and item.get("step_id") and item.get("code") for item in events))
             self.assertEqual(progress[-1], ("completed", "处理完成", 100))
-            saved = json.loads(Path(result["manifest"]).parent.joinpath("knowledge", "document.json").read_text(encoding="utf-8"))
-            self.assertEqual(saved["schema_version"], 2)
+            saved = json.loads(Path(result["manifest"]).parent.joinpath("knowledge", "document-v3.json").read_text(encoding="utf-8"))
+            self.assertEqual(saved["schema_version"], 3)
+            from video_study.document_v3 import v3_to_v2
+            rendered_view = v3_to_v2(saved)
             self.assertEqual(
-                saved["sections"][0]["knowledge_points"][0]["source_refs"]["url"],
+                rendered_view["sections"][0]["knowledge_points"][0]["source_refs"]["url"],
                 f"video-study://play/{result['video_id']}?t=1",
             )
 

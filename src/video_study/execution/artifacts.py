@@ -114,13 +114,35 @@ KNOWLEDGE_COURSE_IR = ArtifactId("knowledge.course_ir", ("knowledge/course-ir.js
 KNOWLEDGE_UNITS = ArtifactId("knowledge.units", ("knowledge/knowledge-units.json",))
 KNOWLEDGE_SELFCHECK = ArtifactId("knowledge.selfcheck", ("knowledge/selfcheck.json",))
 DOCUMENT_V2 = ArtifactId("document.v2", ("knowledge/document.json",))
+DOCUMENT_PLAN = ArtifactId("document.plan", ("knowledge/document-plan.json",))
+CHAPTER_DRAFTS = ArtifactId("document.chapter_drafts", ("knowledge/chapters/drafts.json",))
+CHAPTER_VALIDATED = ArtifactId("document.chapter_validated", ("knowledge/chapters/validated.json",))
+CHAPTER_REPAIRED = ArtifactId("document.chapter_repaired", ("knowledge/chapters/repaired.json",))
+DOCUMENT_V3 = ArtifactId("document.v3", ("knowledge/document-v3.json",))
+DOCUMENT_VALIDATION = ArtifactId("document.validation", ("knowledge/document-validation.json",))
+
+# ---------------------------------------------------------------------------
+# V6.1 Editorial Agent 子图 Artifact（CP61-5 起并入生产 STANDARD_ARTIFACTS）
+# ---------------------------------------------------------------------------
+EDITORIAL_POLICY = ArtifactId("editorial.policy", ("knowledge/editorial-policy.json",))
+EVIDENCE_CORRECTIONS = ArtifactId("evidence.corrections", ("knowledge/evidence-corrections.json",))
+DOCUMENT_BLUEPRINT = ArtifactId("document.blueprint", ("knowledge/document-blueprint-v2.json",))
+EDITORIAL_SESSION = ArtifactId("editorial.session", ("knowledge/editorial-session.json",))
+CHAPTER_V31 = ArtifactId("document.chapter_v31", ("knowledge/chapters/v3.1/chapters.json",))
 
 STANDARD_ARTIFACTS: Mapping[str, ArtifactId] = MappingProxyType({
     artifact.name: artifact for artifact in (
         SOURCE_MANIFEST, AUDIO_FLAC, TRANSCRIPT_RAW, TRANSCRIPT_NORMALIZED,
         TRANSCRIPT_SRT, FRAMES_CANDIDATES, FRAMES_SELECTED, KNOWLEDGE_PLAN,
         VISUAL_JOBS, VISUAL_EVIDENCE, FRAMES_SEMANTICS, KNOWLEDGE_COURSE_IR,
-        KNOWLEDGE_UNITS, KNOWLEDGE_SELFCHECK, DOCUMENT_V2,
+        KNOWLEDGE_UNITS, KNOWLEDGE_SELFCHECK, EDITORIAL_POLICY, EVIDENCE_CORRECTIONS,
+        DOCUMENT_BLUEPRINT, EDITORIAL_SESSION, CHAPTER_V31, DOCUMENT_V3, DOCUMENT_VALIDATION,
+    )
+})
+
+V61_ARTIFACTS: Mapping[str, ArtifactId] = MappingProxyType({
+    artifact.name: artifact for artifact in (
+        EDITORIAL_POLICY, EVIDENCE_CORRECTIONS, DOCUMENT_BLUEPRINT, EDITORIAL_SESSION, CHAPTER_V31,
     )
 })
 
@@ -251,11 +273,21 @@ def read_document_v2(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
         raise ValueError("Document 顶层必须是对象")
-    if int(value.get("schema_version", 1) or 1) != 2:
+    if int(value.get("schema_version", 1) or 1) == 3:
+        from ..document_v3 import v3_to_v2
+        value = v3_to_v2(value)
+    elif int(value.get("schema_version", 1) or 1) != 2:
         from ..knowledge.adapter import v1_to_v2
         value = v1_to_v2(value)
     validate_document_v2(value)
     return value
+
+
+class DocumentV3Validator:
+    def __call__(self, paths: tuple[Path, ...]) -> None:
+        from ..document_v3 import validate_document_v3
+        value = json.loads(paths[0].read_text(encoding="utf-8"))
+        validate_document_v3(value)
 
 
 ARTIFACT_VALIDATORS: Mapping[str, Callable[[tuple[Path, ...]], None]] = MappingProxyType({
@@ -272,6 +304,13 @@ ARTIFACT_VALIDATORS: Mapping[str, Callable[[tuple[Path, ...]], None]] = MappingP
     KNOWLEDGE_UNITS.name: JsonArtifactValidator(),
     KNOWLEDGE_SELFCHECK.name: JsonArtifactValidator(),
     DOCUMENT_V2.name: DocumentV2Validator(),
+    DOCUMENT_V3.name: DocumentV3Validator(),
+    DOCUMENT_PLAN.name: JsonArtifactValidator(("chapters", "capability_manifest")),
+    CHAPTER_DRAFTS.name: JsonArtifactValidator(("chapters",)),
+    CHAPTER_VALIDATED.name: JsonArtifactValidator(("chapters", "issues")),
+    CHAPTER_REPAIRED.name: JsonArtifactValidator(("chapters",)),
+    DOCUMENT_VALIDATION.name: JsonArtifactValidator(("valid",)),
+    EDITORIAL_SESSION.name: JsonArtifactValidator(("capability", "terminal_status", "document_candidate")),
 })
 
 
@@ -315,6 +354,18 @@ class FileArtifactStore:
             temporary.parent.mkdir(parents=True, exist_ok=True)
             temporary.write_bytes(canonical_json_bytes(document) + b"\n")
             DocumentV2Validator()((temporary,))
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
+        return path
+
+    def write_document_v3(self, path: Path, document: Mapping[str, Any]) -> Path:
+        """Atomically write the current canonical document authority."""
+        temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        try:
+            temporary.parent.mkdir(parents=True, exist_ok=True)
+            temporary.write_bytes(canonical_json_bytes(document) + b"\n")
+            DocumentV3Validator()((temporary,))
             temporary.replace(path)
         finally:
             temporary.unlink(missing_ok=True)
@@ -415,7 +466,8 @@ class WorkspaceEntry:
 
     @property
     def document_path(self) -> Path:
-        return self.layout.artifact_paths(DOCUMENT_V2)[0]
+        current = self.layout.artifact_paths(DOCUMENT_V3)[0]
+        return current if current.is_file() else self.layout.artifact_paths(DOCUMENT_V2)[0]
 
 
 def _normalize_for_url_match(url: str) -> str:
@@ -490,7 +542,8 @@ class WorkspaceCatalog:
         layout = WorkspaceLayout(self.workspace_root, resolved.parent.name)
         if layout.artifact_paths(SOURCE_MANIFEST)[0] != resolved:
             raise ValueError("路径不是标准 Workspace Manifest")
-        return layout.artifact_paths(DOCUMENT_V2)[0]
+        current = layout.artifact_paths(DOCUMENT_V3)[0]
+        return current if current.is_file() else layout.artifact_paths(DOCUMENT_V2)[0]
 
     def delete_video(self, source: Path, output_root: Path | None = None) -> bool:
         """清除派生产物；链接源（D4）保留下载文件（workspace/<id>/source/），视作原视频。"""

@@ -69,7 +69,8 @@ class SelectiveInvalidationIntegrationTests(unittest.TestCase):
             self.assertEqual(statuses[step_id], "cached")
         self.assertEqual(statuses["knowledge.plan"], "succeeded")
         self.assertEqual(statuses["knowledge.units"], "succeeded")
-        self.assertEqual(statuses["document.assemble"], "succeeded")
+        self.assertEqual(statuses["document.blueprint"], "succeeded")
+        self.assertEqual(statuses["document.assemble"], "cached")
 
 
 if __name__ == "__main__":

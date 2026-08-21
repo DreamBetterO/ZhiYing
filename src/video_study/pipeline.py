@@ -22,7 +22,7 @@ def process_video(
     cancel_check: Callable[[], bool] | None = None,
     event: Callable[[dict], None] | None = None,
 ) -> dict:
-    """兼容门面：旧公开参数只在此翻译，生产编排由 PipelineRunner 执行。"""
+    """兼容门面：旧公开参数只在此翻译，生产编排由 GraphRuntime 执行。"""
     return run_compatible_pipeline(
         config,
         Path(video),
@@ -56,8 +56,11 @@ def run_all(
     videos = [Path(video).resolve()] if video else discover_configured_videos(config)
     if not videos:
         raise FileNotFoundError("输入目录中没有找到 MP4 文件")
-    return [
-        process_video(
+    from .execution.graphs.job_graph import JobGraph
+
+    state = JobGraph().run(
+        tuple(videos),
+        process=lambda item: process_video(
             config,
             item,
             force=force,
@@ -70,6 +73,7 @@ def run_all(
             task_progress=task_progress,
             cancel_check=cancel_check,
             event=event,
-        )
-        for item in videos
-    ]
+        ),
+        event_sink=event or (lambda _event: None),
+    )
+    return list(state["video_results"])

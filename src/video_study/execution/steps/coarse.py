@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+import shutil
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -10,7 +12,8 @@ from typing import Any, Mapping
 from ...progress import ProgressEvent
 from ..artifacts import (
     AUDIO_FLAC,
-    DOCUMENT_V2,
+    DOCUMENT_V3,
+    DOCUMENT_VALIDATION,
     FRAMES_CANDIDATES,
     FRAMES_SELECTED,
     SOURCE_MANIFEST,
@@ -40,6 +43,12 @@ def _json(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"Artifact 顶层必须是 JSON 对象：{path.name}")
     return value
+
+
+def _render_output_name(artifact: ArtifactId, index: int, suffix: str) -> str:
+    if index < len(artifact.relative_paths):
+        return Path(artifact.relative_paths[index]).name
+    return f"document{suffix}"
 
 
 def _write_json(path: Path, value: Mapping[str, Any]) -> None:
@@ -334,7 +343,7 @@ class TranscriptDecodeStep:
 @dataclass
 class TranscriptNormalizeStep:
     spec = StepSpec(
-        "transcript.normalize", 1, dependencies=("transcript.decode", "source.probe"),
+        "transcript.normalize", 2, dependencies=("transcript.decode", "source.probe"),
         inputs=(TRANSCRIPT_RAW, SOURCE_MANIFEST), outputs=(TRANSCRIPT_NORMALIZED, TRANSCRIPT_SRT),
         config_keys=("asr.terminology_replacements",), remote_cost=RemoteCost.NONE,
         owner="video_study.execution.steps.coarse",
@@ -347,7 +356,7 @@ class TranscriptNormalizeStep:
             "upstream.transcript.raw": _input(inputs, TRANSCRIPT_RAW).digest,
             "upstream.source.manifest": _input(inputs, SOURCE_MANIFEST).digest,
             "terminology_replacements": dict(context.options.asr).get("terminology_replacements", {}),
-            "normalization.version": 1,
+            "normalization.version": 2,
         })
 
     def execute(self, context, inputs, staging_dir: Path) -> StepOutcome:
@@ -357,6 +366,12 @@ class TranscriptNormalizeStep:
         raw = _json(_input(inputs, TRANSCRIPT_RAW).path)
         normalized = normalize_transcript(
             raw, dict(context.options.asr), float(manifest.get("duration_seconds", 0.0) or 0.0),
+        )
+        from ..decision_policy import LocalDecisionPolicy
+        normalized["review_candidates"] = LocalDecisionPolicy().uncertain_asr_spans(
+            normalized.get("segments", []),
+            confidence_threshold=float(dict(context.options.asr).get("review_confidence_threshold", 0.6)),
+            max_spans=int(dict(context.options.asr).get("max_review_spans", 12)),
         )
         output = staging_dir / TRANSCRIPT_NORMALIZED.relative_paths[0]
         srt = staging_dir / TRANSCRIPT_SRT.relative_paths[0]
@@ -529,73 +544,170 @@ class FramesSelectStep:
 
 
 @dataclass
-class RenderBundleStep:
+class RenderMarkdownStep:
     output_artifact: ArtifactId
 
     def __post_init__(self) -> None:
+        self.markdown_artifact = ArtifactId(
+            "render.markdown.draft", (f"state/render/{_render_output_name(self.output_artifact, 0, '.md')}",),
+        )
         self.spec = StepSpec(
-            "render.bundle", 2, dependencies=("document.assemble",),
-            inputs=(DOCUMENT_V2,), outputs=(self.output_artifact,),
+            "render.markdown", 2, dependencies=("document.assemble", "document.validate"),
+            inputs=(DOCUMENT_V3, DOCUMENT_VALIDATION), outputs=(self.markdown_artifact,),
             config_keys=("render",), remote_cost=RemoteCost.LOCAL_HEAVY,
             owner="video_study.execution.steps.coarse",
             tests=("tests/test_coarse_pipeline.py",), error_code_prefix="RENDER",
-            contract_version="render-bundle-v1",
+            contract_version="render-markdown-v3.1",
         )
 
     def fingerprint(self, context, inputs) -> FingerprintMaterial:
         return _fingerprint(context, inputs, "render")
 
     def execute(self, context, inputs, staging_dir: Path) -> StepOutcome:
-        document_ref = _input(inputs, DOCUMENT_V2)
+        document_ref = _input(inputs, DOCUMENT_V3)
         document = _json(document_ref.path)
-        markdown = staging_dir / self.output_artifact.relative_paths[0]
-        docx = staging_dir / self.output_artifact.relative_paths[1]
-        pdf = staging_dir / self.output_artifact.relative_paths[2]
+        markdown = staging_dir / self.markdown_artifact.relative_paths[0]
         adapter = context.services.port("document")
-        _stage_progress(context, "render", "正在生成 Markdown、Word 和 PDF", 90)
+        _stage_progress(context, "render", "正在生成 Markdown", 90)
         _emit(context, self.spec.step_id, "render", "info", "正在生成 Markdown、Word 和 PDF", "render_started")
         try:
             started = time.monotonic()
-            adapter.render_markdown(document, markdown)
+            adapter.render_markdown(document, markdown, source_document=document_ref.path)
             _task_progress(context, ProgressEvent(
                 "render", "markdown", 1, 1, False, max(0.001, time.monotonic() - started),
-                task_id="render.markdown", cache_state="miss", bucket="document-v2",
-            ))
-            started = time.monotonic()
-            adapter.render_word(document_ref.path, docx, cancel_check=context.services.cancelled)
-            _task_progress(context, ProgressEvent(
-                "render", "word", 1, 1, False, max(0.001, time.monotonic() - started),
-                task_id="render.word", cache_state="miss", bucket="document-v2",
-            ))
-            started = time.monotonic()
-            pdf_mode = adapter.render_pdf(
-                document, docx, pdf, cancel_check=context.services.cancelled,
-            )
-            _task_progress(context, ProgressEvent(
-                "render", "pdf", 1, 1, False, max(0.001, time.monotonic() - started),
-                task_id="render.pdf", cache_state="miss", bucket="document-v2",
+                task_id="render.markdown", cache_state="miss", bucket="document-v3",
             ))
         except BaseException as exc:
             if _cancelled_exception(exc):
                 raise ExecutionCancelled(str(exc)) from exc
             raise
-        _emit(
-            context, self.spec.step_id, "completed", "info",
-            f"处理完成：{context.workspace.output_root / context.source.video_id}",
-            "video_completed",
-        )
-        _stage_progress(context, "completed", "处理完成", 100)
         return StepOutcome(
             self.spec.step_id, context.run_id, StepStatus.SUCCEEDED,
-            artifacts=(ArtifactRef(self.output_artifact, markdown),),
-            diagnostics={"pdf_mode": pdf_mode},
+            artifacts=(ArtifactRef(self.markdown_artifact, markdown),),
         )
 
     def validate(self, _context, outcome: StepOutcome) -> None:
+        if not outcome.artifacts[0].path.is_file() or outcome.artifacts[0].path.stat().st_size == 0:
+            raise ValueError("Markdown 渲染输出缺失")
+
+
+@dataclass
+class RenderWordStep:
+    output_artifact: ArtifactId
+
+    def __post_init__(self) -> None:
+        self.markdown_artifact = ArtifactId("render.markdown.draft", (f"state/render/{_render_output_name(self.output_artifact, 0, '.md')}",))
+        self.word_artifact = ArtifactId("render.word.draft", (f"state/render/{_render_output_name(self.output_artifact, 1, '.docx')}",))
+        self.spec = StepSpec(
+            "render.word", 3, dependencies=("document.assemble", "document.validate", "render.markdown"),
+            inputs=(DOCUMENT_V3, DOCUMENT_VALIDATION, self.markdown_artifact), outputs=(self.word_artifact,),
+            config_keys=("render",), remote_cost=RemoteCost.LOCAL_HEAVY,
+            owner="video_study.execution.steps.coarse", tests=("tests/test_coarse_pipeline.py",),
+            error_code_prefix="RENDER", contract_version="render-word-v3.1",
+        )
+
+    def fingerprint(self, context, inputs): return _fingerprint(context, inputs, "render.word")
+
+    def execute(self, context, inputs, staging_dir):
+        from ..resource_leases import ResourceLeaseManager
+        document_ref = _input(inputs, DOCUMENT_V3)
+        word = staging_dir / self.word_artifact.relative_paths[0]
+        started = time.monotonic()
+        with ResourceLeaseManager.acquire("word", cancel_check=context.services.cancelled):
+            context.services.port("document").render_word(document_ref.path, word, cancel_check=context.services.cancelled)
+        _task_progress(context, ProgressEvent("render", "word", 1, 1, False, max(0.001, time.monotonic() - started), task_id="render.word", cache_state="miss", bucket="document-v3"))
+        return StepOutcome(self.spec.step_id, context.run_id, StepStatus.SUCCEEDED, artifacts=(ArtifactRef(self.word_artifact, word),))
+
+    def validate(self, _context, outcome):
+        if not outcome.artifacts[0].path.is_file() or outcome.artifacts[0].path.stat().st_size == 0: raise ValueError("Word 渲染输出缺失")
+
+
+@dataclass
+class RenderPdfStep:
+    output_artifact: ArtifactId
+
+    def __post_init__(self) -> None:
+        self.word_artifact = ArtifactId("render.word.draft", (f"state/render/{_render_output_name(self.output_artifact, 1, '.docx')}",))
+        self.pdf_artifact = ArtifactId("render.pdf.draft", (f"state/render/{_render_output_name(self.output_artifact, 2, '.pdf')}",))
+        self.spec = StepSpec(
+            "render.pdf", 4, dependencies=("document.assemble", "document.validate", "render.word"),
+            inputs=(DOCUMENT_V3, DOCUMENT_VALIDATION, self.word_artifact), outputs=(self.pdf_artifact,),
+            config_keys=("render",), remote_cost=RemoteCost.LOCAL_HEAVY,
+            owner="video_study.execution.steps.coarse", tests=("tests/test_coarse_pipeline.py",),
+            error_code_prefix="RENDER", contract_version="render-pdf-v3.1",
+        )
+
+    def fingerprint(self, context, inputs): return _fingerprint(context, inputs, "render.pdf")
+
+    def execute(self, context, inputs, staging_dir):
+        from ..resource_leases import ResourceLeaseManager
+        document = _json(_input(inputs, DOCUMENT_V3).path)
+        word = _input(inputs, self.word_artifact).path
+        pdf = staging_dir / self.pdf_artifact.relative_paths[0]
+        started = time.monotonic()
+        with ResourceLeaseManager.acquire("word", cancel_check=context.services.cancelled):
+            pdf_mode = context.services.port("document").render_pdf(
+                document, word, pdf,
+                source_document=_input(inputs, DOCUMENT_V3).path,
+                cancel_check=context.services.cancelled,
+            )
+        _task_progress(context, ProgressEvent("render", "pdf", 1, 1, False, max(0.001, time.monotonic() - started), task_id="render.pdf", cache_state="miss", bucket="document-v3"))
+        return StepOutcome(self.spec.step_id, context.run_id, StepStatus.SUCCEEDED, artifacts=(ArtifactRef(self.pdf_artifact, pdf),), diagnostics={"pdf_mode": pdf_mode})
+
+    def validate(self, _context, outcome):
+        if not outcome.artifacts[0].path.is_file() or outcome.artifacts[0].path.stat().st_size == 0: raise ValueError("PDF 渲染输出缺失")
+
+
+@dataclass
+class RenderVerifyStep:
+    output_artifact: ArtifactId
+
+    def __post_init__(self) -> None:
+        self.markdown_artifact = ArtifactId("render.markdown.draft", (f"state/render/{_render_output_name(self.output_artifact, 0, '.md')}",))
+        self.word_artifact = ArtifactId("render.word.draft", (f"state/render/{_render_output_name(self.output_artifact, 1, '.docx')}",))
+        self.pdf_artifact = ArtifactId("render.pdf.draft", (f"state/render/{_render_output_name(self.output_artifact, 2, '.pdf')}",))
+        self.spec = StepSpec(
+            "render.verify", 2,
+            dependencies=("document.assemble", "render.markdown", "render.word", "render.pdf"),
+            inputs=(DOCUMENT_V3, self.markdown_artifact, self.word_artifact, self.pdf_artifact),
+            outputs=(self.output_artifact,),
+            owner="video_study.execution.steps.coarse", tests=("tests/test_coarse_pipeline.py",),
+            error_code_prefix="RENDER", contract_version="render-verify-v3.1",
+        )
+
+    def fingerprint(self, context, inputs): return _fingerprint(context, inputs, "render.verify")
+
+    def execute(self, context, inputs, staging_dir):
+        from ...editorial.quality import audit_render_outputs
+
+        targets = [staging_dir / relative for relative in self.output_artifact.relative_paths]
+        sources = [_input(inputs, item).path for item in (self.markdown_artifact, self.word_artifact, self.pdf_artifact)]
+        for source, target in zip(sources, targets):
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+        document = _json(_input(inputs, DOCUMENT_V3).path)
+        report = audit_render_outputs(
+            document, markdown=targets[0], docx=targets[1], pdf=targets[2],
+        )
+        status = StepStatus.SUCCEEDED if report["status"] == "valid" else StepStatus.DEGRADED
+        _emit(context, self.spec.step_id, "completed", "info", f"处理完成：{context.workspace.output_root / context.source.video_id}", "video_completed")
+        _stage_progress(context, "completed", "处理完成", 100)
+        return StepOutcome(
+            self.spec.step_id, context.run_id, status,
+            artifacts=(ArtifactRef(self.output_artifact, targets[0]),),
+            diagnostics={"quality_status": report["status"], "quality_issues": report["issues"]},
+        )
+
+    def validate(self, _context, outcome):
         for relative in self.output_artifact.relative_paths:
             path = outcome.artifacts[0].path.parent / Path(relative).name
-            if not path.is_file() or path.stat().st_size == 0:
-                raise ValueError(f"渲染输出缺失：{path.name}")
+            if not path.is_file() or path.stat().st_size == 0: raise ValueError(f"渲染输出缺失：{path.name}")
+        markdown = outcome.artifacts[0].path.read_text(encoding="utf-8")
+        legacy_headings = re.findall(
+            r"^#{1,6}\s+(内容导览|学习目标|课程复习)\s*$", markdown, re.MULTILINE,
+        )
+        if legacy_headings:
+            raise ValueError(f"渲染输出包含旧业务栏目：{', '.join(sorted(set(legacy_headings)))}")
 
 
 def build_coarse_steps(output_artifact: ArtifactId):
@@ -609,5 +721,6 @@ def build_coarse_steps(output_artifact: ArtifactId):
         FramesCandidatesStep(),
         FramesSelectStep(),
         *build_knowledge_steps(),
-        RenderBundleStep(output_artifact),
+        RenderMarkdownStep(output_artifact), RenderWordStep(output_artifact),
+        RenderPdfStep(output_artifact), RenderVerifyStep(output_artifact),
     )

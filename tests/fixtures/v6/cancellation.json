@@ -1,0 +1,8 @@
+{
+  "fixture_version": 1,
+  "scenario": "cancellation",
+  "terminal_status": "cancelled",
+  "error_code": "RUN_CANCELLED",
+  "cache_recorded": false,
+  "cloud_requests": 0
+}

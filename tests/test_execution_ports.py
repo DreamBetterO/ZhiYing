@@ -19,7 +19,7 @@ from video_study.execution.context import (
 )
 from video_study.execution.contracts import FingerprintMaterial, StepOutcome, StepSpec, StepStatus
 from video_study.execution.registry import StepRegistry
-from video_study.execution.runner import PipelineRunner
+from video_study.execution.graph_runtime import GraphRuntime
 from video_study.providers import CloudRequestBudget, OpenAICloudJsonAdapter
 from video_study.utils import LocalProcessAdapter
 
@@ -136,7 +136,12 @@ class CompositionRootTests(unittest.TestCase):
                 WorkspaceLayout(root / "workspace", "v"), ProcessingOptions(), RunPolicy(),
                 RuntimeServices(port_factories={"media": lambda: constructed.append(True) or object()}),
             )
-            state = PipelineRunner(context, StepRegistry([PortUsingStep()]), Store(), Cache()).run()
+            state = GraphRuntime().run_compatible_state(type("Kernel", (), {
+                "context": context,
+                "registry": StepRegistry([PortUsingStep()]),
+                "artifacts": Store(),
+                "cache": Cache(),
+            })())
         self.assertEqual(state.statuses["fixture.step"], StepStatus.CACHED)
         self.assertEqual(constructed, [])
 

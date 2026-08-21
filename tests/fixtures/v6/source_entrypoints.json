@@ -1,0 +1,6 @@
+{
+  "fixture_version": 1,
+  "scenario": "source_entrypoints",
+  "local": {"source_kind": "local", "network_requests": 0},
+  "url": {"source_kind": "url", "preflight": "fake", "acquire": "fake", "network_requests": 0}
+}

@@ -5,7 +5,7 @@ import time
 import unittest
 from pathlib import Path
 
-from video_study.application.requests import ProcessingHandle, ProcessingRequest, ProcessingResult
+from video_study.application.requests import JobHandle, JobResult, ProcessingHandle, ProcessingRequest, ProcessingResult
 from video_study.desktop.controller import DesktopController
 from video_study.desktop.models import DesktopState
 
@@ -38,6 +38,21 @@ class FakeService:
             handle.finish(result(base))
         return handle
 
+    def process_job(self, request):
+        handle = JobHandle()
+        values = []
+        try:
+            for index, source in enumerate(request.sources):
+                handle.publish({"type": "job_video_started", "source_index": index})
+                child = self.process(source)
+                if not child.done:
+                    return handle
+                values.append(child.wait())
+            handle.finish(JobResult(tuple(values)))
+        except BaseException as exc:
+            handle.fail(exc)
+        return handle
+
     def download_url(self, url, *, progress=None, cancel_check=None):
         if self.download is not None:
             return self.download(url, progress=progress, cancel_check=cancel_check)
@@ -65,6 +80,24 @@ class DesktopControllerTests(unittest.TestCase):
             controller.start(make_request)
             self.wait_state(controller, DesktopState.COMPLETED)
             self.assertEqual(controller.items[0].stage, "completed")
+
+    def test_degraded_completion_keeps_outputs_and_exposes_reason(self) -> None:
+        degraded = ProcessingResult(
+            "id", Path("m.json"), Path("a.md"), Path("a.docx"), Path("a.pdf"),
+            mode="cloud_structured", diagnostics={
+                "status": "degraded", "editorial_mode": "cloud_structured",
+                "degradation_summary": ["Writer 超时，章节使用本地确定性结果"],
+            },
+        )
+        controller = DesktopController(FakeService())
+        controller.add([Path("lesson.mp4")])
+        item = controller.items[0]
+        controller._complete_item(item, degraded)
+        self.assertEqual(item.status, "已完成（降级）")
+        self.assertIn("Writer 超时", item.detail)
+        self.assertEqual(item.result["markdown"], Path("a.md"))
+        self.assertEqual(item.result["docx"], Path("a.docx"))
+        self.assertEqual(item.result["pdf"], Path("a.pdf"))
 
     def test_failure_cancel_and_repeated_cancel(self) -> None:
         failed = DesktopController(FakeService(fail=True)); failed.add([Path("bad.mp4")])
@@ -220,23 +253,23 @@ class DesktopControllerTests(unittest.TestCase):
         self.assertEqual(item.stage, "failed")
         self.assertIn("下载文件不完整", item.message)
 
-    def test_add_url_restores_completed_result_when_workspace_cached(self) -> None:
-        """链接源下载完成后，如果已有完整处理缓存，应恢复「已完成」状态。"""
+    def test_add_url_cache_is_resolved_by_graph_not_controller(self) -> None:
+        """链接源下载缓存只标记来源就绪，处理缓存由后续 Graph 节点判断。"""
         def download(url, *, progress=None, cancel_check=None):
             return {"path": "C:/cached/测试视频.mp4", "title": "测试视频", "url": url, "video_id": "BV1cmTu6mEL3", "cached": True}
 
         controller = DesktopController(FakeService(cached=True, download=download))
         controller.add_url("https://www.bilibili.com/video/BV1cmTu6mEL3")
         deadline = time.time() + 1
-        while time.time() < deadline and controller.items[0].status != "已完成": time.sleep(.01)
+        while time.time() < deadline and controller.items[0].status != "已就绪": time.sleep(.01)
 
         item = controller.items[0]
-        self.assertEqual(item.stage, "completed")
+        self.assertEqual(item.stage, "ready")
         self.assertEqual(item.progress, 100)
-        self.assertTrue(item.result)
+        self.assertFalse(item.result)
         events = list(controller.events.queue)
         ready = next(event for event in events if event.kind == "source_ready")
-        self.assertIn("已复用既有处理结果", ready.message)
+        self.assertIn("已复用本地缓存", ready.message)
 
     def test_add_url_duplicate_rejected(self) -> None:
         from video_study.desktop.models import QueueItem

@@ -1,0 +1,8 @@
+{
+  "fixture_version": 1,
+  "scenario": "cache_hit",
+  "terminal_status": "succeeded",
+  "cache_reason": "CACHE_HIT",
+  "execute_calls": 0,
+  "cloud_requests": 0
+}

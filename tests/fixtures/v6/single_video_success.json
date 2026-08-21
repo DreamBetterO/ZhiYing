@@ -1,0 +1,9 @@
+{
+  "fixture_version": 2,
+  "scenario": "single_video_success",
+  "source_kind": "local",
+  "terminal_status": "succeeded",
+  "step_ids": ["source.probe", "audio.extract", "transcript.decode", "transcript.normalize", "frames.candidates", "frames.select", "knowledge.plan", "visual.jobs", "visual.evidence", "frames.semantics", "knowledge.course_ir", "knowledge.units", "knowledge.selfcheck", "editorial.policy", "evidence.reconcile", "document.blueprint", "document.write", "document.assemble", "document.validate", "render.markdown", "render.word", "render.pdf", "render.verify"],
+  "artifact_ids": ["source.manifest", "audio.flac", "transcript.raw", "transcript.normalized", "transcript.srt", "frames.candidates", "frames.selected", "knowledge.plan", "visual.jobs", "visual.evidence", "frames.semantics", "knowledge.course_ir", "knowledge.units", "knowledge.selfcheck", "editorial.policy", "evidence.corrections", "document.blueprint", "editorial.session", "document.chapter_v31", "document.v3", "document.validation"],
+  "cloud_requests": 0
+}

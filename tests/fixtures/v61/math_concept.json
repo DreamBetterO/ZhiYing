@@ -1,0 +1,44 @@
+{
+  "id": "math_concept",
+  "kind": "math_concept",
+  "source_sample": "workspace/高数-定积分定义-be06877a42cf",
+  "description": "数学概念（定义→性质→条件/边界）。transcript 含真实 ASR 错词黄金样本（圆寒数/长数/级分/阶段/便上线级分），用于验证本地编辑链不把大段错误口语复制为规则/步骤。",
+  "policy": {
+    "required": ["定义必须清晰", "性质或条件/边界必须保留"],
+    "preferred": ["公式优先"],
+    "forbidden": ["内容导览", "学习目标", "课程复习", "固定章节编号"]
+  },
+  "transcript": {
+    "schema_version": 1,
+    "segments": [
+      {"segment_id": "seg_00001", "start_seconds": 0.0, "end_seconds": 5.0, "text": "我们引入原函数的概念"},
+      {"segment_id": "seg_00002", "start_seconds": 5.0, "end_seconds": 20.0, "text": "如果有一个大F，它的导数等于小F，那这个大F就叫做小F的一个圆寒数"},
+      {"segment_id": "seg_00003", "start_seconds": 20.0, "end_seconds": 35.0, "text": "小F加上任意长数，也还是小F的圆寒数，所以小F的圆寒数有无穷多个"},
+      {"segment_id": "seg_00004", "start_seconds": 35.0, "end_seconds": 55.0, "text": "如果小F在区间上连续，那么它一定有圆寒数；如果小F只有第一类阶段，就肯定没有圆寒数"},
+      {"segment_id": "seg_00005", "start_seconds": 55.0, "end_seconds": 70.0, "text": "小F的便上线级分就是一个可导寒数，它的导数就等于小F"}
+    ]
+  },
+  "plan": {
+    "units": [
+      {"plan_id": "plan_001", "title": "原函数的定义", "role": "core", "type": "concept", "source_segment_ids": ["seg_00002", "seg_00003"]},
+      {"plan_id": "plan_002", "title": "原函数的存在性", "role": "core", "type": "concept", "source_segment_ids": ["seg_00004", "seg_00005"]}
+    ]
+  },
+  "known_asr_errors": [
+    "圆寒数→原函数",
+    "长数→常数",
+    "级分→积分",
+    "阶段→间断",
+    "便上线级分→变上限积分",
+    "寒数→函数"
+  ],
+  "golden": {
+    "structure_modes": ["concept"],
+    "expected_sections": ["定义", "性质或条件/边界"],
+    "raw_asr_copy_forbidden": ["圆寒数", "长数", "级分", "阶段", "便上线级分", "寒数"],
+    "equation_components_min": 1,
+    "word_omml_min": 1,
+    "unresolved_preserved": true,
+    "no_fabricated_exact_formula": true
+  }
+}

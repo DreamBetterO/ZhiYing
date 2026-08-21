@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -463,9 +464,17 @@ def render_pdf_fallback(document: dict, output: Path, *, cancel_check=None) -> N
                 "label": refs.get("label", point.get("source_label", "")),
                 "url": refs.get("url", point.get("source_url", "")),
             }]
+            source_flowables = []
             for source in source_links:
                 source_url = html.escape(source["url"], quote=True)
-                block.append(Paragraph(f"<link href='{source_url}'>▶ 回看来源 · {html.escape(source['label'])}</link>", link))
+                source_flowables.append(Paragraph(
+                    f"<link href='{source_url}'>▶ 回看来源 · {html.escape(source['label'])}</link>",
+                    link,
+                ))
+            if source_flowables and len(block) > 1:
+                block.append(KeepTogether([block.pop(), *source_flowables]))
+            else:
+                block.extend(source_flowables)
             story.extend([*block, Spacer(1, 3*mm)])
         linked_ids = {figure.get("image_id") for point in section.get("knowledge_points", []) for figure in point.get("figures", [])}
         for figure in section.get("figures", []):
@@ -514,54 +523,96 @@ def render_pdf_fallback(document: dict, output: Path, *, cancel_check=None) -> N
     ensure_not_cancelled(cancel_check)
 
 
+def _word_export_to_pdf(docx: Path, pdf: Path, *, cancel_check=None) -> bool:
+    """仅执行本机 Microsoft Word 导出；成功返回 True，失败返回 False（不 fallback）。"""
+    if os.name != "nt":
+        return False
+    word_pdf = pdf.with_name(f"{pdf.stem}.word-export{pdf.suffix}")
+    quoted_docx = str(docx.resolve()).replace("'", "''")
+    quoted_pdf = str(word_pdf.resolve()).replace("'", "''")
+    script = (
+        "$ErrorActionPreference='Stop';$word=$null;$document=$null;"
+        "try{$word=New-Object -ComObject Word.Application;"
+        "$word.Visible=$false;$word.DisplayAlerts=0;"
+        f"$document=$word.Documents.Open('{quoted_docx}',$false,$true,$false);"
+        f"$document.ExportAsFixedFormat('{quoted_pdf}',17)}}"
+        "finally{if($null-ne$document){$document.Close($false)};"
+        "if($null-ne$word){$word.Quit()};"
+        "[GC]::Collect();[GC]::WaitForPendingFinalizers()}"
+    )
+    try:
+        run_cancellable(
+            [
+                "powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive",
+                "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-Command", script,
+            ],
+            cancel_check=cancel_check, timeout_seconds=60.0,
+        )
+        if word_pdf.is_file() and word_pdf.stat().st_size > 0:
+            word_pdf.replace(pdf)
+            return True
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        pass
+    finally:
+        word_pdf.unlink(missing_ok=True)
+    return False
+
+
 def convert_docx_to_pdf(docx: Path, pdf: Path, document: dict, *, cancel_check=None) -> str:
     """优先使用本机 Microsoft Word 导出；不可用时静默使用内置渲染器。"""
-    if os.name == "nt":
-        word_pdf = pdf.with_name(f"{pdf.stem}.word-export{pdf.suffix}")
-        quoted_docx = str(docx.resolve()).replace("'", "''")
-        quoted_pdf = str(word_pdf.resolve()).replace("'", "''")
-        script = (
-            "$ErrorActionPreference='Stop';$word=$null;$document=$null;"
-            "try{$word=New-Object -ComObject Word.Application;"
-            "$word.Visible=$false;$word.DisplayAlerts=0;"
-            f"$document=$word.Documents.Open('{quoted_docx}',$false,$true,$false);"
-            f"$document.ExportAsFixedFormat('{quoted_pdf}',17)}}"
-            "finally{if($null-ne$document){$document.Close($false)};"
-            "if($null-ne$word){$word.Quit()};"
-            "[GC]::Collect();[GC]::WaitForPendingFinalizers()}"
-        )
-        try:
-            run_cancellable(
-                [
-                    "powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive",
-                    "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-Command", script,
-                ],
-                cancel_check=cancel_check, timeout_seconds=60.0,
-            )
-            if word_pdf.is_file() and word_pdf.stat().st_size > 0:
-                word_pdf.replace(pdf)
-                return "local_word"
-        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-            pass
-        finally:
-            word_pdf.unlink(missing_ok=True)
+    if _word_export_to_pdf(docx, pdf, cancel_check=cancel_check):
+        return "local_word"
     render_pdf_fallback(document, pdf, cancel_check=cancel_check)
     return "built_in"
 
 
 class DocumentAdapter:
-    """封装 Markdown、Node/Word 与内置 PDF 选择的 DocumentPort adapter。"""
+    """封装 Markdown、Node/Word 与内置 PDF 选择的 DocumentPort adapter。
+
+    历史只读适配器：对 schema v3 走 v3_to_v2 投影；V6.1 生产渲染使用
+    DocumentAdapterV31（原生消费 Document v3.1）。本类保留用于历史 v2/v3 只读诊断。
+    """
 
     def __init__(self, project_root: Path, *, include_transcript: bool = True) -> None:
         self.project_root = project_root
         self.include_transcript = include_transcript
 
-    def render_markdown(self, document: dict, output: Path) -> Path:
+    def _legacy_render_view(self, document: dict) -> dict:
+        if int(document.get("schema_version", 1) or 1) == 3:
+            from .document_v3 import v3_to_v2
+            legacy = v3_to_v2(document)
+        else:
+            legacy = dict(document)
+        legacy["render_options"] = {
+            **dict(legacy.get("render_options", {})),
+            "include_full_transcript": self.include_transcript,
+        }
+        return legacy
+
+    def render_markdown(
+        self, document: dict, output: Path, *, source_document: Path | None = None,
+    ) -> Path:
+        if int(document.get("schema_version", 1) or 1) == 3:
+            from .document_v3 import v3_to_v2
+            document = v3_to_v2(document)
         render_markdown(document, output, self.include_transcript)
         return output
 
     def render_word(self, document_json: Path, output: Path, *, cancel_check) -> Path:
-        render_docx(document_json, output, self.project_root, cancel_check=cancel_check)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        if not document_json.is_file():
+            render_docx(document_json, output, self.project_root, cancel_check=cancel_check)
+            return output
+        value = json.loads(document_json.read_text(encoding="utf-8"))
+        temporary = output.with_suffix(".render-v2.json")
+        temporary.write_text(
+            json.dumps(self._legacy_render_view(value), ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        try:
+            render_docx(temporary, output, self.project_root, cancel_check=cancel_check)
+        finally:
+            temporary.unlink(missing_ok=True)
         return output
 
     def render_pdf(
@@ -570,6 +621,62 @@ class DocumentAdapter:
         word: Path,
         output: Path,
         *,
+        source_document: Path | None = None,
         cancel_check,
     ) -> str:
-        return convert_docx_to_pdf(word, output, document, cancel_check=cancel_check)
+        return convert_docx_to_pdf(
+            word, output, self._legacy_render_view(document), cancel_check=cancel_check,
+        )
+
+
+class DocumentAdapterV31:
+    """V6.1 生产 DocumentPort：原生消费 Document v3.1（不经过 v3_to_v2）。
+
+    - Markdown：render_v31.render_markdown_v31；
+    - Word：scripts/render_docx_v31.mjs（公式生成 Word 原生 OMML）；
+    - PDF：优先 Word 转 PDF，不可用时 built-in v3.1 fallback；
+    - 不注入旧业务模板；只自动加入合同允许的来源/页码/元数据/无障碍字段。
+    """
+
+    def __init__(self, project_root: Path) -> None:
+        self.project_root = Path(project_root)
+
+    def _figures_for(self, document_json: Path) -> dict[str, dict]:
+        """从文档所在 Workspace 的 visual-evidence.json 解析图片渲染信息。"""
+        from .render_v31 import resolve_v31_figures
+        # <workspace>/<video_id>/knowledge/document-v3.json → parents[1] = <workspace>/<video_id>
+        video_root = document_json.resolve().parents[1]
+        document = json.loads(document_json.read_text(encoding="utf-8"))
+        return resolve_v31_figures(document, video_root, project_root=self.project_root)
+
+    def render_markdown(
+        self, document: dict, output: Path, *, source_document: Path | None = None,
+    ) -> Path:
+        from .render_v31 import render_markdown_v31
+        figures = self._figures_for(source_document) if source_document is not None else {}
+        return render_markdown_v31(
+            document, output, figure_map=figures, project_root=self.project_root,
+        )
+
+    def render_word(self, document_json: Path, output: Path, *, cancel_check) -> Path:
+        from .render_v31 import render_docx_v31
+        figures = self._figures_for(document_json)
+        return render_docx_v31(
+            document_json, output, project_root=self.project_root,
+            figure_map=figures, cancel_check=cancel_check,
+        )
+
+    def render_pdf(
+        self,
+        document: dict,
+        word: Path,
+        output: Path,
+        *,
+        source_document: Path | None = None,
+        cancel_check,
+    ) -> str:
+        from .render_v31 import render_pdf_v31
+        figures = self._figures_for(source_document) if source_document is not None else {}
+        return render_pdf_v31(
+            document, word, output, figure_map=figures, cancel_check=cancel_check,
+        )

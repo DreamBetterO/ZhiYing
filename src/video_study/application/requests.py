@@ -15,13 +15,18 @@ class CloudAuthorization:
     allowed_data: tuple[str, ...] = ("transcript", "source_ids")
     max_calls: int = 0
     editorial_brief: str = ""
+    image_authorized: bool = False
 
     def legacy_settings(self, base: dict[str, Any]) -> dict[str, Any]:
         return {
             **base, "_runtime_api_key": self.api_key, "_runtime_base_url": self.base_url,
             "_runtime_models": list(self.models), "_runtime_max_calls": self.max_calls,
             "_runtime_editorial_brief": self.editorial_brief,
+            "_runtime_image_authorized": bool(self.image_authorized),
         }
+
+    def permits_images(self) -> bool:
+        return self.authorized and self.image_authorized and "images" in self.allowed_data
 
 
 @dataclass(frozen=True)
@@ -44,6 +49,21 @@ class AggregateRequest:
     results: tuple["ProcessingResult", ...]
     cloud: CloudAuthorization = field(repr=False, compare=False)
     cancel_check: Callable[[], bool] | None = field(default=None, repr=False, compare=False)
+
+
+@dataclass(frozen=True)
+class JobRequest:
+    sources: tuple[ProcessingRequest, ...]
+    aggregate_mode: str = "none"
+    cloud: CloudAuthorization | None = field(default=None, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if not self.sources:
+            raise ValueError("JobRequest 至少需要一个来源")
+        if self.aggregate_mode not in {"none", "local", "cloud"}:
+            raise ValueError("aggregate_mode 必须是 none、local 或 cloud")
+        if self.aggregate_mode == "cloud" and not (self.cloud and self.cloud.authorized):
+            raise ValueError("云端聚合需要本次云端授权")
 
 
 @dataclass(frozen=True)
@@ -76,6 +96,68 @@ class ProcessingResult:
             "docx": self.docx, "pdf": self.pdf, "mode": self.mode, "model": self.model,
             "cloud_usage": dict(self.cloud_usage), **dict(self.diagnostics),
         }
+
+
+@dataclass(frozen=True)
+class JobResult:
+    video_results: tuple[ProcessingResult, ...]
+    aggregate_result: ProcessingResult | None = None
+    status: str = "succeeded"
+
+
+class JobHandle:
+    def __init__(self) -> None:
+        self._cancel = Event()
+        self._done = Event()
+        self._result: JobResult | None = None
+        self._error: BaseException | None = None
+        self._subscribers: list[Callable[[dict[str, Any]], None]] = []
+        self._pending_events: list[dict[str, Any]] = []
+        self._subscriber_lock = Lock()
+
+    def cancel(self) -> None:
+        self._cancel.set()
+
+    def cancelled(self) -> bool:
+        return self._cancel.is_set()
+
+    def subscribe(self, callback: Callable[[dict[str, Any]], None]) -> None:
+        with self._subscriber_lock:
+            self._subscribers.append(callback)
+            pending, self._pending_events = self._pending_events, []
+        for event in pending:
+            ProcessingHandle._notify(callback, event)
+
+    def publish(self, event: dict[str, Any]) -> None:
+        value = dict(event)
+        with self._subscriber_lock:
+            callbacks = tuple(self._subscribers)
+            if not callbacks:
+                self._pending_events.append(value)
+                return
+        for callback in callbacks:
+            ProcessingHandle._notify(callback, value)
+
+    def finish(self, result: JobResult) -> None:
+        self._result = result
+        self._done.set()
+
+    def fail(self, error: BaseException) -> None:
+        self._error = error
+        self._done.set()
+
+    def wait(self, timeout: float | None = None) -> JobResult:
+        if not self._done.wait(timeout):
+            raise TimeoutError("作业尚未完成")
+        if self._error is not None:
+            raise self._error
+        if self._result is None:
+            raise RuntimeError("作业未返回结果")
+        return self._result
+
+    @property
+    def done(self) -> bool:
+        return self._done.is_set()
 
 
 class ProcessingHandle:

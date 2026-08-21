@@ -68,7 +68,7 @@ class FakeCloudJsonPort:
 
 
 class FakeDocumentPort:
-    def render_markdown(self, _document, output: Path):
+    def render_markdown(self, _document, output: Path, **_runtime):
         return output
 
     def render_word(self, _document_json: Path, output: Path, **_runtime):

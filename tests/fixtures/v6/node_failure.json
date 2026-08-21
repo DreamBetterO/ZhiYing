@@ -1,0 +1,9 @@
+{
+  "fixture_version": 1,
+  "scenario": "node_failure",
+  "step_id": "frames.select",
+  "terminal_status": "failed",
+  "error_code_prefix": "FRAMES_SELECT",
+  "downstream_status": "skipped",
+  "cloud_requests": 0
+}

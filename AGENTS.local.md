@@ -1,46 +1,65 @@
-# 项目本地指令（AGENTS.local.md）—— 知影工程工作约定
+# Project Instructions — 知影 Video Summarization
 
-## 会话启动（必做）
+Python desktop application for video-to-document summarization. Pipeline: JSON → Markdown → Word → PDF. Uses one VLM session per video. Conda env: `ImageT10`.
 
-1. 读 `docs/项目索引.md` 确认当前基线/版本/交接入口；读 `docs/AI执行入口.md` 确认直接行动与边界。
-2. 需要时`docs/迭代升级/当前架构升级状态.yaml`。
-3. 确认任务边界与已具备的授权（云端请求/模型下载/依赖重装/便携包构建/长视频重跑需单独授权）。
+## Build & Test
 
-## 认知纪律
+- Activate env: `conda activate ImageT10` (located at `D:\Anaconda\envs\envs\ImageT10`)
+- Unit tests: `unittest discover -s tests`
+- Compile check: `compileall -q src tests`
+- Dependency check: `pip check`
+- Diff check: `git diff --check`
 
-- 先读后做：修改任何文件前先读上述入口文档与责任模块；冲突时以机器可校验合同
-  （`docs/architecture/*.yaml`、`docs/diagnostics/problem-index.yaml`）、代码、测试、
-  执行入口、执行事实为准。
-- 版本时间线 `迭代升级/迭代记录与问题.md` 只在用户批准新版本后追加**一条**记录
-  （时间/版本/类型/用户问题/最终方案），不写 AI 推理、实施细节、测试结果；已有条目不可改写。
-- `docs/项目索引.md` 只写最新且已确认的可运行状态；写入新条目时删除上一条，历史交付细节写入 `执行事实.yaml`。
-- 执行文档（推理/架构/实施/测试/交接）放 `docs/迭代升级/`（紧凑 YAML/JSON 亦可），不拷贝进时间线。
+## Session Startup (Required)
 
-## 执行纪律
-- 诊断先行：只读 `.venv\Scripts\python.exe scripts\diagnose_workspace.py workspace\<video_id>`，
-  按 `step_id/error_code` 查 `docs/diagnostics/problem-index.yaml`，定位 owner/Artifact/测试。
-- 测试先行、最小改动：先补失败回归测试，再改最小责任模块；同任务目录串行，不用并发掩盖写入竞争。
-- 缓存优先：不无理由重跑长视频；先诊断既有 workspace 再决定清理。
-- 链路完整：按 UI 逻辑等价路径验证，不能仅命令行跑通。
-- 干净代码：不硬编码、不魔法值、无全局变量、不冗余。
-- 迭代升级时的思考产生的文档可放在`docs/迭代升级/交互思考`中。
-- 注意文档时间戳的准确性；
+1. Read `docs/项目索引.md` for current baseline, version, and hand-off entry.
+2. Read `docs/AI执行入口.md` for immediate actions and boundaries.
+3. Read `docs/迭代升级/当前架构升级状态.yaml` if the task touches architecture or pipeline contracts.
+4. Confirm authorizations — cloud requests, model downloads, dependency reinstalls, portable release builds, and long-video reruns each require separate authorization.
 
-## 边界（不可违反）
+## Cognitive Discipline
 
-- 密钥安全：不读取、不打印、不提交 `.env`。
-- 云推理 opt-in：真实云调用前逐次说明数据/端点/模型链/预算并获得明确授权；不得仅为测试配置发起真实请求。
-- `video-study://` 本地协议：点击调用本地播放器定位，不打开网页。
-- docs存放开发类相关文档，在用户要求更新业务相关文档时才更新写入；
-- 数据/源码分离：`Resource/ workspace/ output/ models/ 视频/` 是数据产物；无关临时脚本放 `./tmp`。
-- 保留用户 dirty worktree；不假设仓库可重置或提交。
-- 工作时python为 conda 环境 `ImageT10`；非必要不动核心依赖。
+- **Read before doing**: review entry documents and owning modules before modifying any file. When conflicts arise, trust machine-checkable contracts (`docs/architecture/*.yaml`, `docs/diagnostics/problem-index.yaml`), code, tests, and execution facts over memory.
+- **Version timeline** (`docs/迭代升级/迭代记录与问题.md`): append one entry only after user approves a named version — Asia/Shanghai time, version label/type, user-raised problem, approved solution. No AI reasoning or implementation details. Existing entries are immutable.
+- **`docs/项目索引.md`**: keep only the latest confirmed runnable status; delete the previous entry when writing a new one. Historical delivery details go in `docs/迭代升级/执行事实.yaml`.
+- **Execution documents** (reasoning/architecture/implementation/testing/hand-off): place under `docs/迭代升级/` (compact YAML/JSON acceptable). Do not copy into the version timeline.
 
-## 验收与收尾
+## Execution Discipline
 
-- 完成时运行完整离线验收：`unittest discover -s tests` / `compileall -q src tests` /
-  `pip check` / `git diff --check`。
-- 结构化收尾：完成了什么（含路径）、关键发现、剩余缺口/阻塞、需用户决策事项。
-- 收到预算/上下文告警时收束，不启动无关任务。
-- 小的功能点升级时，测试函数测升级部分，注意测试和验收边界。
-- 用户要求全链路测试时，测试务必对齐UI逻辑，进行UI挂载的全链路测试，期间不可美化链路产物。
+- **Diagnosis first**: run `.venv\Scripts\python.exe scripts\diagnose_workspace.py workspace\<video_id>` (read-only), then locate failures by `step_id/error_code` in `docs/diagnostics/problem-index.yaml`.
+- **Test-first, minimal change**: add a failing regression test before modifying the smallest responsible module. Tasks in the same directory must run serially — no concurrency to mask write races.
+- **Cache priority**: do not rerun long videos without reason; diagnose existing workspaces before cleaning.
+- **Link integrity**: validate via the UI-logic equivalent path, not just CLI.
+- **Clean code**: no hardcoding, magic values, global variables, or redundancy.
+- **Thinking docs**: place iteration-thinking documents in `docs/迭代升级/交互思考/`.
+- **Timestamp accuracy**: ensure document timestamps are correct.
+
+## Boundaries (Do Not Violate)
+
+- **Secrets**: never read, print, or commit `.env`.
+- **Cloud inference opt-in**: before each real cloud request, explain data/endpoint/model chain/budget and obtain explicit authorization. Never make live requests merely to test config.
+- **`video-study://` protocol**: invokes local player for positioning; does not open web pages.
+- **Docs scope**: `docs/` holds development documents; update business documents only when the user requests.
+- **Data/source separation**: `Resource/`, `workspace/`, `output/`, `models/`, `视频/` are data artifacts. One-off scripts go in `./tmp`.
+- **Dirty worktree**: preserve the user's worktree; do not assume the repository can be reset or committed.
+- **Python environment**: use conda `ImageT10`; do not modify core dependencies unless necessary.
+
+## Architecture Contracts
+
+- Preserve JSON → Markdown → Word → PDF data flow and timestamp traceability.
+- Desktop-only: no Web UI, local HTTP service, port listener, or `serve` command.
+- Course IR, one VLM session per video, compact CloudPayload, Canonical Document v2, task progress, and Application/Desktop split are stable contracts unless the user explicitly approves a major version change.
+- Legacy compatibility is one-way: v1 artifacts are read-only migration inputs; new documents are Document v2 only; historical workspaces are not proactively deleted.
+
+## Communication
+
+- Communicate with the user in Chinese unless they request otherwise.
+- State concrete evidence, affected files, and validation results. Do not obscure real failures by beautifying output.
+
+## Acceptance and Wrap-up
+
+- Run the complete offline acceptance suite (see Build & Test above).
+- Structured wrap-up: what was done (with paths), key findings, remaining gaps/blockers, items needing user decision.
+- On budget or context warnings, converge; do not start unrelated tasks.
+- For small feature upgrades, test the upgraded part specifically; mind test and acceptance boundaries.
+- For full-chain testing requests, align tests with UI logic, run UI-mounted full-chain tests, and do not beautify chain artifacts.

@@ -1,0 +1,37 @@
+{
+  "id": "math_example",
+  "kind": "math_example",
+  "source_sample": "workspace/高数-例题讲解-a5c1f2d59bf3",
+  "description": "数学例题（题目→识别→思路→推导→结论/变式）。transcript 含典型口语化 ASR 文本，用于验证例题型文档按 case 结构组织且公式进入 equation 组件。",
+  "policy": {
+    "required": ["例题必须给出思路和结论", "推导步骤必须保留"],
+    "preferred": ["公式优先", "来源显示"],
+    "forbidden": ["内容导览", "学习目标", "课程复习", "固定章节编号"]
+  },
+  "transcript": {
+    "schema_version": 1,
+    "segments": [
+      {"segment_id": "seg_00001", "start_seconds": 0.0, "end_seconds": 8.0, "text": "我们来看这道例题，求不定积分 x 平方 dx"},
+      {"segment_id": "seg_00002", "start_seconds": 8.0, "end_seconds": 22.0, "text": "先观察被积函数，x 平方是幂函数，我们直接用幂函数的积分公式"},
+      {"segment_id": "seg_00003", "start_seconds": 22.0, "end_seconds": 38.0, "text": "x 的 n 次方的积分等于 x 的 n 加一次方除以 n 加一，再加长数 C"},
+      {"segment_id": "seg_00004", "start_seconds": 38.0, "end_seconds": 52.0, "text": "所以 x 平方的积分等于三分之 x 的三次方，再加上任意长数 C"},
+      {"segment_id": "seg_00005", "start_seconds": 52.0, "end_seconds": 66.0, "text": "最后我们验算一下，对三分之 x 的三次方求导，正好等于 x 平方，结论成立"}
+    ]
+  },
+  "plan": {
+    "units": [
+      {"plan_id": "plan_001", "title": "例题：求不定积分 x^2 dx", "role": "core", "type": "case", "source_segment_ids": ["seg_00001", "seg_00002", "seg_00003", "seg_00004", "seg_00005"]}
+    ]
+  },
+  "known_asr_errors": [
+    "长数→常数"
+  ],
+  "golden": {
+    "structure_modes": ["case"],
+    "expected_sections": ["题目", "思路", "推导", "结论或变式"],
+    "raw_asr_copy_forbidden": ["长数"],
+    "equation_components_min": 1,
+    "word_omml_min": 1,
+    "no_fabricated_exact_formula": true
+  }
+}

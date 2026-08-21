@@ -1,0 +1,16 @@
+{
+  "math_formula_high_math": {
+    "candidate_minimum": 6,
+    "candidate_timestamps": [0, 10, 20, 30, 40, 50],
+    "requires_equation": true,
+    "requires_source_reference": true
+  },
+  "strong_visual": {
+    "expected": "strong",
+    "evidence": [{"decision": "select", "image_path": "frame.jpg", "source_timestamp": 12.0}]
+  },
+  "weak_visual": {
+    "expected": "weak",
+    "evidence": [{"decision": "no_match", "image_path": "", "source_timestamp": 0, "source": "evidence_threshold_not_met"}]
+  }
+}

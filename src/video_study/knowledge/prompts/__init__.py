@@ -39,6 +39,7 @@ def compose_course_ir_prompt(
 CourseIR 字段：sources 是可引用来源与时间；units 是必须逐项覆盖的知识点，unit.src 是来源 ID，内部 claims 按来源/origin 分组保存原子事实；claim 分组未写 source_ids 时继承 unit.src，未写 origin 时默认为 audio_backed；visuals 是本地已核实图片事实。每个 claim 只能进入一个主要 content_block，禁止把同一句同时放进 paragraph 与 rule_list/steps。标题不得复制正文开头。
 你可以自主选择 paragraph、rule_list、steps、example、pitfall 和 visual_group；来源没有对应信息时不必输出该栏目。你也可以自主决定是否需要学习目标、章节摘要、复习清单或未展开问题。详略由知识的重要程度和课程强调程度决定，不平均分配篇幅。
 visuals 只允许按 visual_id 放置；不得创建新图片、frame 或来源。不要输出本地路径、Markdown、PDF、DOCX 或图片数据。
+涉及公式、换元、微分或积分步骤时，必须逐行核对等价关系、运算顺序和常数因子；不得把两个不同等价改写中的系数拼接到同一公式。来源不足以确认精确公式时，只保留有来源支撑的解题思路，并在 open_questions 标为待回看，不得补造精确等式。
 
 输出格式：
 {{"document_title":"资料标题","overview":"2-4句导览","learning_objectives":["目标"],"sections":[{{"title":"章节标题","summary":"章节摘要","knowledge_points":[{{"plan_id":"unit id","statement":"短标题","explanation":"正文摘要","content_blocks":[{{"block_id":"content_001","type":"paragraph|rule_list|steps|example|pitfall|visual_group","origin":"audio_backed|visual_backed|model_aid","text":"文本","items":[],"claim_ids":["claim id"],"source_ids":["source id"],"binding_id":"visual id"}}],"facet_status":{{}},"editorial_note":"","review_tip":"","source_block_ids":["source id"]}}],"visual_bindings":[]}}],"review":{{"knowledge_thread":"主线","checklist":["要点"],"open_questions":["来源未讲清问题"]}}}}

@@ -1,32 +1,215 @@
-change_id: v5-1-desktop-experience-patch
-phase: implemented_validated
-status: implemented_validated
-approved_at: "2026-08-19 Asia/Shanghai"
+change_id: v6-1-function-calling-editorial-harness
+phase: cp61_7_offline_golden_ui_acceptance
+status: cp61_7_in_progress
+approved_at: "2026-08-21 09:38 Asia/Shanghai"
+cp61_0_completed_at: "2026-08-21 10:55 Asia/Shanghai"
+cp61_1_completed_at: "2026-08-21 12:10 Asia/Shanghai"
+cp61_2_completed_at: "2026-08-21 13:00 Asia/Shanghai"
+cp61_3_completed_at: "2026-08-21 13:50 Asia/Shanghai"
+cp61_4_completed_at: "2026-08-21 15:20 Asia/Shanghai"
+cp61_5_completed_at: "2026-08-21 14:46 Asia/Shanghai"
+cp61_6_completed_at: "2026-08-21 15:00 Asia/Shanghai"
+
 baseline:
-  version: "0.5.0"
-  last_completed_change: v5-0-video-link-source-acquisition
-  v5_0_summary: "implemented_validated_pending_portable_release - V5.0 视频链接源获取已完成 P1-P5 验收、P6 离线验收通过；便携发行包重建待单独执行"
-  tests_passed: 408
-  dirty_worktree: "保留用户/前序 Agent 已有改动；本状态文件只记录当前交接事实"
-summary:
-  version_type: "小版本补丁（桌面体验修复）"
-  fixes:
-    - "缓存恢复：manifest stages.render 仅记录 markdown，cached_result 要求三者齐全返回 None，导致移除视频重加后状态/token/文件打开权限丢失。修复后扫描 output 目录补全 docx/pdf；add_url 也调用 cached_result 恢复已完成状态。"
-    - "Token 列宽度：窗口默认/最小宽度 980→1040；列宽大幅调整（name 300→170、tokens 155→225）。"
-    - "日志重叠：移除独立 status 标签（与日志第一行重复）；日志改为 2 行固定高度 + 垂直滚动条 + 追加式历史回看（最多 200 行）。"
-  documents:
-    - "修改文件：src/video_study/application/processing.py、src/video_study/desktop/controller.py、src/video_study/desktop/view.py"
-    - "测试：tests/test_desktop.py、tests/test_desktop_controller.py"
+  product_version: "1.0.0rc1"
+  active_architecture: "V6 LangGraph 23-node full-pipeline runtime with DocumentPlan/Document v3"
+  last_completed_change: v6-0-langgraph-full-pipeline-rc1
+  tests_last_confirmed: 460
+  dirty_worktree: "保留用户/前序 Agent 已有改动；实施前必须重新记录基线"
+
+target:
+  architecture_version: "V6.1"
+  implementation_version: "1.0.0rc2"
+  release_version: "1.0.0"
+  orchestrator: LangGraph
+  scope: "受控编辑子图、Function Calling、Document v3.1 原生渲染、本地确定性降级、质量与谱系门禁"
+
+approved_documents:
+  architecture: "docs/迭代升级/V6.1 Function Calling编辑Harness升级方案.md"
+  execution: "docs/迭代升级/V6.1 Function Calling编辑Harness执行计划.md"
+  target_contract: "docs/迭代升级/V6.1 Function Calling编辑Harness目标合同.yaml"
+
+closed_decisions:
+  - "LangGraph 继续是唯一生产编排器；编辑能力以显式 EditorialAgentSubgraph 接入，不建立第二编排器。"
+  - "主图决定阶段、预算、降级、重试、质量门与终态；LLM只决定文档语义和阶段内工具调用。"
+  - "Function Calling 使用受限、分阶段工具集；禁止任意文件、Shell、网络、MCP、图片上传和无限循环。"
+  - "能力链固定为 tool_native → structured_only → local_deterministic；无需新本地文本模型即可完整产出。"
+  - "正常短视频默认 Blueprint + Writer 两次云调用；观察、局部修订和证据纠错只按失败门触发。"
+  - "Markdown、Word、PDF 原生消费 Document v3.1；生产不再 v3 → v2，历史 v2 只读。"
+  - "允许降级产物自动输出，但必须标记 degraded、实际模型链、原因和未满足质量项。"
+  - "云端图片默认禁止，仅保留未来独立能力接口；MCP、多Agent、Web服务与通用插件不进入V6.1。"
+  - "V6.0 1.0.0rc1 不提升正式版；V6.1 实施目标为 1.0.0rc2，通过发布门后才升 1.0.0。"
+
+active_runtime_warning:
+  - "V6.1 CP61-5 已切换生产 EditorialAgentSubgraph 与 Document v3.1 原生三端路径；产品版本仍保持1.0.0rc1，待后续质量门完成后才形成1.0.0rc2。"
+  - "V6.0文档质量未达用户目标，1.0.0rc1不得提升为正式1.0.0。"
+  - "active docs/architecture 已切换为 GraphRuntime；不得恢复旧 PipelineRunner 双执行路径。"
+
+authorizations:
+  architecture_document_write: true
+  source_code_implementation: true
+  cloud_requests: false
+  cloud_image_upload: false
+  model_download_or_change: false
+  dependency_install_or_reinstall: false
+  long_video_rerun: false
+  online_smoke: false
+  portable_rebuild: false
+  authorization_note: "用户 2026-08-21 授权一次性连续推进 CP61-1→CP61-5；真实云/模型/依赖/长视频/便携仍分别授权。"
+
+documentation_validation:
+  written_at: "2026-08-21 09:54 Asia/Shanghai"
+  yaml_parse: "6 files OK（V6.1目标合同、当前状态、执行事实及现有pipeline/module/problem contracts）"
+  local_links: "36 checked, 0 missing（V6.1主方案、执行计划、项目索引、AI执行入口）"
+  targeted_contract_tests: "17 passed in 2.576s（documentation contracts + architecture boundaries）"
+  full_unittest: "460 passed in 64.934s"
+  compileall: passed
+  git_diff_check: "passed；仅既有LF/CRLF提示"
+  pip_check: "No broken requirements found；仍有既有 ~ransformers invalid distribution warning。"
+  runtime_test: "未执行；本轮仅批准并编写V6.1文档。"
+  cloud_usage: "0；未发起真实云请求。"
+
+cp61_0_validation:
+  written_at: "2026-08-21 10:55 Asia/Shanghai"
+  scope: "冻结失败基线、黄金清单、四类 fixture、失败特征测试、机器合同测试与追溯矩阵"
+  baseline:
+    product_version: "1.0.0rc1"
+    graph_version: "v6-document-v3-1"
+    python_env: "conda ImageT10（Python 3.11.15）；langgraph 1.2.11 / langgraph-checkpoint-sqlite 3.1.1"
+  frozen_artifacts:
+    - "workspace/高数-定积分定义-be06877a42cf + output（run 2b48a72d；knowledge.units degraded）"
+    - "workspace/高数-例题讲解-a5c1f2d59bf3 + output（run 14d84772）"
+  deliverables:
+    - "docs/迭代升级/CP61-0黄金清单.yaml（digest/Artifact/已知问题/黄金期望）"
+    - "tests/fixtures/v61/{math_concept,math_example,strong_visual,weak_visual}.json + README.md"
+    - "tests/test_v61_characterization.py（7 契约断言按预期失败 + 8 行为钉住通过）"
+    - "tests/test_v61_contracts.py（11 通过；含测试追溯矩阵）"
+    - "docs/diagnostics/problem-index.yaml → v61_target_errors 占位（未切 active owner）"
   validation:
-    unittest: "408 用例全绿"
-    compileall: "通过"
-    git_diff_check: "通过；仅既有 CRLF warning"
-boundaries:
-  cloud_requests_authorized: false
-  online_smoke_authorized: false
-  portable_rebuild_authorized: false
-  secrets_read: false
-  web_surface_added: false
+    unittest: "486 passed（460 基线无回归 + 26 新增：19 通过、7 expected failures）+ OK(expected failures=7) in 78.980s"
+    compileall: "passed（__pycache__ 写入需完整权限，会话沙箱限制）"
+    pip_check: "No broken requirements found"
+    git_diff_check: "passed；仅既有 LF/CRLF 提示"
+    yaml_parse: "新增 YAML（CP61-0黄金清单、problem-index 占位）解析通过"
+    cloud_requests: 0
+    asr_vlm_loads: 0
+    production_behavior_change: false
+  environment_notes:
+    - "会话沙箱拒绝 0o700 临时目录与 __pycache__ 写入；unittest 通过 tmp/testenv/sitecustomize.py（0o700→0o777）+ TEMP 指向工作区运行，compileall 经完整权限执行。"
+    - "tmp/testenv 与 tmp/testtmp 为本会话验收 shim，非产品代码。"
+
+cp61_1_validation:
+  written_at: "2026-08-21 12:10 Asia/Shanghai"
+  scope: "编辑协议与完整本地语义链（未接生产）"
+  deliverables:
+    - "src/video_study/editorial/{policy,intent,evidence,blueprint,document,local}.py"
+    - "src/video_study/execution/artifacts.py → V61_ARTIFACTS（editorial.policy/evidence.corrections/document.blueprint/document.chapter_v31；未并入 STANDARD_ARTIFACTS）"
+    - "tests/test_v61_{editorial_policy,evidence_overlay,blueprint,local_editor,artifacts}.py"
+  validation:
+    unittest: "532 passed in 101.265s；OK(expected failures=7)；460 基线无回归 + 72 v61（65 通过、7 按预期失败）"
+    real_workspace_check:
+      高数-定积分定义: "141 条纠错候选；v3.1 正文 0 个已知 ASR 错词；3 章；provenance local_deterministic"
+      高数-例题讲解: "0 个 ASR 错词；无本地绝对路径泄露；blueprint mode=case"
+    cloud_requests: 0
+    asr_vlm_loads: 0
+    production_behavior_change: false
+  gate:
+    - "cloud_requests=0 且 VLM 不可用时生成合法 Document v3.1 candidate（本地纯链）"
+    - "forbidden 内容导览/学习目标/课程复习 → 本地 Blueprint 与产物不含对应组件"
+    - "两个高数样本不再把已知 ASR 错词复制为可见规则/步骤"
+    - "复杂意图本地无法解析 → partially_satisfied（unmatched_hints 非空）"
+    - "原始 transcript digest 在 compose 前后不变"
+
+cp61_2_validation:
+  written_at: "2026-08-21 13:00 Asia/Shanghai"
+  scope: "Document v3.1 原生三端渲染与质量审计（候选路径，未切生产）"
+  deliverables:
+    - "src/video_study/render_v31.py：Markdown/Word/PDF 原生 v3.1 渲染 + resolve_v31_figures + count_word_omml + 跨格式统计"
+    - "scripts/render_docx_v31.mjs：Word 原生 v3.1（docx 9.7.1 Math → OMML；LaTeX 子集解析器：frac/sup/sub/sqrt/希腊字母/积分等）"
+    - "src/video_study/editorial/quality.py：QualityReport v2 + PageAuditReport v1 + audit_render_outputs"
+    - "tests/test_v61_native_renderers.py + tests/test_v61_quality.py"
+    - "tests/test_v61_characterization.py：OMML 计数改为 <m:oMath> 开标签精确统计"
+  validation:
+    unittest: "全量待最终确认（见执行事实）；新增 16 项 renderer/quality 测试通过"
+    real_workspace_check:
+      高数-例题讲解: "equations=1、Word OMML=1 一致；无旧栏目；无路径泄露；quality=valid"
+      高数-定积分定义: "equations=0、OMML=0 一致（本地保守不补造公式）；images=3；src_refs=6；quality/render/page=valid"
+    cloud_requests: 0
+    production_behavior_change: false
+  gate:
+    - "v3.1 候选渲染路径无 v3_to_v2；不注入旧业务模板"
+    - "数学样本 equation 组件数 == Word OMML 数"
+    - "图片/来源组件三端语义一致；Markdown 无本地绝对路径"
+    - "forbidden 栏目 0 注入；PageAudit 无固定编号残留"
+
+cp61_3_validation:
+  written_at: "2026-08-21 13:50 Asia/Shanghai"
+  scope: "CloudToolPort 与模型能力门禁（mock/replay，不接业务 Agent）"
+  deliverables:
+    - "src/video_study/execution/tool_calling.py：ToolTurn/ToolCallRecord/StageBudget/ModelCapabilityRegistry/工具错误码/变更策略/schema 分阶段绑定/OpenAI 兼容 invoke_turn adapter/有界返回截断"
+    - "src/video_study/execution/ports.py：CloudToolPort 协议（invoke_turn）"
+    - "tests/test_v61_tool_protocol.py（25 项）"
+  validation:
+    unittest: "全量待最终确认（见执行事实）；25 项工具协议测试通过"
+    langgraph_probe: "langgraph 1.2.11 ToolNode + @tool + SQLite SqliteSaver Checkpoint 序列化/恢复通过（ToolMessage 往返）"
+    cloud_requests: 0
+    production_behavior_change: false
+  gate:
+    - "所有测试使用 fake/replay provider，真实云请求=0"
+    - "tool_native 失败可确定性转 structured_only（能力注册表 + 默认 structured_only；OpenAI 兼容不自动 tool_native）"
+    - "ToolTurn/State/Checkpoint 无秘密、无大对象、无完整供应商响应"
+    - "无新增完整 LangChain 依赖（langchain-core 1.6.0 为 langgraph 既有传递依赖）"
+
+cp61_4_validation:
+  written_at: "2026-08-21 15:20 Asia/Shanghai"
+  scope: "EditorialAgentSubgraph 与有限编辑循环（测试挂载，未接生产）"
+  deliverables:
+    - "src/video_study/editorial/tools.py：EditorialToolContext（授权投影）+ EditorialTools（lookup_evidence/lookup_visual_facts/get_renderer_capabilities/get_page_detail 只读 + submit_blueprint/submit_chapter/submit_patch/finish_editing 只写候选 State）+ build_langchain_tools 分阶段绑定 + validate_patch"
+    - "src/video_study/editorial/writer.py：强制结构化章节写作（分批 + 章指纹缓存，成功章不因其他章失败丢失）"
+    - "src/video_study/editorial/patch.py：白名单操作 apply（add/remove/replace/move/set_layout_hint/set_style_token；禁止整篇替换/任意指针/docx_xml/脚本）"
+    - "src/video_study/editorial/agent.py：LangGraph StateGraph 显式子图（blueprint.agent→tools→validate→commit→chapter.write→assemble→preview→quality→revision→patch→finalize；ToolNode 为一等节点；条件路由显式；checkpointer 可选）"
+    - "tests/test_v61_editorial_graph.py（9 项）"
+  validation:
+    unittest: "全量待最终确认（见执行事实）；9 项子图测试通过"
+    cloud_requests: 0
+    production_behavior_change: false
+  gate:
+    - "正常短 fixture：Blueprint+Writer 两次调用目标（direct submit=1 次、observe+submit=2 次）"
+    - "工具只读已授权 Artifact 投影；路径/Shell/网络/图片 payload 被 schema 拒绝"
+    - "Patch 不可整篇替换（白名单+单操作）；revision 冲突/scope 违规 → 不应用 → degraded"
+    - "云完全禁用时无 CloudPort 构造且本地结果完整（local_deterministic 路径）"
+    - "子图状态有界、可恢复（checkpointer 恢复 0 新增工具调用）、无无界消息"
+    - "tool_native/structured/local 三路径同一 Document v3.1 输出合同"
+
+cp61_6_validation:
+  written_at: "2026-08-21 15:00 Asia/Shanghai"
+  scope: "Workspace 诊断、历史只读迁移、稳定工具故障归属与有限降级"
+  deliverables:
+    - "scripts/diagnose_workspace.py：V6.1 版本/能力/模型/turn/Token/cache/provenance/degraded/质量/revision/组件统计与建议局部重跑摘要"
+    - "缺失 Artifact 路径由 STANDARD_ARTIFACTS 解析，不再把 Workspace 根目录误报为 present"
+    - "历史 Document v2 与 pre-v3.1 Document v3 均只读识别，不转换 Checkpoint、不覆盖旧 Output"
+    - "docs/diagnostics/problem-index.yaml 与 v61-fault-matrix.yaml：10 个工具错误族的稳定 owner/error_code/safe rerun"
+    - "工具端超时、未知工具、多修改、invalid args 与 no-progress 均有限处理；降级原因/error_codes 写入 editorial.session"
+  validation:
+    unittest: "598 passed；OK(expected failures=7) in 98.331s"
+    compileall: passed
+    pip_check: "No broken requirements found；既有 ~ransformers invalid distribution warning"
+    git_diff_check: "passed；仅既有 LF/CRLF warning"
+    cached_workspace_diagnosis: "两份高数 Workspace 均 succeeded + legacy_v3_read_only；未写入"
+    cloud_requests: 0
+    long_video_reruns: 0
+
 next:
-  - "便携发行包重建（增量更新，需单独授权）"
-  - "V5.0 便携包重建仍是前置条件"
+  - "CP61-7 最新自动化 Gate 已通过 602 项离线测试（5 项预期失败）；图片证据到 Markdown/Word/PDF 的生产插入链路已补齐；等待用户人工确认两份高数审阅 PDF 的内容方向。"
+  - "用户确认后标记 CP61-7 completed；CP61-8 真实云能力/短视频 UI 等价验收仍需单独说明数据、端点、模型与预算并获授权。"
+  - "真实云工具能力已分两次逐次授权探测：deepseek-v4-flash-0731 被端点拒绝；glm-5.2 成功返回 get_renderer_capabilities 原生工具调用，真实用量 597 tokens。"
+  - "默认模型首位与能力注册已切到 glm-5.2/tool_native；下一次真实课程请求仍需重新披露并逐次确认。"
+  - "长视频重跑、模型/依赖变更和便携构建继续分别等待授权。"
+  - "离线验收期间检测到高数-定积分定义 Workspace 被独立新运行更新；特征测试已改读不可变 CP61-0 黄金清单，不再依赖可变 Workspace/Output。"
+
+blockers:
+  - "无产品方案待决策项；源码实施已授权。"
+  - "CP61-6 已完成并通过 598 项离线测试；当前无离线实施阻塞。"
+  - "CP61-7 自动化验收已通过；人工内容方向确认尚未完成，因此不得提前进入 CP61-8 或提升版本。"
+  - "glm-5.2 已通过一次最小原生工具探针；尚未验证真实课程 Blueprint/Writer 两阶段质量与稳定性。"
+  - "模型下载/变更、依赖安装/重装、真实云、长视频和便携构建继续受独立授权门控制。"

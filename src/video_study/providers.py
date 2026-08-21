@@ -70,6 +70,10 @@ class CloudBudgetExceeded(RuntimeError):
     """Raised before a request when the per-video cloud budget is exhausted."""
 
 
+class CloudCircuitOpen(RuntimeError):
+    """Raised before a request after repeated provider failures."""
+
+
 @dataclass
 class CloudRequestBudget:
     """Mutable per-video request and usage ledger shared by all cloud stages."""
@@ -82,8 +86,13 @@ class CloudRequestBudget:
         "total_tokens": 0,
     })
     attempts: list[dict[str, Any]] = field(default_factory=list)
+    failure_limit: int = 3
+    consecutive_failures: int = 0
+    circuit_open: bool = False
 
     def claim(self, *, stage: str, model: str) -> None:
+        if self.circuit_open:
+            raise CloudCircuitOpen("云端连续失败熔断已打开，未继续发送请求")
         if self.requests_used >= self.max_requests:
             raise CloudBudgetExceeded(
                 f"云端请求预算已用尽（{self.requests_used}/{self.max_requests}），未继续发送请求"
@@ -92,6 +101,12 @@ class CloudRequestBudget:
 
     def record(self, *, stage: str, attempt: ModelAttempt, usage: dict[str, int]) -> None:
         self.attempts.append({"stage": stage, **attempt.__dict__})
+        if attempt.ok:
+            self.consecutive_failures = 0
+        else:
+            self.consecutive_failures += 1
+            if self.consecutive_failures >= max(1, int(self.failure_limit)):
+                self.circuit_open = True
         for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
             self.usage[key] = int(self.usage.get(key, 0)) + int(usage.get(key, 0) or 0)
 
@@ -102,6 +117,8 @@ class CloudRequestBudget:
             "requests_remaining": max(0, self.max_requests - self.requests_used),
             "usage": dict(self.usage),
             "attempts": [dict(item) for item in self.attempts],
+            "consecutive_failures": self.consecutive_failures,
+            "circuit_open": self.circuit_open,
         }
 
 
@@ -372,3 +389,34 @@ class OpenAICloudJsonAdapter:
             "attempts": [attempt.__dict__ for attempt in attempts],
             "usage": usage,
         }
+
+
+class OpenAICloudToolAdapter:
+    """V6.1 原生工具调用 adapter；仅由已授权且能力门为 tool_native 的模型惰性构造。"""
+
+    def __init__(self, *, api_key: str, base_url: str, model: str, timeout: float = 90.0, max_tokens: int = 2000) -> None:
+        self._api_key = api_key
+        self.base_url = base_url
+        self.model = model
+        self.timeout = timeout
+        self.max_tokens = max_tokens
+        self._client = None
+
+    def __repr__(self) -> str:
+        return f"OpenAICloudToolAdapter(base_url={self.base_url!r}, model={self.model!r}, api_key=<redacted>)"
+
+    def _get_client(self):
+        if self._client is None:
+            self._client = OpenAI(api_key=self._api_key, base_url=self.base_url, timeout=self.timeout)
+        return self._client
+
+    def invoke_turn(self, *, messages, tools, tool_choice, stage, budget, cancel_check):
+        from .execution.tool_calling import invoke_tool_turn_openai
+        ensure_not_cancelled(cancel_check)
+        result = invoke_tool_turn_openai(
+            self._get_client(), model=self.model, messages=messages, tools=tools,
+            tool_choice=tool_choice, stage=stage, budget=budget,
+            cancel_check=cancel_check, max_tokens=self.max_tokens,
+        )
+        ensure_not_cancelled(cancel_check)
+        return result

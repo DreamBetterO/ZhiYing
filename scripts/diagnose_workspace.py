@@ -4,16 +4,21 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sqlite3
 import subprocess
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from video_study.execution.artifacts import STANDARD_ARTIFACTS
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PIPELINE_DOC = PROJECT_ROOT / "docs" / "architecture" / "pipeline-steps.yaml"
 PROBLEM_INDEX = PROJECT_ROOT / "docs" / "diagnostics" / "problem-index.yaml"
+ACTIVE_GRAPH_VERSION = "v6.1-editorial-tools-1"
+TOOL_CONTRACT_VERSION = "tool-contract-v1"
 
 
 def _json(path: Path) -> dict[str, Any]:
@@ -157,6 +162,134 @@ def _media_checks(root: Path) -> dict[str, Any]:
     }
 
 
+def _graph_checkpoint_summary(state_dir: Path) -> dict[str, Any]:
+    database = state_dir / "graph-checkpoints.sqlite3"
+    if not database.is_file():
+        return {"present": False, "thread_count": 0, "graph_versions": [], "checkpoint_count": 0}
+    try:
+        connection = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True)
+        try:
+            threads = connection.execute("SELECT graph_version, COUNT(*) FROM video_study_graph_threads GROUP BY graph_version").fetchall()
+            checkpoint_count = int(connection.execute("SELECT COUNT(*) FROM checkpoints").fetchone()[0])
+        finally:
+            connection.close()
+    except (OSError, sqlite3.Error):
+        return {"present": True, "read_error": True, "thread_count": 0, "graph_versions": [], "checkpoint_count": 0}
+    return {
+        "present": True,
+        "thread_count": sum(int(row[1]) for row in threads),
+        "graph_versions": [str(row[0]) for row in threads],
+        "checkpoint_count": checkpoint_count,
+    }
+
+
+def _artifact_target(root: Path, artifact_name: str) -> Path | None:
+    registered = STANDARD_ARTIFACTS.get(artifact_name)
+    if registered is not None and registered.storage_root == "workspace":
+        return root / registered.relative_paths[0]
+    relative = {
+        "render.markdown.draft": "state/render/document.md",
+        "render.word.draft": "state/render/document.docx",
+        "render.pdf.draft": "state/render/document.pdf",
+        # 历史诊断专用；不属于 V6.1 新写 STANDARD_ARTIFACTS。
+        "document.v2": "knowledge/document.json",
+        "document.plan": "knowledge/document-plan.json",
+        "document.chapter_drafts": "knowledge/chapters/drafts.json",
+        "document.chapter_validated": "knowledge/chapters/validated.json",
+        "document.chapter_repaired": "knowledge/chapters/repaired.json",
+    }.get(artifact_name)
+    return root / relative if relative else None
+
+
+def _quality_rerun(issues: list[dict[str, Any]]) -> str:
+    codes = {str(row.get("code", "")) for row in issues}
+    owners = {str(row.get("owner_component", "")) for row in issues}
+    if "MATH_OMML_MISMATCH" in codes or "render.word" in owners:
+        return "render.word"
+    if "PDF_MISSING" in codes or "render.pdf" in owners:
+        return "render.pdf"
+    if "MARKDOWN_ABSOLUTE_PATH" in codes or "render.markdown" in owners:
+        return "render.markdown"
+    if any(code.startswith("EVIDENCE_") for code in codes):
+        return "evidence.reconcile"
+    if any(code.startswith("INTENT_") for code in codes):
+        return "document.blueprint"
+    if issues:
+        return "document.write"
+    return ""
+
+
+def _v61_summary(
+    root: Path,
+    *,
+    cache_rows: list[dict[str, Any]],
+    graph_checkpoints: dict[str, Any],
+    suggested_rerun: str,
+) -> dict[str, Any]:
+    policy = _json(root / "knowledge" / "editorial-policy.json")
+    blueprint = _json(root / "knowledge" / "document-blueprint-v2.json")
+    session = _json(root / "knowledge" / "editorial-session.json")
+    document = _json(root / "knowledge" / "document-v3.json")
+    validation = _json(root / "knowledge" / "document-validation.json")
+    quality = validation.get("quality_report") if isinstance(validation.get("quality_report"), dict) else {}
+    if not quality and isinstance(session.get("quality_report"), dict):
+        quality = dict(session["quality_report"])
+    page = session.get("page_report") if isinstance(session.get("page_report"), dict) else {}
+    issues = [dict(row) for row in quality.get("issues", []) if isinstance(row, dict)]
+    math = quality.get("math") if isinstance(quality.get("math"), dict) else {}
+    visual = quality.get("visual") if isinstance(quality.get("visual"), dict) else {}
+    evidence = quality.get("evidence") if isinstance(quality.get("evidence"), dict) else {}
+    statistics = quality.get("statistics") if isinstance(quality.get("statistics"), dict) else {}
+    page_statistics = page.get("statistics") if isinstance(page.get("statistics"), dict) else {}
+    graph_versions = list(graph_checkpoints.get("graph_versions", []))
+    graph_version = graph_versions[-1] if graph_versions else ACTIVE_GRAPH_VERSION
+    quality_rerun = _quality_rerun(issues)
+    return {
+        "versions": {
+            "graph_version": graph_version,
+            "tool_contract_version": TOOL_CONTRACT_VERSION,
+            "editorial_policy_version": policy.get("version", policy.get("schema_version")),
+            "blueprint_version": blueprint.get("schema_version"),
+            "document_contract_version": document.get("contract_version"),
+            "renderer_capability_version": document.get("renderer_capability_version", "renderer-capability-v1"),
+        },
+        "provider": {
+            "requested_capability": str(session.get("requested_capability", "")),
+            "effective_capability": str(session.get("capability", "")),
+            "terminal_status": str(session.get("terminal_status", "")),
+            "model_chain": [str(row) for row in session.get("model_chain", [])],
+            "tool_turns": int(session.get("tool_turns", 0) or 0),
+            "token_usage": dict(session.get("usage", {})),
+            "cache_hits": sum(
+                1 for row in cache_rows
+                if row.get("status") == "recorded" and row.get("reason") in {"CACHE_HIT", "LEGACY_ADOPTED"}
+            ),
+        },
+        "provenance": dict(session.get("provenance", document.get("provenance", {})) or {}),
+        "degradation_reasons": [str(row) for row in session.get("degradation_reasons", [])],
+        "error_codes": [str(row) for row in session.get("error_codes", [])],
+        "quality": {
+            "status": str(quality.get("status", "unavailable")),
+            "issue_ids": [str(row.get("issue_id") or row.get("code", "")) for row in issues],
+            "owner_components": [str(row.get("owner_component", "")) for row in issues],
+            "component_revision": int(session.get("document_revision", 0) or 0),
+            "revision_cycles_used": int(session.get("revision_cycles_used", 0) or 0),
+        },
+        "statistics": {
+            "equation_count": int(math.get("equation_components", statistics.get("equation", 0)) or 0),
+            "word_omml_count": math.get("word_omml"),
+            "image_count": int(visual.get("image_components", statistics.get("image", 0)) or 0),
+            "source_reference_count": int(evidence.get("source_reference_components", statistics.get("source_reference", 0)) or 0),
+            "page_audit_summary": {
+                "status": str(page.get("status", "unavailable")),
+                "issue_count": len(page.get("issues", [])),
+                "page_break_count": int(page_statistics.get("page_break_components", 0) or 0),
+            },
+        },
+        "suggested_rerun_node": quality_rerun or suggested_rerun or "evidence.reconcile",
+    }
+
+
 def diagnose(path: Path) -> dict[str, Any]:
     root = _workspace_root(path)
     state_dir = root / "state"
@@ -175,24 +308,25 @@ def diagnose(path: Path) -> dict[str, Any]:
 
     derived_status = _derive_interrupted(run_summary)
     failed = _find_failed_step(run_events, state_steps)
+    legacy_v2 = root / "knowledge" / "document.json"
+    current_v3 = root / "knowledge" / "document-v3.json"
 
     artifacts = []
     for step in steps:
         for artifact in step.get("outputs", []):
             if artifact in {row["artifact_id"] for row in artifacts}:
                 continue
-            relative = {
-                "source.manifest": "manifest.json", "audio.flac": "audio/audio.flac",
-                "transcript.raw": "transcript/raw.json", "transcript.normalized": "transcript/transcript.json",
-                "transcript.srt": "transcript/transcript.srt", "frames.candidates": "images/candidates.json",
-                "frames.selected": "images/keyframes.json", "knowledge.plan": "knowledge/lesson-plan.json",
-                "visual.jobs": "knowledge/visual-jobs/index.json", "visual.evidence": "knowledge/visual-evidence.json",
-                "frames.semantics": "knowledge/frame-semantics.json", "knowledge.course_ir": "knowledge/course-ir.json",
-                "knowledge.units": "knowledge/knowledge-units.json", "knowledge.selfcheck": "knowledge/selfcheck.json",
-                "document.v2": "knowledge/document.json",
-            }.get(str(artifact), "")
-            target = root / relative if relative else root
-            artifacts.append({"artifact_id": artifact, "status": "present" if target.exists() else "missing", "path": str(target)})
+            target = _artifact_target(root, str(artifact))
+            legacy_not_applicable = legacy_v2.is_file() and not current_v3.is_file() and str(artifact) in {
+                "document.plan", "document.chapter_drafts", "document.chapter_validated",
+                "document.chapter_repaired", "document.v3", "document.validation",
+                "render.markdown.draft", "render.word.draft", "render.pdf.draft",
+            }
+            artifacts.append({
+                "artifact_id": artifact,
+                "status": "untracked_contract" if target is None else "present" if target.exists() else "legacy_not_applicable" if legacy_not_applicable else "missing",
+                "path": "" if target is None else str(target),
+            })
 
     cache_rows = []
     cache_dir = state_dir / "cache"
@@ -236,6 +370,8 @@ def diagnose(path: Path) -> dict[str, Any]:
         if cache_run_id and cache_run_id != run_id:
             last_asr_events = _recent_asr_events(_read_run_events(state_dir, cache_run_id))
             asr_source_run_id = cache_run_id
+    graph_checkpoints = _graph_checkpoint_summary(state_dir)
+    suggested_rerun = str(known.get("safe_rerun_from", last_step))
     return {
         "workspace": str(root),
         "run_id": run_id,
@@ -246,13 +382,29 @@ def diagnose(path: Path) -> dict[str, Any]:
         "exception_type": str(summary_error.get("exception_type") or diagnostics.get("exception_type") or ""),
         "traceback": str(summary_error.get("traceback") or ""),
         "owner": known.get("owner", ""),
-        "suggested_rerun_step": known.get("safe_rerun_from", last_step),
+        "suggested_rerun_step": suggested_rerun,
         "artifacts": artifacts,
         "cache": cache_rows,
         "media_checks": _media_checks(root),
         "runs": runs,
         "recent_asr_events": last_asr_events,
         "recent_asr_source_run_id": asr_source_run_id,
+        "migration": {
+            "mode": (
+                "current_v3" if _json(current_v3).get("contract_version") == "document-v3.1"
+                else "legacy_v3_read_only" if current_v3.is_file()
+                else "legacy_v2_read_only" if legacy_v2.is_file()
+                else "incomplete"
+            ),
+            "document_v2_present": legacy_v2.is_file(),
+            "document_v3_present": current_v3.is_file(),
+            "historical_workspace_preserved": True,
+        },
+        "graph_checkpoints": graph_checkpoints,
+        "v61": _v61_summary(
+            root, cache_rows=cache_rows, graph_checkpoints=graph_checkpoints,
+            suggested_rerun=suggested_rerun,
+        ),
     }
 
 

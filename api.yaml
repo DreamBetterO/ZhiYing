@@ -7,10 +7,15 @@ qwen:
   model_chain_env: QWEN_MODEL_CHAIN
   default_base_url: https://ws-e1wkkzn2116yp0ii.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
   default_models:
-  - deepseek-v4-flash-0731
   - glm-5.2
+  - deepseek-v4-flash-0731
   - kimi-k2.6
   - qwen3.7-plus
+  model_capabilities:
+    glm-5.2: tool_native
+    deepseek-v4-flash-0731: structured_only
+    kimi-k2.6: structured_only
+    qwen3.7-plus: structured_only
   budget:
     max_calls_per_video: 5
     max_input_chars: 60000

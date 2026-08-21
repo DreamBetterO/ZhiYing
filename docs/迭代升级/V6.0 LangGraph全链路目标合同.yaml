@@ -1,0 +1,505 @@
+schema_version: 1
+contract_id: v6-langgraph-full-pipeline-target
+status: implemented_release_candidate
+approved_at: "2026-08-20 14:48 Asia/Shanghai"
+baseline:
+  product_version: "0.5.1"
+  orchestrator: PipelineRunner
+  document_write_schema: 2
+target:
+  architecture_version: "V6.0"
+  first_implementation_version: "1.0.0-alpha"
+  release_version: "1.0.0"
+  orchestrator: LangGraph
+  document_write_schema: 3
+
+authority:
+  architecture: "docs/迭代升级/V6.0 LangGraph全链路架构升级方案.md"
+  execution: "docs/迭代升级/V6.0 LangGraph全链路升级执行计划.md"
+  current_runtime_until_cutover:
+    - docs/architecture/pipeline-steps.yaml
+    - docs/architecture/module-boundaries.yaml
+    - docs/diagnostics/problem-index.yaml
+  precedence:
+    - "当前 architecture YAML 与代码描述已运行事实；检查点切换前不得按目标文档宣称已实现。"
+    - "V6 主方案描述批准目标；执行只能按 V6 执行计划检查点推进。"
+    - "代码、测试、当前合同与文档冲突时停止当前检查点并先修复一致性。"
+
+non_negotiable:
+  orchestration:
+    - langgraph_is_only_production_orchestrator
+    - all_business_data_processing_uses_graph_runtime
+    - no_controller_or_application_cache_bypass
+    - no_user_visible_or_hidden_dual_runner_after_cp4
+  data:
+    - artifact_store_is_business_data_authority
+    - graph_state_contains_references_not_blobs
+    - json_to_markdown_to_word_to_pdf_preserved
+    - timestamp_and_video_study_protocol_preserved
+    - historical_workspaces_not_proactively_deleted
+  safety:
+    - cloud_is_opt_in
+    - cloud_image_upload_default_false
+    - secrets_never_persisted
+    - model_download_dependency_reinstall_cloud_long_video_and_portable_build_separately_authorized
+  quality:
+    - deterministic_local_baseline_always_available
+    - model_advisors_optional_and_benchmarked
+    - successful_dynamic_tasks_persist_before_next_task
+    - degraded_is_explicit_not_hidden_as_success
+
+graph_scope:
+  included:
+    - source.local.resolve
+    - source.url.preflight
+    - source.url.acquire
+    - source.verify
+    - video.media
+    - video.asr
+    - video.transcript
+    - video.frames
+    - video.visual
+    - video.knowledge
+    - video.document_plan
+    - video.chapter_compose_validate_repair
+    - video.document_compile
+    - video.render_verify
+    - job.multi_video_queue
+    - aggregate.local
+    - aggregate.cloud
+    - job.finalize
+  excluded:
+    - desktop_widgets_and_layout
+    - settings_editing
+    - local_player
+    - read_only_diagnostics
+    - history_browsing
+    - maintenance_cache_deletion
+
+graph_entrypoints:
+  job_graph:
+    input: JobRequest
+    output: JobResult
+    aggregate_modes: [none, local, cloud]
+    multi_video_policy_v1: sequential
+    failed_video_policy_v1: stop_and_preserve_completed
+  aggregate_graph:
+    input: AggregateRequest
+    output: AggregateResult
+    may_run_as_standalone_job: true
+  source_graph:
+    local_and_url_share_verified_source_output: true
+
+target_graphs:
+  job_graph:
+    nodes:
+      - job.validate
+      - source.resolve
+      - video.queue.next
+      - video.run
+      - aggregate.route
+      - aggregate.run
+      - job.finalize
+  video_graph:
+    parity_nodes_before_quality_upgrade:
+      - source.probe
+      - audio.extract
+      - transcript.decode
+      - transcript.normalize
+      - frames.candidates
+      - frames.select
+      - knowledge.plan
+      - visual.jobs
+      - visual.evidence
+      - frames.semantics
+      - knowledge.course_ir
+      - knowledge.units
+      - knowledge.selfcheck
+      - document.assemble
+      - render.bundle
+    target_nodes_after_quality_upgrade:
+      - media.probe
+      - audio.extract
+      - transcript.decode
+      - transcript.normalize
+      - transcript.enrich
+      - frames.candidates
+      - content.profile
+      - visual.plan
+      - visual.evidence
+      - knowledge.course_ir
+      - document.plan
+      - chapter.compose
+      - chapter.validate
+      - chapter.repair
+      - document.compile
+      - document.validate
+      - render.markdown
+      - render.word
+      - render.pdf
+      - render.verify
+  visual_graph:
+    visual_need_values: [none, supportive, required]
+    task_execution_v1: sequential_loop
+    one_active_vlm_instance_per_video: true
+    no_match_is_expected_result: true
+    nearest_frame_silent_fallback: false
+  chapter_graph:
+    stable_chapter_ids: true
+    independent_cache: true
+    deterministic_validation_before_model_repair: true
+    max_repairs_per_chapter: 1
+  aggregate_graph:
+    local_baseline_required: true
+    cloud_optional: true
+    independent_job_workspace: true
+    persist_each_successful_batch: true
+
+state_contract:
+  root_allowed:
+    - schema_version
+    - graph_version
+    - job_id
+    - public_request_snapshot
+    - aggregate_mode
+    - source_queue
+    - current_source_index
+    - video_result_refs
+    - aggregate_result_ref
+    - status
+    - issue_summary
+    - capability_summary
+    - budget_summary
+    - output_refs
+  video_allowed:
+    - video_id
+    - source_fingerprint
+    - artifact_refs
+    - completed_node_summary
+    - pending_task_ids
+    - capability_summary
+    - quality_issue_summary
+    - output_refs
+  forbidden:
+    - api_keys
+    - authorization_headers
+    - credential_objects
+    - runtime_services
+    - callbacks
+    - locks
+    - process_handles
+    - model_instances
+    - media_binaries
+    - full_transcript
+    - full_course_ir
+    - full_document_plan
+    - full_document
+    - unbounded_prompts
+    - unbounded_responses
+    - unbounded_tracebacks
+  credentials_injected_at_runtime_only: true
+
+execution_contract:
+  executor: NodeExecutor
+  executor_is_orchestrator: false
+  order:
+    - cancel_check
+    - resolve_inputs
+    - validate_inputs
+    - compute_fingerprint
+    - cache_decide
+    - validate_cache_hit
+    - acquire_workspace_and_resource_leases
+    - create_staging
+    - execute
+    - validate_outcome
+    - atomic_artifact_commit
+    - cache_record
+    - committed_terminal_event
+    - return_state_delta
+    - langgraph_checkpoint
+  expensive_ports_must_be_lazy_until_cache_miss: true
+  side_effects_must_be_idempotent: true
+  artifact_commit_before_cache_record: true
+  cache_record_before_node_return: true
+  crash_recovery:
+    before_commit: rerun_after_staging_cleanup
+    after_commit_before_cache: validate_and_adopt_or_rerun
+    after_cache_before_checkpoint: replay_hits_cache
+    after_checkpoint: resume_next_node
+
+persistence:
+  checkpoint_purpose: same_job_execution_resume
+  artifact_cache_purpose: cross_job_computation_reuse
+  preferred_local_checkpointer: sqlite
+  checkpointer_adapter_required: true
+  checkpoint_cross_graph_version_migration: forbidden
+  same_graph_version_abnormal_resume: allowed
+  cancelled_thread_resume: forbidden
+  new_run_after_cancel_reuses_artifacts: true
+
+resource_policy:
+  multi_video_v1: sequential
+  gpu_nodes: globally_serial
+  active_vlm_sessions_per_video: 1
+  local_model_parallelism_default: 1
+  cloud_chapter_concurrency: bounded
+  cpu_parallelism: disabled_until_measured
+  resource_lease_required_for:
+    - gpu
+    - word
+    - cloud_budget
+
+decision_policy:
+  baseline: LocalDecisionPolicy
+  baseline_requires_llm: false
+  model_advisor_optional: true
+  hard_decisions_model_forbidden:
+    - permissions
+    - budgets
+    - upload_policy
+    - cache_invalidation
+    - retry_limit
+    - degradation
+    - artifact_commit
+  model_advisor_allowed_tasks:
+    faster_whisper:
+      - primary_or_backup_transcription
+    qwen3_asr:
+      - uncertain_audio_span_review
+    qwen3_vl_2b:
+      - visual_need_advice
+      - candidate_ranking
+      - ocr_board_formula_assistance
+      - short_context_classification
+  model_advisor_forbidden_tasks:
+    - permission_decision
+    - budget_decision
+    - cache_decision
+    - three_hour_global_planning_by_qwen3_vl_2b
+    - general_text_planning_by_asr_models
+  admission_gates:
+    - environment_health
+    - resource_fit
+    - structured_output_reliability
+    - beats_deterministic_fixture_baseline
+    - lossless_fallback
+    - resource_conflict_free
+  required_new_local_text_model: false
+
+cloud_policy:
+  text_authorization: per_run_explicit
+  image_authorization: separate_explicit
+  image_upload_default: false
+  image_upload_implemented_in_v6_first_release: false
+  local_visual_description_may_be_sent_as_text: true
+  allowed_text_roles:
+    - uncertain_text_or_formula_review
+    - global_document_plan
+    - chapter_compose
+    - failed_chapter_repair
+    - global_consistency_check
+    - aggregate_refine
+  required_preflight_disclosure:
+    - data_types
+    - endpoint
+    - role_model_chain
+    - maximum_calls
+    - budget
+    - image_upload_false
+  behavior:
+    persist_successful_batch_immediately: true
+    local_degrade_on_failure: true
+    circuit_breaker_required: true
+    replay_must_check_cache_before_call: true
+    failover_chain_is_not_multi_model_review: true
+
+document_contract:
+  planning_artifact: DocumentPlan
+  canonical_write_artifact: DocumentV3
+  document_v2_write: forbidden_after_cp6
+  document_v2_read_only_adapter: required
+  pipeline:
+    - user_editorial_brief
+    - course_ir
+    - renderer_capability_manifest
+    - document_plan
+    - plan_validator_compiler
+    - document_v3
+    - markdown_word_pdf_renderers
+  primitives:
+    - heading
+    - paragraph
+    - list
+    - equation
+    - table
+    - image
+    - container
+    - callout
+    - page_break
+    - source_reference
+  layout_hints:
+    - full_width
+    - image_text
+    - two_column
+    - compact_table
+  unknown_component_requires_fallback: true
+  arbitrary_docx_xml_from_llm: forbidden
+  llm_may_choose_structure_within_capability_manifest: true
+  traceability:
+    ordinary_text: knowledge_point_or_evidence_group
+    formula: exact
+    image: exact
+    uncertain_formula_must_be_marked: true
+    unsupported_fact_completion: forbidden
+  word_equation:
+    preferred: native_math_object
+    fallback: high_quality_vector_or_bitmap_with_semantic_source
+
+statuses:
+  succeeded: required_outputs_complete_and_normal_quality_gate_passed
+  degraded: outputs_complete_but_enhancement_or_quality_reduced
+  failed: required_outputs_cannot_be_completed
+  cancelled: user_cancelled
+required_nodes:
+  - source_verification
+  - minimum_usable_transcript
+  - document_compilation
+  - requested_render_outputs
+enhancement_nodes:
+  - secondary_asr
+  - terminology_and_formula_repair
+  - intelligent_visuals
+  - cloud_planning
+  - cloud_chapter_writing
+  - critic_repair
+
+versioning:
+  graph_version:
+    changes: [topology, state_schema, reducers, semantic_node_order]
+    action: new_thread_and_validate_artifact_reuse
+  implementation_version:
+    changes: [node_code, node_algorithm_bugfix]
+    action: invalidate_node_and_required_downstream
+  contract_version:
+    changes: [artifact_schema, artifact_semantics]
+    action: adapter_migration_or_recompute
+  policy_version:
+    changes: [prompt, model_role, decision_rule]
+    action: invalidate_related_policy_nodes_and_required_downstream
+  stable_node_and_task_ids_required: true
+  random_ids_for_dynamic_business_tasks: forbidden
+
+migration:
+  mode: non_destructive_lazy_adoption
+  legacy_checkpoint_conversion: forbidden
+  reuse_after_validation:
+    - source_manifest_and_download
+    - audio
+    - raw_transcript
+    - frame_candidates
+  recompute_by_default:
+    - normalized_or_enriched_transcript
+    - global_selected_frames
+    - visual_evidence
+    - course_ir_and_knowledge_units
+    - document_plan
+    - document_v3
+    - render_bundle_v3
+    - aggregate_outputs
+  coexistence:
+    document_v2_and_v3: required
+    legacy_state_and_graph_state: required
+    old_outputs_not_overwritten: true
+  active_manifest_update: atomic
+  failed_migration_must_leave_legacy_unchanged: true
+
+diagnostics:
+  stable_task_id_patterns:
+    - "video:<video_id>"
+    - "asr-span:<start_segment_id>-<end_segment_id>"
+    - "visual:<question_id>"
+    - "chapter:<chapter_id>"
+    - "aggregate-batch:<batch_id>"
+  event_required_fields:
+    - job_id
+    - thread_id
+    - checkpoint_id
+    - graph_version
+    - node_id
+    - task_id
+    - attempt_id
+    - status
+    - error_code
+    - capability
+    - cache_reason
+    - input_artifact_ids
+    - output_artifact_ids
+    - duration
+    - cost_summary
+  graph_aware_diagnose_workspace_required: true
+  problem_index_per_node_error_family_required: true
+
+test_gates:
+  permanent:
+    - cloud_opt_in
+    - cloud_image_default_forbidden
+    - secrets_not_persisted
+    - atomic_artifact_commit
+    - selective_cache_invalidation
+    - cancellation_and_recovery
+    - idempotent_replay
+    - architecture_boundaries
+    - timestamp_and_video_study_links
+    - historical_workspace_preservation
+  parity:
+    - legacy_15_step_outputs
+    - cache_reasons
+    - terminal_events
+    - force_modes
+    - url_and_local_source
+    - local_and_fake_cloud_aggregate
+  graph_faults:
+    - before_and_after_commit
+    - before_and_after_cache_record
+    - before_and_after_checkpoint
+    - dynamic_task_partial_success
+    - graph_version_mismatch
+    - same_version_resume
+    - gpu_mutex
+    - one_vlm_session_per_video
+    - cloud_failure_and_circuit_breaker
+  golden_samples:
+    - math_formula_high_math
+    - strong_visual_user_confirmed
+    - weak_visual_user_confirmed
+  release_commands:
+    - "python -m unittest discover -s tests"
+    - "python -m compileall -q src tests"
+    - "python -m pip check"
+    - "git diff --check"
+
+phases:
+  CP0: baseline_and_contract_frozen
+  CP1: node_executor_parity_validated
+  CP2: single_video_graph_parity_validated
+  CP3: full_pipeline_graph_production_cutover_validated
+  CP4: legacy_scheduler_removed_and_contracts_updated
+  CP5: local_model_cloud_evidence_upgrade_validated
+  CP6: document_plan_v3_render_validated
+  CP7: migration_diagnostics_golden_release_candidate_validated
+  CP8: full_release_validated_and_user_confirmed
+
+release_definition:
+  - langgraph_only_production_orchestration
+  - source_video_aggregate_publish_all_in_graph
+  - node_executor_transaction_fault_tests_pass
+  - offline_model_advisor_cloud_and_degraded_paths_pass
+  - document_plan_document_v3_all_renderers_pass
+  - historical_workspace_migration_pass
+  - graph_aware_diagnostics_pass
+  - three_golden_samples_pass
+  - full_offline_acceptance_pass
+  - temporary_dual_paths_removed
+  - active_docs_code_tests_versions_consistent
+  - user_confirms_release

@@ -36,13 +36,13 @@ from .contracts import (
     StepStatus,
 )
 from .registry import StepRegistry
-from .runner import PipelineRunState, PipelineRunner
+from .run_state import GraphRunState
 
 __all__ = [
     "ArtifactId", "ArtifactRef", "ArtifactStore", "CacheDecision", "CacheReason",
     "CacheRecord", "CloudCredentials", "ErrorInfo", "ExecutionCancelled", "FileArtifactStore",
     "FileWorkspaceCache", "LegacyAdoptingWorkspaceCache", "LegacyArtifactAdapter",
-    "FingerprintMaterial", "PipelineRunState", "PipelineRunner", "PipelineStep",
+    "FingerprintMaterial", "GraphRunState", "PipelineStep",
     "ProcessingContext", "ProcessingOptions", "RemoteCost", "RunPolicy",
     "RuntimeServices", "StepOutcome", "StepRegistry", "StepSpec", "StepStatus",
     "VideoSource", "WorkspaceCache", "WorkspaceCatalog", "WorkspaceLayout", "WorkspaceLease",

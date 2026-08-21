@@ -6,6 +6,7 @@ from pathlib import Path
 
 from video_study.knowledge.editorial import DEFAULT_BRIEF_TEXT, EditorialBrief, load_brief
 from video_study.knowledge.planning import (
+    _assign_depth_contracts,
     _validate_plan_payload,
     build_lesson_plan,
     collect_visual_jobs,
@@ -74,6 +75,25 @@ class PlanningTests(unittest.TestCase):
         self.assertTrue(visual_units[0].visual_need.success_criteria)
         self.assertFalse(any("能够回答知识问题" in item for item in visual_units[0].visual_need.success_criteria))
         self.assertLessEqual(visual_units[0].visual_need.max_count, 3)
+
+    def test_formula_case_is_visually_required_even_when_cloud_plan_omits_flag(self) -> None:
+        transcript = {"segments": [{
+            "segment_id": "seg_00001", "start_seconds": 0.0, "end_seconds": 20.0,
+            "text": "题目是 x 的五次方除以根号一加 x 平方，下面写两种积分解法",
+        }]}
+        plan = LessonPlan(chapters=[ChapterPlan(unit_plans=[UnitPlan(
+            plan_id="plan_001",
+            title="例题：∫ x⁵ / √(1+x²) dx 的两种解法",
+            knowledge_types=["case"],
+            source_segment_ids=["seg_00001"],
+        )])])
+
+        _assign_depth_contracts(plan, transcript, "精简", "enhanced")
+        unit = plan.all_unit_plans[0]
+
+        self.assertTrue(unit.visual_need.required)
+        self.assertTrue(unit.visual_questions)
+        self.assertTrue(collect_visual_jobs(plan, 20.0, {"vlm_compare_max_candidates": 4}))
 
     def test_content_and_visual_levels_are_independent(self) -> None:
         transcript = self._make_transcript()

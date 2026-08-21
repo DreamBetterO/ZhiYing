@@ -1,0 +1,40 @@
+{
+  "id": "weak_visual",
+  "kind": "weak_visual",
+  "description": "弱/无视觉样本：纯语音讲解、无指图线索，visual.evidence 为 no_match。用于验证 VLM 不可用/无匹配时不插入低置信度图片、不静默使用最近帧兜底。",
+  "policy": {
+    "required": ["正文事实可追溯到来源"],
+    "preferred": [],
+    "forbidden": ["无职责图片", "低置信度图片兜底"]
+  },
+  "transcript": {
+    "schema_version": 1,
+    "segments": [
+      {"segment_id": "seg_00001", "start_seconds": 0.0, "end_seconds": 10.0, "text": "线性回归的核心思想是用一条直线去拟合数据点"},
+      {"segment_id": "seg_00002", "start_seconds": 10.0, "end_seconds": 24.0, "text": "我们最小化残差平方和来估计参数"},
+      {"segment_id": "seg_00003", "start_seconds": 24.0, "end_seconds": 38.0, "text": "得到的估计量具有无偏性和一致性等良好性质"}
+    ]
+  },
+  "plan": {
+    "units": [
+      {"plan_id": "plan_001", "title": "线性回归的参数估计", "role": "core", "type": "concept", "needs_visual": false, "source_segment_ids": ["seg_00001", "seg_00002", "seg_00003"]}
+    ]
+  },
+  "visual_evidence": [
+    {
+      "evidence_id": "ve_001",
+      "decision": "no_match",
+      "image_path": "",
+      "source_timestamp": 0.0,
+      "source": "evidence_threshold_not_met"
+    }
+  ],
+  "golden": {
+    "allowed_image_decisions": ["none"],
+    "image_requires_role_source_caption_alt": true,
+    "no_match_is_valid": true,
+    "nearest_frame_silent_fallback": false,
+    "low_confidence_image_forbidden": true,
+    "cloud_image_upload": false
+  }
+}

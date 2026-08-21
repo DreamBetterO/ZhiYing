@@ -94,8 +94,32 @@ class CloudJsonPort(Protocol):
     ) -> tuple[Mapping[str, Any], Mapping[str, Any]]: ...
 
 
+class CloudToolPort(Protocol):
+    """V6.1 可选云端工具端口：invoke_turn 返回有界 ToolTurn。
+
+    只允许批准的工具/schema/预算/调用上限；ToolTurn 不含密钥、请求头或完整供应商响应。
+    """
+
+    def invoke_turn(
+        self,
+        *,
+        messages: Sequence[Mapping[str, Any]],
+        tools: Sequence[Mapping[str, Any]],
+        tool_choice: Any,
+        stage: str,
+        budget: Any,
+        cancel_check: Callable[[], bool],
+    ) -> Any: ...
+
+
 class DocumentPort(Protocol):
-    def render_markdown(self, document: Mapping[str, Any], output: Path) -> Path: ...
+    def render_markdown(
+        self,
+        document: Mapping[str, Any],
+        output: Path,
+        *,
+        source_document: Path | None = None,
+    ) -> Path: ...
     def render_word(self, document_json: Path, output: Path, *, cancel_check: Callable[[], bool]) -> Path: ...
     def render_pdf(
         self,
@@ -103,5 +127,6 @@ class DocumentPort(Protocol):
         word: Path,
         output: Path,
         *,
+        source_document: Path | None = None,
         cancel_check: Callable[[], bool],
     ) -> str: ...

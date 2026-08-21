@@ -6,7 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from ..application.processing import ProcessingService
-from ..application.requests import AggregateRequest, ProcessingHandle, ProcessingRequest, ProcessingResult
+from ..application.requests import AggregateRequest, JobHandle, JobRequest, ProcessingHandle, ProcessingRequest, ProcessingResult
 from . import STAGE_LABELS, format_duration
 from .models import DesktopState, QueueItem, UiEvent
 
@@ -28,11 +28,7 @@ class DesktopController:
         for raw in paths:
             path = raw.expanduser().resolve()
             if path not in existing:
-                cached = self.service.cached_result(path)
                 item = QueueItem(path)
-                if cached:
-                    item.status, item.stage, item.progress = "已完成", "completed", 100
-                    item.result = cached.to_legacy()
                 self.items.append(item)
                 existing.add(path)
         self._emit("queue")
@@ -72,19 +68,13 @@ class DesktopController:
                 item.path = Path(str(acquired["path"]))
                 item.detail_title = str(acquired.get("title") or item.source_url)
                 item.detail = ""
-                prior_result = self.service.cached_result(item.path)
-                if prior_result:
-                    item.status, item.stage, item.progress = "已完成", "completed", 100
-                    item.result = prior_result.to_legacy()
-                    message = "已复用既有处理结果，无需重新整理"
-                else:
-                    item.status, item.stage, item.progress = "已就绪", "ready", 100
-                    download_cached = bool(acquired.get("cached"))
-                    message = (
-                        "已复用本地缓存，无需重新下载，可勾选后点击『本地整理』开始处理"
-                        if download_cached else
-                        "视频已下载完成，可勾选后点击『本地整理』开始处理"
-                    )
+                item.status, item.stage, item.progress = "已就绪", "ready", 100
+                download_cached = bool(acquired.get("cached"))
+                message = (
+                    "已复用本地缓存，无需重新下载，可勾选后点击『本地整理』开始处理"
+                    if download_cached else
+                    "视频已下载完成，可勾选后点击『本地整理』开始处理"
+                )
                 self._emit("source_ready", item, message)
                 self._emit("queue", item, message)
             except BaseException as exc:
@@ -145,23 +135,14 @@ class DesktopController:
                     return
                 self.state = DesktopState.RUNNING
                 self._emit("state", message="开始处理")
-                for item in selected:
-                    if self.state == DesktopState.CANCELLING:
-                        break
-                    cached = self.service.cached_result(item.resolved_path) if item.path is not None else None
-                    if cached:
-                        self._complete_item(item, cached)
-                        continue
-                    self.current_item = item
-                    item.status = "处理中"
-                    item.begin()
-                    request: ProcessingRequest = request_factory(item)
-                    handle = self.service.process(request)
-                    self._handle = handle
-                    if self.state == DesktopState.CANCELLING:
-                        handle.cancel()
-                    handle.subscribe(lambda event, current=item: self._on_runtime(current, event))
-                    result = handle.wait()
+                requests = tuple(request_factory(item) for item in selected)
+                handle = self.service.process_job(JobRequest(requests))
+                self._handle = handle
+                if self.state == DesktopState.CANCELLING:
+                    handle.cancel()
+                handle.subscribe(lambda event: self._on_job_runtime(selected, event))
+                job_result = handle.wait()
+                for item, result in zip(selected, job_result.video_results):
                     self._complete_item(item, result)
                 if self.state == DesktopState.CANCELLING:
                     self.state = DesktopState.CANCELLED
@@ -189,6 +170,20 @@ class DesktopController:
                 self.current_item = None
 
         threading.Thread(target=run_queue, name="video-study-controller", daemon=True).start()
+
+    def _on_job_runtime(self, selected: list[QueueItem], event: dict) -> None:
+        index = int(event.get("source_index", -1))
+        if index < 0 or index >= len(selected):
+            return
+        item = selected[index]
+        if event.get("type") == "job_video_started":
+            self.current_item = item
+            item.status = "处理中"
+            if item.started_at is None:
+                item.begin()
+            self._emit("queue", item, "开始处理")
+            return
+        self._on_runtime(item, event)
 
     def cancel(self) -> None:
         if self.state == DesktopState.CANCELLING:
@@ -339,11 +334,12 @@ class DesktopController:
         self._emit("progress", item, item.message, item.detail)
 
     def _complete_item(self, item: QueueItem, result: ProcessingResult) -> None:
-        item.stage, item.status, item.progress = "completed", "已完成", 100
+        degraded = result.diagnostics.get("status") == "degraded"
+        item.stage, item.status, item.progress = "completed", ("已完成（降级）" if degraded else "已完成"), 100
         item.result = result.to_legacy()
         item.finish_timing()
-        item.detail = "已完成"
-        self._emit("progress", item, "处理完成", "已完成")
+        item.detail = "；".join(result.diagnostics.get("degradation_summary", ())) if degraded else "已完成"
+        self._emit("progress", item, "处理完成（存在降级）" if degraded else "处理完成", item.status)
 
     def _require_idle(self, action: str) -> None:
         if self.state in {DesktopState.PREPARING, DesktopState.RUNNING, DesktopState.CANCELLING}:

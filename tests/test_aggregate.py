@@ -132,16 +132,18 @@ class AggregateTests(unittest.TestCase):
             client = SimpleNamespace(create_json=lambda **_kwargs: (payload, "model-a", [], {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}))
             config = AppConfig(root, {"paths": {"output_dir": "output"}})
             qwen = {"_runtime_api_key": "temporary", "_runtime_base_url": "https://example.com/v1", "_runtime_models": ["model-a"], "_runtime_max_calls": 1, "budget": {"max_calls_per_video": 1, "max_input_chars": 60000, "max_output_tokens": 1000}}
-            with patch("video_study.aggregate.FallbackChatClient", return_value=client), patch("video_study.aggregate.DocumentAdapter") as adapter:
+            with patch("video_study.aggregate.FallbackChatClient", return_value=client), patch("video_study.aggregate.DocumentAdapterV31") as adapter:
                 adapter.return_value.render_pdf.return_value = "fallback"
                 result = aggregate_documents(config, results, qwen)
-            aggregate = json.loads(Path(result["manifest"]).read_text(encoding="utf-8"))
+            from video_study.document_v3 import v3_to_v2
+            stored = json.loads(Path(result["manifest"]).read_text(encoding="utf-8"))
+            aggregate = v3_to_v2(stored)
             links = aggregate["sections"][0]["knowledge_points"][0]["source_refs"]["links"]
             self.assertEqual(len(links), 2)
             self.assertEqual(aggregate["learning_objectives"], ["理解两课关系"])
             point = aggregate["sections"][0]["knowledge_points"][0]
             self.assertNotIn("details", point)
-            self.assertEqual(aggregate["schema_version"], 2)
+            self.assertEqual(stored["schema_version"], 3)
             adapter.return_value.render_markdown.assert_called_once()
             workspace = Path(result["workspace"])
             run_id = result["run_id"]
@@ -206,7 +208,7 @@ class AggregateTests(unittest.TestCase):
                 "_runtime_models": ["model-a"], "_runtime_max_calls": 5,
                 "budget": {"max_calls_per_video": 5, "max_input_chars": 60000, "max_output_tokens": 5000},
             }
-            with patch("video_study.aggregate.FallbackChatClient", return_value=client), patch("video_study.aggregate.DocumentAdapter") as adapter:
+            with patch("video_study.aggregate.FallbackChatClient", return_value=client), patch("video_study.aggregate.DocumentAdapterV31") as adapter:
                 adapter.return_value.render_pdf.return_value = "fallback"
                 result = aggregate_documents(config, results, qwen)
 
@@ -216,7 +218,8 @@ class AggregateTests(unittest.TestCase):
             self.assertEqual(result["cloud_usage"]["requests_used"], 3)
             codes = [event["code"] for event in result["runtime_events"]]
             self.assertEqual(codes.count("aggregate_batch_completed"), 2)
-            aggregate = json.loads(Path(result["manifest"]).read_text(encoding="utf-8"))
+            from video_study.document_v3 import v3_to_v2
+            aggregate = v3_to_v2(json.loads(Path(result["manifest"]).read_text(encoding="utf-8")))
             point = aggregate["sections"][0]["knowledge_points"][0]
             self.assertEqual(point["source_refs"]["start_seconds"], 1.0)
             self.assertEqual(len(point["source_refs"]["links"]), 2)

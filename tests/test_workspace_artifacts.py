@@ -82,7 +82,9 @@ class WorkspaceArtifactContractTests(unittest.TestCase):
                 "transcript.normalized", "transcript.srt", "frames.candidates",
                 "frames.selected", "knowledge.plan", "visual.jobs", "visual.evidence",
                 "frames.semantics", "knowledge.course_ir", "knowledge.units",
-                "knowledge.selfcheck", "document.v2",
+                "knowledge.selfcheck", "editorial.policy", "evidence.corrections",
+                "document.blueprint", "editorial.session", "document.chapter_v31", "document.v3",
+                "document.validation",
             },
         )
         self.assertEqual(canonical_json_hash({"b": 2, "a": 1}), canonical_json_hash({"a": 1, "b": 2}))

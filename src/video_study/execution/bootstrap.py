@@ -8,7 +8,15 @@ from .artifacts import ArtifactStore
 from .cache import WorkspaceCache
 from .context import CloudCredentials, ProcessingContext, ProcessingOptions, RunPolicy, RuntimeServices
 from .registry import StepRegistry
-from .runner import PipelineRunner
+
+
+def summarize_terminal_status(statuses) -> str:
+    """按最严重结果聚合单视频终态，不把 degraded 美化为 succeeded。"""
+    values = {getattr(status, "value", status) for status in statuses}
+    for terminal in ("cancelled", "failed", "degraded"):
+        if terminal in values:
+            return terminal
+    return "succeeded"
 
 
 @dataclass(frozen=True)
@@ -17,10 +25,6 @@ class ExecutionKernel:
     registry: StepRegistry
     artifacts: ArtifactStore
     cache: WorkspaceCache
-
-    def runner(self) -> PipelineRunner:
-        return PipelineRunner(self.context, self.registry, self.artifacts, self.cache)
-
 
 def build_execution_kernel(
     context: ProcessingContext,
@@ -51,7 +55,7 @@ def build_runtime_services(
     from ..asr import SpeechAdapter
     from .adapters.vision import VisionAdapter
     from ..media import MediaAdapter
-    from ..render import DocumentAdapter
+    from ..render import DocumentAdapterV31
     from ..utils import LocalProcessAdapter
 
     factories: dict[str, Callable[[], Any]] = {
@@ -69,10 +73,8 @@ def build_runtime_services(
             event_sink=event_sink,
             progress_sink=progress_sink,
         ),
-        "document": lambda: DocumentAdapter(
-            project_root,
-            include_transcript=bool(options.render.get("include_full_transcript", True)),
-        ),
+        # V6.1 生产渲染端口：原生消费 Document v3.1（不经过 v3_to_v2）
+        "document": lambda: DocumentAdapterV31(project_root),
     }
     factories.update(extra_factories or {})
     if policy.cloud_authorized:
@@ -93,6 +95,18 @@ def build_runtime_services(
             )
 
         factories["cloud"] = cloud_factory
+
+        def cloud_tool_factory():
+            from ..providers import OpenAICloudToolAdapter
+            return OpenAICloudToolAdapter(
+                api_key=credentials.api_key,
+                base_url=credentials.base_url,
+                model=credentials.models[0],
+                timeout=float(options.knowledge.get("timeout_seconds", 90.0)),
+                max_tokens=int(options.knowledge.get("tool_max_output_tokens", 2000)),
+            )
+
+        factories["cloud_tool"] = cloud_tool_factory
     return RuntimeServices(
         cancel_check=cancel_check,
         event_sink=event_sink,
@@ -137,7 +151,8 @@ def run_compatible_pipeline(
     from ..utils import TaskCancelled, quick_fingerprint, safe_name
     from .artifacts import (
         ArtifactId,
-        DOCUMENT_V2,
+        DOCUMENT_V3,
+        EDITORIAL_SESSION,
         FileArtifactStore,
         LegacyArtifactAdapter,
         SOURCE_MANIFEST,
@@ -269,14 +284,17 @@ def run_compatible_pipeline(
             "frames.candidates", "frames.select",
             "knowledge.plan", "visual.jobs", "visual.evidence", "frames.semantics",
             "knowledge.course_ir", "knowledge.units", "knowledge.selfcheck",
-            "document.assemble", "render.bundle",
+            "editorial.policy", "evidence.reconcile", "document.blueprint",
+            "document.write", "document.assemble", "document.validate",
+            "render.markdown", "render.word", "render.pdf", "render.verify",
         })
     if force_asr:
         force_steps.add("transcript.decode")
     if force_summary:
         force_steps.update({
             "knowledge.course_ir", "knowledge.units",
-            "knowledge.selfcheck", "document.assemble",
+            "knowledge.selfcheck", "editorial.policy", "evidence.reconcile",
+            "document.blueprint", "document.write", "document.assemble", "document.validate",
         })
     policy = RunPolicy(
         cloud_authorized=cloud_authorized,
@@ -287,7 +305,7 @@ def run_compatible_pipeline(
             ),
         )),
         visual_level=str(config.raw.get("visual_teaching", {}).get("level", "auto")),
-        target_steps=("render.bundle",),
+        target_steps=("render.verify",),
         force_steps=frozenset(force_steps),
     )
     source = VideoSource(
@@ -367,7 +385,20 @@ def run_compatible_pipeline(
         kernel = build_execution_kernel(context, registry, artifact_store, cache)
         lease = catalog.acquire_lease(layout, run_id)
         try:
-            state = kernel.runner().run()
+            from .checkpointing import SqliteCheckpointAdapter
+            from .graph_runtime import GraphRuntime
+
+            checkpoint = SqliteCheckpointAdapter(
+                layout.state_dir / "graph-checkpoints.sqlite3", "v6.1-editorial-tools-1",
+            )
+            try:
+                state = GraphRuntime().run_compatible_state(
+                    kernel,
+                    checkpoint_adapter=checkpoint,
+                    thread_id=f"video:{video_id}:{run_id}",
+                )
+            finally:
+                checkpoint.close()
         finally:
             lease.release()
 
@@ -380,11 +411,16 @@ def run_compatible_pipeline(
             raise RuntimeError(f"{failed.step_id} [{failed.error.code if failed.error else 'STEP_FAILED'}]：{message}")
 
         manifest_path = layout.artifact_paths(SOURCE_MANIFEST)[0]
-        document_path = layout.artifact_paths(DOCUMENT_V2)[0]
+        document_path = layout.artifact_paths(DOCUMENT_V3)[0]
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         document = json.loads(document_path.read_text(encoding="utf-8"))
+        editorial_session_path = layout.artifact_paths(EDITORIAL_SESSION)[0]
+        editorial_session = (
+            json.loads(editorial_session_path.read_text(encoding="utf-8"))
+            if editorial_session_path.is_file() else {}
+        )
         render_paths = layout.artifact_paths(render_artifact)
-        render_outcome = state.outcomes["render.bundle"]
+        render_outcome = state.outcomes["render.pdf"]
         transcript = json.loads(
             layout.artifact_paths(TRANSCRIPT_NORMALIZED)[0].read_text(encoding="utf-8")
         )
@@ -408,6 +444,22 @@ def run_compatible_pipeline(
             or manifest.get("stages", {}).get("render", {}).get("pdf_mode")
             or "built_in"
         )
+        terminal_status = summarize_terminal_status(state.statuses.values())
+        degraded_steps = [
+            step_id for step_id, outcome in state.outcomes.items()
+            if outcome.status.value == "degraded"
+        ]
+        editorial_mode = str(
+            editorial_session.get("capability")
+            or document.get("provenance", {}).get("blueprint")
+            or "local_deterministic"
+        )
+        result_mode = {
+            "tool_native": "cloud_tool_native",
+            "structured_only": "cloud_structured",
+            "local_deterministic": "offline_extract",
+        }.get(editorial_mode, "offline_extract")
+        model_chain = [str(item) for item in editorial_session.get("model_chain", []) if str(item)]
         result = {
             "video_id": video_id,
             "manifest": manifest_path,
@@ -415,15 +467,22 @@ def run_compatible_pipeline(
             "docx": render_paths[1],
             "pdf": render_paths[2],
             "pdf_mode": pdf_mode,
-            "mode": document.get("mode"),
-            "model": document.get("model"),
-            "model_attempts": document.get("model_attempts", []),
-            "cloud_usage": document.get("cloud_usage", {}),
+            # V6.1：真实记录编辑来源，不再用误导性 cloud_summary 标签
+            "mode": result_mode,
+            "model": " + ".join(model_chain),
+            "model_attempts": [],
+            "cloud_usage": dict(editorial_session.get("usage", {})),
+            "status": terminal_status,
+            "editorial_mode": editorial_mode,
+            "degradation_summary": [
+                *degraded_steps,
+                *[str(item) for item in editorial_session.get("degradation_reasons", [])],
+            ],
             "asr_runtime": asr_runtime,
             "visual_runtime": visual_runtime,
             "compute_summary": f"{asr_compute} · {visual_compute}",
         }
-        journal.finish("succeeded", outputs={
+        journal.finish(terminal_status, outputs={
             key: result[key] for key in ("video_id", "manifest", "markdown", "docx", "pdf", "pdf_mode", "mode")
         })
         result["runtime_events"] = list(journal.events)
@@ -446,7 +505,7 @@ def discover_configured_videos(config) -> list[Path]:
     return discover_videos(config.path("paths", "input_dir"))
 
 
-def acquire_source_from_url(
+def _acquire_source_from_url_impl(
     config,
     url: str,
     *,
@@ -529,6 +588,32 @@ def acquire_source_from_url(
     }
 
 
+def acquire_source_from_url(
+    config,
+    url: str,
+    *,
+    source_port=None,
+    progress=None,
+    event=None,
+    cancel_check=None,
+) -> dict[str, Any]:
+    """Resolve and verify a URL source through SourceGraph."""
+    from .graphs.source_graph import SourceGraph
+
+    state = SourceGraph().run_url(
+        url,
+        acquire=lambda source_url: _acquire_source_from_url_impl(
+            config,
+            source_url,
+            source_port=source_port,
+            progress=progress,
+            event=event,
+            cancel_check=cancel_check,
+        ),
+    )
+    return dict(state["verified_source"])
+
+
 def run_compatible_pipeline_from_url(
     config,
     url: str,
@@ -545,7 +630,7 @@ def run_compatible_pipeline_from_url(
     event=None,
     source_port=None,
 ) -> dict[str, Any]:
-    """V5.0 链接源入口（方式一，最小侵入）：预检 → 下载到本地缓存 → 复用 15 步流水线。
+    """链接源 Graph 入口：预检 → 下载/缓存 → 验证 → 复用 23 节点 Video Graph。
 
     - ``source.enabled: false`` 时拒绝调用（回滚开关）。
     - 已下载过的链接（``find_by_url`` 命中）直接复用本地文件，不重复下载/重复 ASR。

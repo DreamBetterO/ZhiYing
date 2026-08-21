@@ -21,6 +21,8 @@ class ProcessingServiceTests(unittest.TestCase):
         self.assertNotIn("secret", repr(auth))
         self.assertNotIn("secret", repr(request))
         self.assertEqual(auth.legacy_settings({})["_runtime_editorial_brief"], "按主题重组")
+        self.assertFalse(auth.permits_images())
+        self.assertFalse(auth.legacy_settings({})["_runtime_image_authorized"])
         handle = ProcessingHandle()
         handle.cancel(); handle.cancel()
         self.assertTrue(handle.cancelled())

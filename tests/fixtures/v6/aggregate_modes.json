@@ -1,0 +1,6 @@
+{
+  "fixture_version": 1,
+  "scenario": "aggregate_modes",
+  "local": {"aggregate_mode": "local", "network_requests": 0},
+  "cloud": {"aggregate_mode": "cloud", "provider": "fake", "network_requests": 0}
+}

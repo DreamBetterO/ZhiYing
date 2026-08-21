@@ -361,7 +361,10 @@ def _requires_visual(unit: UnitPlan, source_text: str) -> bool:
         return False
     if "visual_or_formula" in unit.knowledge_types:
         return True
-    strong_objects = ("K线", "均线", "中枢线", "重叠区间", "反穿", "走势图", "流程图", "公式", "表格", "界面", "点击")
+    strong_objects = (
+        "K线", "均线", "中枢线", "重叠区间", "反穿", "走势图", "流程图",
+        "公式", "积分", "根号", "换元", "凑微分", "∫", "√", "表格", "界面", "点击",
+    )
     if any(cue in text for cue in strong_objects):
         return True
     pointing = ("看这里", "这根", "左边", "右边", "上面", "下面", "画面")
@@ -396,7 +399,8 @@ def _visual_contract(unit: UnitPlan, source_text: str, visual_level: str) -> Vis
 
     entities = [
         term for term in (
-            "K线", "均线", "中枢线", "重叠区间", "反穿", "边界", "流程", "公式", "表格", "界面", "按钮", "菜单",
+            "K线", "均线", "中枢线", "重叠区间", "反穿", "边界", "流程", "公式",
+            "积分", "根号", "换元", "凑微分", "∫", "√", "表格", "界面", "按钮", "菜单",
         )
         if term in text
     ][:3]
@@ -433,7 +437,7 @@ def _make_visual_questions(unit: UnitPlan, source_text: str, spans: list[Evidenc
         return []
     base_question = unit.visual_need.question.strip()
     if not base_question:
-        if "公式" in source_text or "公式" in unit.title:
+        if any(term in f"{unit.title}；{source_text}" for term in ("公式", "积分", "根号", "换元", "凑微分", "∫", "√")):
             base_question = f"哪张图能展示“{unit.title}”中的公式或变量关系？"
         elif "流程" in source_text or "步骤" in source_text:
             base_question = f"哪张图能展示“{unit.title}”的操作步骤或流程状态？"
@@ -442,7 +446,10 @@ def _make_visual_questions(unit: UnitPlan, source_text: str, spans: list[Evidenc
         else:
             base_question = f"哪张图能用可见对象解释“{unit.title}”？"
     entities = []
-    for term in ("K线", "均线", "中枢线", "重叠区间", "反穿", "流程", "公式", "表格"):
+    for term in (
+        "K线", "均线", "中枢线", "重叠区间", "反穿", "流程", "公式",
+        "积分", "根号", "换元", "凑微分", "∫", "√", "表格",
+    ):
         if term in f"{unit.title}；{source_text}":
             entities.append(term)
     result: list[VisualQuestion] = []

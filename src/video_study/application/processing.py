@@ -13,7 +13,10 @@ from ..aggregate import aggregate_documents, local_aggregate_documents
 from ..config import AppConfig
 from ..execution.artifacts import WorkspaceCatalog, read_document_v2
 from ..progress import EtaEstimator, ProgressEvent
-from .requests import AggregateRequest, ProcessingHandle, ProcessingRequest, ProcessingResult
+from .requests import (
+    AggregateRequest, JobHandle, JobRequest, JobResult,
+    ProcessingHandle, ProcessingRequest, ProcessingResult,
+)
 
 
 def resolve_cloud_authorization(
@@ -52,8 +55,8 @@ def resolve_cloud_authorization(
 
 
 class ProcessingService(Protocol):
-    def cached_result(self, video: Path) -> ProcessingResult | None: ...
     def process(self, request: ProcessingRequest) -> ProcessingHandle: ...
+    def process_job(self, request: JobRequest) -> JobHandle: ...
     def download_url(self, url: str, *, progress=None, cancel_check=None) -> dict: ...
     def aggregate(self, request: AggregateRequest) -> ProcessingResult: ...
     def local_aggregate(
@@ -68,40 +71,35 @@ class DefaultProcessingService:
         self.config = config
         self.catalog = WorkspaceCatalog(config.path("paths", "workspace_dir"), project_root=config.root)
 
-    def cached_result(self, video: Path) -> ProcessingResult | None:
+    def history_result(self, video: Path) -> ProcessingResult | None:
+        """Read-only history projection; never used to bypass Graph execution."""
         entry = self.catalog.find_by_source(video)
-        if not entry:
-            return None
-        if not entry.document_path.is_file():
+        if not entry or not entry.document_path.is_file():
             return None
         try:
             document = read_document_v2(entry.document_path)
         except (OSError, ValueError, json.JSONDecodeError):
             return None
         render = entry.manifest.get("stages", {}).get("render", {})
-        output_dir_str = str(self.config.raw.get("paths", {}).get("output_dir", "")).strip()
-        if output_dir_str:
-            output_dir = Path(output_dir_str)
-            if not output_dir.is_absolute():
-                output_dir = self.config.root / output_dir
-            output_dir = output_dir / entry.layout.video_id
-        else:
-            output_dir = Path()
+        output_value = str(self.config.raw.get("paths", {}).get("output_dir", "")).strip()
+        output_dir = (
+            (Path(output_value) if Path(output_value).is_absolute() else self.config.root / output_value)
+            / entry.layout.video_id
+            if output_value else Path()
+        )
 
-        def _find_render_file(kind: str, ext: str) -> Path:
-            manifest_path = Path(str(render.get(kind, "")))
-            if manifest_path.is_file():
-                return manifest_path
+        def find_file(kind: str, extension: str) -> Path:
+            candidate = Path(str(render.get(kind, "")))
+            if candidate.is_file():
+                return candidate
             if output_dir.is_dir():
-                for file in output_dir.iterdir():
-                    if file.suffix.lower() == f".{ext}" and file.is_file():
-                        return file
+                return next((path for path in output_dir.iterdir() if path.is_file() and path.suffix.lower() == extension), Path())
             return Path()
 
         paths = {
-            "markdown": _find_render_file("markdown", "md"),
-            "docx": _find_render_file("docx", "docx"),
-            "pdf": _find_render_file("pdf", "pdf"),
+            "markdown": find_file("markdown", ".md"),
+            "docx": find_file("docx", ".docx"),
+            "pdf": find_file("pdf", ".pdf"),
         }
         if not paths["markdown"].is_file():
             return None
@@ -117,42 +115,106 @@ class DefaultProcessingService:
 
         def worker() -> None:
             try:
-                config = self._request_config(request)
-                qwen = self._cloud_settings(request)
-                force = request.action == "rebuild"
-                estimator = EtaEstimator(
-                    config.path("paths", "workspace_dir") / ".eta-history.json",
-                    model=" + ".join(request.speech_models),
-                    content_level=request.content_level,
-                )
-
-                def publish_task_progress(event: ProgressEvent) -> None:
-                    estimator.observe(event)
-                    payload = asdict(event)
-                    payload["eta_seconds"] = estimator.estimate()
-                    handle.publish({"type": "task_progress", "event": payload})
-
-                runner = self._process_runner(request, config)
-                result = runner(
-                    config, request, force=force,
-                    force_summary=request.action == "knowledge",
-                    force_asr=request.action == "asr",
-                    cloud_summary=bool(request.cloud and request.cloud.authorized),
-                    qwen_settings=qwen,
-                    asr_settings={**config.raw.get("asr", {}), "engine_chain": list(request.speech_models)},
-                    progress=lambda stage, message, percent: handle.publish({
-                        "type": "progress", "stage": stage, "message": message, "progress": percent,
-                    }),
-                    task_progress=publish_task_progress,
-                    cancel_check=handle.cancelled,
-                    event=handle.publish,
-                )
-                handle.finish(ProcessingResult.from_legacy(result))
+                handle.finish(self._execute_request(request, handle))
             except BaseException as exc:
                 handle.fail(exc)
 
         threading.Thread(target=worker, name="video-study-processing", daemon=True).start()
         return handle
+
+    def process_job(self, request: JobRequest) -> JobHandle:
+        import uuid
+
+        from ..execution.checkpointing import SqliteCheckpointAdapter
+        from ..execution.graphs.job_graph import JobGraph
+
+        handle = JobHandle()
+
+        def worker() -> None:
+            try:
+                current_index = -1
+
+                class EventPort:
+                    @staticmethod
+                    def cancelled() -> bool:
+                        return handle.cancelled()
+
+                    @staticmethod
+                    def publish(event: dict) -> None:
+                        handle.publish({**dict(event), "source_index": current_index})
+
+                def process_one(source: ProcessingRequest) -> dict:
+                    nonlocal current_index
+                    current_index += 1
+                    return self._execute_request(source, EventPort()).to_legacy()
+
+                def aggregate_rows(rows: list[dict]) -> dict:
+                    results = tuple(ProcessingResult.from_legacy(row) for row in rows)
+                    if request.aggregate_mode == "local":
+                        return self.local_aggregate(results, cancel_check=handle.cancelled).to_legacy()
+                    return self.aggregate(AggregateRequest(
+                        results, request.cloud, cancel_check=handle.cancelled,
+                    )).to_legacy()
+
+                checkpoint_path = self.config.path("paths", "workspace_dir") / ".jobs" / "graph-checkpoints.sqlite3"
+                checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+                checkpoint = SqliteCheckpointAdapter(checkpoint_path, "v6-job-1")
+                try:
+                    state = JobGraph().run(
+                        request.sources,
+                        process=process_one,
+                        aggregate_mode=request.aggregate_mode,
+                        aggregate=aggregate_rows if request.aggregate_mode != "none" else None,
+                        event_sink=handle.publish,
+                        checkpoint_adapter=checkpoint,
+                        thread_id=f"job:{uuid.uuid4().hex}",
+                    )
+                finally:
+                    checkpoint.close()
+                videos = tuple(ProcessingResult.from_legacy(row) for row in state["video_results"])
+                aggregate_result = (
+                    ProcessingResult.from_legacy(state["aggregate_result"])
+                    if state.get("aggregate_result") else None
+                )
+                handle.finish(JobResult(videos, aggregate_result, str(state["status"])))
+            except BaseException as exc:
+                handle.fail(exc)
+
+        threading.Thread(target=worker, name="video-study-job", daemon=True).start()
+        return handle
+
+    def _execute_request(self, request: ProcessingRequest, event_port) -> ProcessingResult:
+        config = self._request_config(request)
+        qwen = self._cloud_settings(request)
+        force = request.action == "rebuild"
+        estimator = EtaEstimator(
+            config.path("paths", "workspace_dir") / ".eta-history.json",
+            model=" + ".join(request.speech_models),
+            content_level=request.content_level,
+        )
+
+        def publish_task_progress(event: ProgressEvent) -> None:
+            estimator.observe(event)
+            payload = asdict(event)
+            payload["eta_seconds"] = estimator.estimate()
+            event_port.publish({"type": "task_progress", "event": payload})
+
+        runner = self._process_runner(request, config)
+        result = runner(
+            config, request, force=force,
+            force_summary=request.action == "knowledge",
+            force_asr=request.action == "asr",
+            cloud_summary=bool(request.cloud and request.cloud.authorized),
+            qwen_settings=qwen,
+            asr_settings={**config.raw.get("asr", {}), "engine_chain": list(request.speech_models)},
+            progress=lambda stage, message, percent: event_port.publish({
+                "type": "progress", "stage": stage, "message": message, "progress": percent,
+            }),
+            task_progress=publish_task_progress,
+            cancel_check=event_port.cancelled,
+            event=event_port.publish,
+        )
+        return ProcessingResult.from_legacy(result)
 
     def _process_runner(self, request: ProcessingRequest, config: AppConfig):
         from ..execution.bootstrap import run_compatible_pipeline, run_compatible_pipeline_from_url

@@ -16,6 +16,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class DocumentationContractTests(unittest.TestCase):
+    def test_desktop_launcher_uses_activated_conda_python_for_v6_runtime(self) -> None:
+        launcher_path = ROOT / "启动桌面版.cmd"
+        launcher_path.read_bytes().decode("ascii")
+        launcher = launcher_path.read_text(encoding="ascii").lower()
+
+        self.assertIn("conda activate imaget10", launcher)
+        self.assertIn("python -m video_study desktop", launcher)
+        self.assertIn("import langgraph", launcher)
+        self.assertNotIn(".venv\\scripts", launcher)
+
     def test_pipeline_catalog_matches_registered_step_specs(self) -> None:
         value = yaml.safe_load((ROOT / "docs/architecture/pipeline-steps.yaml").read_text(encoding="utf-8"))
         rows = value["steps"]
@@ -152,6 +162,41 @@ class DocumentationContractTests(unittest.TestCase):
 
         self.assertEqual(report["recent_asr_source_run_id"], "asr-run")
         self.assertEqual(report["recent_asr_events"][0]["engine"], "qwen3-asr-0.6b")
+
+    def test_workspace_diagnosis_marks_historical_v2_as_read_only_not_missing_v3_corruption(self) -> None:
+        from scripts.diagnose_workspace import diagnose
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "video"
+            (root / "state" / "cache").mkdir(parents=True)
+            (root / "manifest.json").write_text("{}", encoding="utf-8")
+            (root / "knowledge").mkdir()
+            (root / "knowledge" / "document.json").write_text('{"schema_version":2}', encoding="utf-8")
+            before = (root / "knowledge" / "document.json").read_bytes()
+            report = diagnose(root)
+            after = (root / "knowledge" / "document.json").read_bytes()
+
+        self.assertEqual(report["migration"]["mode"], "legacy_v2_read_only")
+        self.assertEqual(before, after)
+        v3 = next(row for row in report["artifacts"] if row["artifact_id"] == "document.v3")
+        self.assertEqual(v3["status"], "legacy_not_applicable")
+
+    def test_workspace_diagnosis_marks_pre_v31_document_as_legacy_v3_read_only(self) -> None:
+        from scripts.diagnose_workspace import diagnose
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "video"
+            (root / "state" / "cache").mkdir(parents=True)
+            (root / "manifest.json").write_text("{}", encoding="utf-8")
+            (root / "knowledge").mkdir()
+            document = root / "knowledge" / "document-v3.json"
+            document.write_text('{"schema_version":3,"contract_version":"document-v3.0"}', encoding="utf-8")
+            before = document.read_bytes()
+            report = diagnose(root)
+            after = document.read_bytes()
+
+        self.assertEqual(report["migration"]["mode"], "legacy_v3_read_only")
+        self.assertEqual(before, after)
 
 
 if __name__ == "__main__":

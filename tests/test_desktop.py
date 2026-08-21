@@ -33,7 +33,7 @@ class DesktopLogicTests(unittest.TestCase):
         })
 
     def test_ui_version_matches_package_version(self) -> None:
-        self.assertEqual(__version__, "0.5.1")
+        self.assertEqual(__version__, "1.0.0rc1")
 
     def test_qwen_model_is_only_offered_when_runtime_and_weights_are_complete(self) -> None:
         from pathlib import Path
@@ -209,7 +209,7 @@ class DesktopLogicTests(unittest.TestCase):
             (work / "manifest.json").write_text(__import__("json").dumps(manifest), encoding="utf-8")
             (work / "knowledge" / "document.json").write_text('{"mode":"cloud_summary"}', encoding="utf-8")
             config = AppConfig(root, {"paths": {"workspace_dir": "workspace"}})
-            result = DefaultProcessingService(config).cached_result(video)
+            result = DefaultProcessingService(config).history_result(video)
             self.assertEqual(result.video_id, "lesson-id")
             self.assertEqual(result.mode, "cloud_summary")
 
@@ -228,7 +228,7 @@ class DesktopLogicTests(unittest.TestCase):
             (work / "manifest.json").write_text(__import__("json").dumps(manifest), encoding="utf-8")
             (work / "knowledge" / "document.json").write_text('{"mode":"cloud_summary","cloud_usage":{"total_tokens":100}}', encoding="utf-8")
             config = AppConfig(root, {"paths": {"workspace_dir": "workspace", "output_dir": "output"}})
-            result = DefaultProcessingService(config).cached_result(video)
+            result = DefaultProcessingService(config).history_result(video)
             self.assertIsNotNone(result)
             self.assertEqual(result.video_id, "lesson-id")
             self.assertTrue(Path(result.docx).is_file())

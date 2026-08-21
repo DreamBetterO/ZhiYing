@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from video_study.knowledge.organizer import _validate_organizer_payload, build_units, organize_offline
+from video_study.knowledge.prompts import compose_course_ir_prompt
 from video_study.knowledge.schema import (
     ChapterPlan,
     KnowledgeUnit,
@@ -15,6 +16,16 @@ from video_study.knowledge.schema import (
 
 
 class OrganizerTests(unittest.TestCase):
+    def test_writer_prompt_requires_formula_equivalence_and_factor_integrity(self) -> None:
+        prompt = compose_course_ir_prompt(
+            payload_json='{"sources":[],"units":[],"claims":[],"visuals":[]}',
+            content_level="精简",
+            max_tokens=5000,
+        )
+        self.assertIn("常数因子", prompt)
+        self.assertIn("来源不足", prompt)
+        self.assertIn("不得补造精确等式", prompt)
+
     def _make_lesson_plan(self) -> LessonPlan:
         return LessonPlan(
             domain="金融技术分析",

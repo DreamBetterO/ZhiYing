@@ -77,6 +77,27 @@ class OOMVLM(FakeVLM):
 
 
 class VisualRetrievalTests(unittest.TestCase):
+    def test_visual_evidence_step_consumes_candidate_pool_not_global_selection(self) -> None:
+        from video_study.execution.artifacts import FRAMES_CANDIDATES, FRAMES_SELECTED
+        from video_study.execution.steps.knowledge import VisualEvidenceStep, VisualJobsStep
+
+        self.assertIn(FRAMES_CANDIDATES, VisualEvidenceStep.spec.inputs)
+        self.assertNotIn(FRAMES_SELECTED, VisualEvidenceStep.spec.inputs)
+        self.assertIn(FRAMES_CANDIDATES, VisualJobsStep.spec.inputs)
+
+    def test_candidate_artifact_rows_keep_candidate_identity(self) -> None:
+        from video_study.knowledge.visual_retrieval import _candidate_rows
+
+        rows = _candidate_rows(Path("unused"), {
+            "candidates": [{
+                "candidate_id": "candidate_00007",
+                "timestamp_seconds": 12.5,
+                "path": "candidate_00007.jpg",
+            }],
+        })
+        self.assertEqual(rows[0]["image_id"], "candidate_00007")
+        self.assertEqual(rows[0]["timestamp_label"], "00:00:12")
+
     def test_only_inference_failures_are_classified_as_vlm_degradation(self) -> None:
         for source in ("vlm_provider_error", "vlm_oom_no_match", "vlm_detail_failed", "vlm_invalid_candidate_id"):
             self.assertTrue(is_vlm_failure_source(source), source)
@@ -465,7 +486,7 @@ class VisualRetrievalTests(unittest.TestCase):
         from types import SimpleNamespace
 
         from video_study.execution.artifacts import (
-            FRAMES_SELECTED,
+            FRAMES_CANDIDATES,
             KNOWLEDGE_PLAN,
             TRANSCRIPT_NORMALIZED,
             VISUAL_JOBS,
@@ -479,7 +500,7 @@ class VisualRetrievalTests(unittest.TestCase):
             inputs = {}
             payloads = {
                 KNOWLEDGE_PLAN: {"plan": LessonPlan().to_dict()},
-                FRAMES_SELECTED: {"frames": []},
+                FRAMES_CANDIDATES: {"candidates": []},
                 TRANSCRIPT_NORMALIZED: {"segments": []},
                 VISUAL_JOBS: {"jobs": []},
             }

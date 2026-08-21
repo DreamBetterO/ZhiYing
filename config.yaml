@@ -68,7 +68,7 @@ desktop:
   speech_models:
   - faster-whisper
   - qwen3-asr-0.6b
-  content_level: 精简
+  content_level: 推荐
   visual_teaching_level: enhanced
   watermark:
     text: powed by Fx

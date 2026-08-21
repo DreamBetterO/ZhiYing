@@ -52,11 +52,16 @@ class RunEventJournal:
         "knowledge.course_ir": "knowledge",
         "knowledge.units": "knowledge",
         "knowledge.selfcheck": "knowledge",
+        "editorial.policy": "knowledge",
+        "evidence.reconcile": "knowledge",
+        "document.blueprint": "knowledge",
+        "document.write": "knowledge",
         "document.assemble": "knowledge",
+        "document.validate": "knowledge",
         "visual.jobs": "knowledge",
         "visual.evidence": "knowledge",
         "frames.semantics": "knowledge",
-        "render.bundle": "render",
+        "render.verify": "render",
     }
 
     def __init__(
@@ -313,7 +318,7 @@ class RunEventJournal:
         elif legacy_stage == "transcript":
             details["path"] = artifacts.get("transcript.normalized")
         elif legacy_stage == "knowledge":
-            details["path"] = artifacts.get("document.v2")
+            details["path"] = artifacts.get("document.v3")
         elif legacy_stage == "render":
             for item in row.get("artifacts", []):
                 path = Path(str(item.get("path", "")))

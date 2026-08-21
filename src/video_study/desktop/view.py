@@ -160,16 +160,8 @@ class DesktopView:
     def _build(self) -> None:
         viewport = ttk.Frame(self.root)
         viewport.pack(fill="both", expand=True)
-        self.canvas = tk.Canvas(viewport, bg=self.BG, highlightthickness=0)
-        page_scroll = ttk.Scrollbar(viewport, orient="vertical", command=self.canvas.yview)
-        self.canvas.configure(yscrollcommand=page_scroll.set)
-        self.canvas.pack(side="left", fill="both", expand=True)
-        page_scroll.pack(side="right", fill="y")
-        outer = ttk.Frame(self.canvas, padding=(24, 18))
-        self.page_window = self.canvas.create_window((0, 0), window=outer, anchor="nw")
-        outer.bind("<Configure>", lambda _event: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
-        self.canvas.bind("<Configure>", self._resize_page)
-        self.canvas.bind_all("<MouseWheel>", self._scroll_page)
+        outer = ttk.Frame(viewport, padding=(24, 18))
+        outer.pack(fill="both", expand=True)
 
         watermark_text, watermark_opacity = watermark_options(self.config)
         if watermark_text:
@@ -281,10 +273,7 @@ class DesktopView:
             log_frame, height=2, wrap="word", relief="flat", bg=self.BG, fg=self.MUTED,
             font=("Microsoft YaHei UI", 9), padx=0, pady=4,
         )
-        log_scroll = ttk.Scrollbar(log_frame, orient="vertical", command=self.log.yview)
-        self.log.configure(yscrollcommand=log_scroll.set)
-        self.log.pack(side="left", fill="x", expand=True)
-        log_scroll.pack(side="right", fill="y")
+        self.log.pack(fill="x")
         self._log_history_limit = 200
         self.log.configure(state="normal")
         self.log.insert("end", "请选择本地视频；源文件不会上传或复制")
@@ -296,16 +285,6 @@ class DesktopView:
             self.local_aggregate_button, self.aggregate_button,
         ]
         self._refresh()
-
-    def _resize_page(self, event) -> None:
-        width = max(780, event.width)
-        self.canvas.itemconfigure(self.page_window, width=width)
-
-    def _scroll_page(self, event) -> str | None:
-        if event.widget is self.tree:
-            return None
-        self.canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
-        return "break"
 
     def add_videos(self) -> None:
         paths = filedialog.askopenfilenames(
@@ -446,7 +425,7 @@ class DesktopView:
 
     def _cloud_authorization_dialog(self, qwen: dict, *, aggregate: bool) -> str | None:
         dialog = tk.Toplevel(self.root)
-        dialog.title("云端优化授权与本次整理要求")
+        dialog.title("云端优化授权")
         dialog.transient(self.root)
         dialog.grab_set()
         dialog.resizable(True, True)
@@ -459,7 +438,7 @@ class DesktopView:
             font=("Microsoft YaHei UI", 14, "bold"),
         ).pack(anchor="w")
         notice = tk.Text(
-            frame, height=6, wrap="word", relief="flat",
+            frame, height=4, wrap="word", relief="flat",
             bg=self.CARD, fg="#4d353a", font=("Microsoft YaHei UI", 9),
             padx=0, pady=8,
         )
@@ -469,7 +448,7 @@ class DesktopView:
 
         ttk.Label(
             frame,
-            text="本次整理要求（可修改；只影响本次云端规划/整理，不会自动保存）",
+            text="本次整理要求（仅影响本次，不会保存）",
             style="Card.TLabel",
             font=("Microsoft YaHei UI", 10, "bold"),
         ).pack(anchor="w", pady=(0, 4))
@@ -509,7 +488,7 @@ class DesktopView:
         buttons = ttk.Frame(frame, style="Card.TFrame")
         buttons.pack(anchor="e")
         ttk.Button(buttons, text="取消", command=cancel).pack(side="left", padx=(0, 8))
-        ttk.Button(buttons, text="确认并授权本次云端优化", style="Accent.TButton", command=approve).pack(side="left")
+        ttk.Button(buttons, text="确认授权", style="Accent.TButton", command=approve).pack(side="left")
         dialog.protocol("WM_DELETE_WINDOW", cancel)
         update_counter()
         dialog.update_idletasks()
@@ -870,7 +849,7 @@ class DesktopView:
                 self.root.after_cancel(callback_id)
             except tk.TclError:
                 pass
-        self.canvas.unbind_all("<MouseWheel>")
+        self.root.unbind_all("<MouseWheel>")
         self.root.destroy()
 
     def _command(self, command) -> None:

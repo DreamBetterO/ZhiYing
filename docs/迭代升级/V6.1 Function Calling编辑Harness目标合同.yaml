@@ -1,0 +1,831 @@
+schema_version: 1
+contract_id: v6-1-function-calling-editorial-harness
+status: approved_target_not_implemented
+approved_at: "2026-08-21 09:38 Asia/Shanghai"
+
+versioning:
+  architecture_baseline: "V6.0"
+  product_baseline: "1.0.0rc1"
+  architecture_target: "V6.1"
+  implementation_target: "1.0.0rc2"
+  release_target: "1.0.0"
+  graph_version: "v6.1-editorial-tools-1"
+  document_schema_version: 3
+  document_contract_version: "document-v3.1"
+  blueprint_schema_version: 2
+  editorial_policy_version: 1
+  evidence_overlay_version: 1
+  quality_report_version: 2
+  page_audit_version: 1
+
+authority:
+  orchestrator: LangGraph
+  only_production_orchestrator: true
+  current_runtime_until_cutover: "V6.0 23-node GraphRuntime"
+  v6_1_documents_are_runtime_fact_before_cutover: false
+  node_transaction_owner: NodeExecutor
+  artifact_owner: ArtifactStore
+  cross_run_cache_owner: WorkspaceCache
+  same_job_resume_owner: GraphCheckpoint
+
+objectives:
+  - "让 LLM 在证据与 RendererCapabilityManifest 内真正拥有文档规划、主动观察和局部修订权。"
+  - "正常短视频默认仅 Blueprint + Writer 两次云调用，异常纠错、观察和修订按问题触发。"
+  - "Function Calling 不可用时先降级结构化云端，云端不可用时运行完整本地确定性编辑链。"
+  - "Document v3.1 由 Markdown、Word、PDF 原生消费，生产不再转回 Document v2。"
+  - "内容、意图、来源、公式、视觉、页面、跨格式和降级状态均有硬质量门。"
+
+non_goals:
+  - free_autonomous_agent
+  - unbounded_react_loop
+  - mcp_server
+  - multi_agent
+  - web_service
+  - generic_plugin_platform
+  - arbitrary_shell_tool
+  - arbitrary_file_tool
+  - arbitrary_network_tool
+  - cloud_image_upload
+  - new_local_text_model_requirement
+  - full_langchain_dependency_requirement
+  - arbitrary_docx_xml_or_coordinate_layout
+  - source_asr_visual_pipeline_rewrite
+  - artifact_store_or_node_executor_rewrite
+
+preserved_contracts:
+  - "LangGraph 接管所有业务数据处理链路。"
+  - "ArtifactStore/WorkspaceCache/Checkpoint 分工不变。"
+  - "JSON → Markdown → Word → PDF 与 video-study:// 来源追踪。"
+  - "Desktop/Application/ports/adapters 分层。"
+  - "单视频一个活动 VLM，GPU 全局串行。"
+  - "历史 Workspace 非破坏，Document v2/v3 只读兼容。"
+  - "云端推理 opt-in，图片授权与文本授权分离。"
+
+known_failures:
+  document_plan:
+    - "current plan mechanically wraps legacy sections"
+    - "all current layout hints are full_width"
+    - "source_section copies legacy document structure"
+    - "chapter validation and repair do not assess editorial quality"
+  rendering:
+    - "production v3 documents are adapted back to v2 before rendering"
+    - "legacy visible sections are hard-coded"
+    - "current high-math Word outputs contain zero native OMML equations"
+  degradation:
+    - "knowledge.units may fall back locally while final mode remains cloud_summary"
+    - "stage provenance is merged into a misleading whole-document label"
+  quality:
+    - "document validation primarily checks schema presence"
+    - "render verification primarily checks non-empty files"
+    - "ASR errors, prompt non-compliance, image redundancy and page defects can pass"
+
+target_graph:
+  insertion_after: knowledge.units
+  insertion_before: document.compile
+  subgraph_name: EditorialAgentSubgraph
+  explicit_langgraph_subgraph: true
+  hidden_python_agent_loop_forbidden: true
+  nodes:
+    - evidence.reconcile
+    - intent.compile
+    - blueprint.agent
+    - blueprint.validate
+    - blueprint.commit
+    - chapter.write
+    - document.assemble
+    - preview.render
+    - quality.audit
+    - revision.route
+    - revision.agent
+    - patch.validate
+    - patch.apply
+    - editorial.finalize
+  downstream_nodes:
+    - document.compile
+    - document.validate
+    - render.markdown
+    - render.word
+    - render.pdf
+    - render.verify
+  default_revision_cycles: 1
+  maximum_revision_cycles: 2
+  maximum_same_error_feedback: 1
+  parallel_mutations_per_revision: 1
+  chapter_writes_same_workspace_serial: true
+
+editorial_state:
+  allowed:
+    - schema_version
+    - graph_version
+    - video_id
+    - phase
+    - editorial_policy_ref
+    - evidence_overlay_ref
+    - course_ir_ref
+    - blueprint_candidate_ref
+    - accepted_blueprint_ref
+    - document_revision
+    - document_candidate_ref
+    - preview_report_ref
+    - quality_report_ref
+    - bounded_messages
+    - tool_turns
+    - tool_failures
+    - no_progress_count
+    - budget_summary
+    - provenance_summary
+    - issue_summary
+    - terminal_status
+  forbidden:
+    - api_keys
+    - authorization_headers
+    - credential_objects
+    - runtime_services
+    - callbacks
+    - locks
+    - process_handles
+    - model_instances
+    - image_audio_video_binary
+    - page_screenshots
+    - full_transcript
+    - full_course_ir
+    - full_document
+    - unbounded_prompts
+    - unbounded_responses
+    - raw_provider_response
+    - full_traceback
+  persistence: per_invocation_inherit_parent_checkpointer
+  cross_chapter_chat_memory: false
+
+cloud_ports:
+  keep:
+    - CloudJsonPort
+  add_optional:
+    - CloudToolPort
+  cloud_tool_port:
+    method: invoke_turn
+    inputs:
+      - messages
+      - tools
+      - tool_choice
+      - stage
+      - budget
+      - cancel_check
+    output: ToolTurn
+  tool_turn_fields:
+    - content
+    - tool_calls
+    - invalid_tool_calls
+    - model
+    - attempts
+    - usage
+    - finish_reason
+    - safe_error_code
+  tool_turn_forbidden_fields:
+    - api_key
+    - request_headers
+    - full_raw_response
+    - image_data
+
+langgraph_primitives:
+  required:
+    - ToolNode
+    - conditional_edges
+    - Command
+    - explicit_subgraph
+    - Checkpointer
+  optional:
+    - interrupt
+  rules:
+    - "ToolNode executes read-only observation tools."
+    - "Submit tools only write candidate state; deterministic nodes validate and commit artifacts."
+    - "Command may update small state and controlled routing, never write arbitrary business files."
+    - "A node must not combine conflicting static and tool-driven dynamic routing."
+    - "Interrupt is optional and not the default batch workflow."
+
+tools:
+  global_forbidden:
+    - write_file
+    - read_arbitrary_path
+    - run_shell
+    - delete_file
+    - move_file
+    - call_external_network
+    - upload_image
+    - upload_video
+    - mutate_artifact_directly
+    - alter_authorization
+    - alter_budget
+    - alter_terminal_status
+  planning:
+    lookup_evidence:
+      mode: read_only
+      max_top_k: 5
+      input_fields:
+        - unit_ids
+        - query
+        - top_k
+        - include_neighbors
+      output_fields:
+        - source_id
+        - segment_ids
+        - timestamp
+        - text
+        - confidence
+        - correction_status
+      full_transcript_forbidden: true
+      absolute_path_forbidden: true
+    lookup_visual_facts:
+      mode: read_only
+      max_top_k: 4
+      purposes:
+        - explain
+        - evidence
+        - compare
+        - recap
+        - formula
+      output_fields:
+        - visual_id
+        - source_timestamp
+        - visible_objects
+        - visible_text
+        - formula_candidates
+        - relations
+        - confidence
+        - crop_suggestion_id
+      image_binary_forbidden: true
+    get_renderer_capabilities:
+      mode: read_only
+      output_versioned: true
+    submit_blueprint:
+      mode: candidate_state_only
+      deterministic_validation_required: true
+      artifact_commit_inside_tool_forbidden: true
+  writing:
+    submit_chapter:
+      mode: forced_structured_output
+      free_tool_loop: false
+      deterministic_validation_required: true
+  revision:
+    lookup_evidence:
+      mode: read_only_scoped_to_issues
+    get_page_detail:
+      mode: read_only_existing_report
+      rerender_inside_tool_forbidden: true
+      screenshot_output_forbidden: true
+    submit_patch:
+      mode: candidate_state_only
+      base_revision_required: true
+      issue_ids_required: true
+      allowed_operations:
+        - add_component
+        - remove_component
+        - replace_component
+        - move_component
+        - set_layout_hint
+        - set_style_token
+      forbidden_operations:
+        - replace_entire_document
+        - arbitrary_json_pointer
+        - docx_xml
+        - file_path
+        - script
+    finish_editing:
+      mode: request_final_audit
+      bypass_audit_forbidden: true
+
+tool_errors:
+  - TOOL_UNKNOWN
+  - TOOL_ARGS_INVALID
+  - TOOL_SCOPE_VIOLATION
+  - TOOL_RESULT_TOO_LARGE
+  - TOOL_MULTIPLE_MUTATIONS
+  - TOOL_REVISION_CONFLICT
+  - TOOL_BUDGET_EXCEEDED
+  - TOOL_PROVIDER_UNSUPPORTED
+  - TOOL_NO_PROGRESS
+  - TOOL_CHECKPOINT_SERIALIZATION_FAILED
+
+model_capabilities:
+  levels:
+    tool_native:
+      description: "Standard tool_calls validated and golden-tested."
+      editorial_agent_enabled: true
+    structured_only:
+      description: "Cloud text works but native tool calling is unsupported or unstable."
+      editorial_agent_observation_loop_enabled: false
+      structured_blueprint_writer_patch_enabled: true
+    local_deterministic:
+      description: "Cloud is unauthorized, unavailable, exhausted or fully failed."
+      cloud_port_constructed: false
+      local_pipeline_required: true
+  default_for_unknown_model: structured_only
+  openai_compatible_implies_tool_native: false
+  live_capability_probe_requires_cloud_authorization: true
+  model_capability_cache_versioned: true
+
+llm_interaction:
+  normal_short_video_target_calls: 2
+  normal_short_video_stages:
+    - blueprint
+    - writer
+  conditional_stages:
+    evidence_reconcile: "local anomaly trigger only"
+    observation: "model requests evidence only"
+    revision: "local quality audit failure only"
+  typical_short_video_max_calls: 4
+  long_video_call_formula: "1 blueprint + N writer batches + optional 1 correction + optional 1 revision"
+  cloud_page_critic_default: false
+  local_page_audit_default: true
+  full_document_rewrite_on_revision_forbidden: true
+  payloads:
+    blueprint:
+      include:
+        - editorial_policy
+        - course_summary
+        - unit_index
+        - depth_distribution
+        - representative_evidence
+        - renderer_capability_summary
+      exclude:
+        - full_transcript
+        - full_document
+    writer:
+      include:
+        - accepted_blueprint_slice
+        - current_unit_batch
+        - related_source_evidence
+        - related_visual_facts
+      exclude:
+        - unrelated_chapters
+        - all_visual_descriptions
+    patch:
+      include:
+        - failed_components
+        - issue_records
+        - neighbor_summary
+        - related_evidence
+      exclude:
+        - full_document
+        - full_transcript
+
+budget:
+  type: StageBudget
+  limits_required:
+    - max_total_calls
+    - max_total_input_tokens
+    - max_total_output_tokens
+    - max_stage_calls
+    - max_stage_tokens
+    - max_tool_turns
+    - max_tool_result_chars
+    - max_batch_units
+    - repair_reserve
+  default_ratio:
+    planning_observation: 0.20
+    writing: 0.65
+    revision_reserve: 0.15
+  writing_may_consume_revision_reserve: false
+  size_basis:
+    - effective_course_ir_chars
+    - unit_count
+    - depth_distribution
+    - estimated_output_chars
+  video_duration_as_only_size_basis_forbidden: true
+  same_tool_same_args_same_revision_cacheable: true
+  checkpoint_replay_must_check_cache_first: true
+
+evidence_reconciliation:
+  raw_transcript_immutable: true
+  artifact: knowledge/evidence-corrections.json
+  effective_view: "raw transcript + accepted overlay"
+  local_detection_first: true
+  cloud_receives_only_suspicious_windows: true
+  full_transcript_cloud_rewrite_forbidden: true
+  candidate_states:
+    - accepted
+    - rejected
+    - unresolved
+  evidence_fields:
+    - raw_text
+    - candidate_text
+    - source_span
+    - evidence_refs
+    - confidence
+    - method
+  local_vlm_roles:
+    - slide_text_verification
+    - local_formula_verification
+    - output_page_advisor
+  local_vlm_for_global_document_writing: false
+
+editorial_policy:
+  fields:
+    - required
+    - preferred
+    - forbidden
+    - content_focus
+    - structure_preference
+    - visual_preference
+    - formula_preference
+    - hard_contract_conflicts
+    - compliance_predicates
+  local_minimum_intents:
+    - include_or_forbid_overview
+    - include_or_forbid_learning_objectives
+    - include_or_forbid_review
+    - include_or_forbid_fixed_numbering
+    - case_and_solution_structure
+    - concept_and_properties_structure
+    - procedure_structure
+    - comparison_structure
+    - concise_recommended_rich
+    - image_less_more_forbidden
+    - formula_priority
+    - table_priority
+    - source_display_preference
+  unsupported_complex_local_intent_status: partially_satisfied
+
+document_blueprint_v2:
+  legacy_source_section_forbidden: true
+  stable_component_ids_required: true
+  fields:
+    - blueprint_id
+    - schema_version
+    - policy_version
+    - evidence_version
+    - capability_version
+    - document_type
+    - audience
+    - purpose
+    - density
+    - design_tokens
+    - front_matter_policy
+    - navigation_policy
+    - chapters
+    - component_intents
+    - source_refs
+    - visual_roles
+    - formula_evidence_policy
+    - layout_hints
+    - constraint_mapping
+    - component_fallbacks
+    - unresolved_questions
+  forbidden:
+    - markdown_body
+    - docx_xml
+    - arbitrary_coordinates
+    - local_absolute_paths
+    - unknown_source_ids
+    - unknown_visual_ids
+
+document_v3_1:
+  schema_version: 3
+  contract_version: document-v3.1
+  authority: component_tree
+  native_renderers_required:
+    - markdown
+    - word
+    - pdf
+  production_v3_to_v2_forbidden: true
+  legacy_v2_v3_adapter_mode: read_only_diagnostics
+  components:
+    - heading
+    - paragraph
+    - list
+    - equation
+    - table
+    - image
+    - container
+    - callout
+    - page_break
+    - source_reference
+  required_non_decorative_fields:
+    - component_id
+    - semantic_role
+    - source_refs
+    - origin
+    - confidence
+  equation:
+    canonical_representation:
+      - latex
+      - math_ast
+    word_native_omml_required_when_confirmed: true
+    unsupported_or_unconfirmed_requires_degraded_issue: true
+  image:
+    required_fields:
+      - visual_id
+      - role
+      - caption
+      - alt_text
+      - source_timestamp
+    cloud_image_upload: false
+
+renderer:
+  may_auto_inject:
+    - user_or_contract_required_source_reference
+    - page_number
+    - safe_document_metadata
+    - accessibility_fields
+  may_not_auto_inject:
+    - content_overview
+    - learning_objectives
+    - fixed_chapter_numbering
+    - course_review
+    - knowledge_thread
+    - rule_checklist
+    - open_questions
+    - fixed_visual_lead_in
+    - fixed_visual_takeaway
+  markdown_local_absolute_path_forbidden: true
+  word_omml_count_must_match_confirmed_equation_count: true
+  cross_format_semantic_parity_required: true
+
+local_deterministic_pipeline:
+  nodes:
+    - LocalIntentCompiler
+    - LocalEvidenceReconcile
+    - LocalBlueprintPolicy
+    - LocalDocumentComposer
+    - LocalDocumentAudit
+    - LocalDeterministicRepair
+    - NativeV31Renderers
+  blueprint_modes:
+    - concept
+    - procedure
+    - case
+    - comparison
+    - mixed
+  visible_fixed_template_forbidden: true
+  insufficient_quality_behavior:
+    - "do not label raw oral transcript as rules or steps"
+    - "emit concise traceable degraded material"
+    - "preserve unresolved source references"
+    - "do not fabricate exact formulas"
+    - "do not include low-confidence images"
+
+quality_gates:
+  intent:
+    required_constraints_satisfied: true
+    forbidden_matches_max: 0
+    preferred_unsatisfied_reason_required: true
+  evidence:
+    factual_components_require_source_refs: true
+    unsupported_model_fact_max: 0
+    raw_asr_copy_density_threshold: fixture_policy
+    oral_filler_density_threshold: fixture_policy
+    key_conditions_negations_boundaries_required: true
+    near_duplicate_threshold: fixture_policy
+  math:
+    confirmed_formula_requires_equation_component: true
+    confirmed_equation_requires_omml_in_word: true
+    source_insufficient_formula_must_not_be_fabricated: true
+  visual:
+    allowed_decisions:
+      - none
+      - supportive
+      - required
+    selected_image_requires_role_source_caption_alt: true
+    scene_duplicate_threshold: fixture_policy
+    no_match_is_valid: true
+    nearest_frame_silent_fallback: false
+  page:
+    overflow_max: 0
+    abnormal_blank_page_max: 0
+    orphan_list_item_max: 0
+    unreadable_image_max: 0
+    cross_format_component_coverage: 1.0
+  status:
+    stage_provenance_required: true
+    misleading_cloud_summary_label_forbidden: true
+
+provenance:
+  required_stages:
+    - intent
+    - evidence_reconcile
+    - blueprint
+    - chapter_writing
+    - page_audit
+    - final_repair
+  allowed_values:
+    - cloud_tool
+    - cloud_structured
+    - local_vlm
+    - local_rules
+    - local_deterministic
+    - skipped
+    - none
+
+terminal_states:
+  succeeded:
+    definition: "All required artifacts and hard quality gates pass."
+  degraded:
+    definition: "Complete usable artifacts exist but one or more enhancement stages degraded or quality is limited."
+    auto_publish_artifacts: true
+    explicit_ui_reason_required: true
+    qwen_smart_summary_label_forbidden: true
+  failed:
+    definition: "Required artifacts, factual/source hard gates or safe compilation fail."
+  cancelled:
+    definition: "User cancellation."
+
+artifacts:
+  add_or_upgrade:
+    evidence_corrections: knowledge/evidence-corrections.json
+    editorial_policy: knowledge/editorial-policy.json
+    document_blueprint: knowledge/document-blueprint-v2.json
+    chapter_components: knowledge/chapters/v3.1
+    document_v3: knowledge/document-v3.json
+    quality_report: knowledge/quality-report-v2.json
+    page_report: state/previews/{revision}/page-report.json
+  tool_audit:
+    store_safe_summary_only: true
+    raw_provider_response_forbidden: true
+    secrets_forbidden: true
+
+cache_fingerprint_required_fields:
+  - role
+  - stage
+  - provider_capability
+  - model
+  - prompt_version
+  - tool_schema_version
+  - editorial_policy_version
+  - contract_version
+  - input_artifact_digests
+  - blueprint_or_document_revision
+  - editorial_brief_hash
+  - content_level
+  - visual_level
+  - generation_parameters
+
+migration:
+  default_reuse_upstream_artifacts:
+    - source
+    - audio
+    - transcript
+    - frame_candidates
+    - selected_frames
+    - visual_evidence
+    - course_ir
+  default_invalidate_from: evidence.reconcile
+  old_document_v2_v3: read_only
+  old_workspace_delete: false
+  old_output_overwrite: false
+  checkpoint_cross_graph_version_migration: false
+  rollback_baseline: "V6.0 / 1.0.0rc1"
+  v6_1_candidate_version: "1.0.0rc2"
+
+diagnostics:
+  required_fields:
+    - graph_version
+    - tool_contract_version
+    - editorial_policy_version
+    - blueprint_version
+    - document_contract_version
+    - renderer_capability_version
+    - provider_model_capability
+    - tool_turns
+    - token_usage
+    - cache_hits
+    - provenance
+    - degradation_reasons
+    - quality_issue_ids
+    - component_revision
+    - equation_count
+    - word_omml_count
+    - image_count
+    - source_reference_count
+    - page_audit_summary
+    - suggested_rerun_node
+  tool_log_fields:
+    - tool_name
+    - args_hash
+    - result_size
+    - error_code
+    - revision
+  tool_log_forbidden:
+    - secrets
+    - full_tool_arguments_with_source_text
+    - full_model_response
+    - image_data
+
+test_matrix:
+  characterization:
+    - current_plan_is_legacy_wrapper
+    - current_renderer_downgrades_v3
+    - current_word_has_no_omml
+    - current_degraded_writer_can_look_cloud
+  tool_protocol:
+    - content_only
+    - single_valid_tool_call
+    - invalid_args
+    - unknown_tool
+    - multiple_mutation_calls
+    - tool_call_id_roundtrip
+    - revision_conflict
+    - scope_violation
+    - no_progress
+    - budget_exhaustion
+    - provider_unsupported
+  graph:
+    - direct_blueprint_submit_one_call
+    - observe_then_submit_two_calls
+    - invalid_then_single_retry
+    - writer_batches_cache
+    - local_audit_pass_no_cloud_critic
+    - audit_fail_patch_rerender
+    - checkpoint_resume_without_duplicate_cost
+    - tool_native_structured_local_same_contract
+  degradation:
+    - tool_native_to_structured_only
+    - structured_only_to_local
+    - local_vlm_unavailable
+    - cloud_budget_exhausted
+    - cloud_timeout_and_truncation
+    - preview_word_pdf_failure
+  document_renderer:
+    - component_parameterized_mapping
+    - word_heading_numbering_table_image_link_omml
+    - pdf_page_render
+    - forbidden_not_injected
+    - cross_format_parity
+    - legacy_read_only
+  golden:
+    - high_math_example
+    - high_math_definition
+    - strong_visual
+    - weak_visual
+  ui:
+    - editorial_brief_propagation
+    - local_cloud_mode
+    - degraded_reason
+    - output_buttons
+    - source_link
+  acceptance:
+    - unittest_discover
+    - compileall
+    - pip_check
+    - git_diff_check
+    - yaml_parse
+    - local_link_check
+    - architecture_guard
+
+phases:
+  - id: CP61-0
+    name: baseline_and_contract
+    production_behavior_change: false
+  - id: CP61-1
+    name: local_editorial_protocol
+    production_behavior_change: false
+  - id: CP61-2
+    name: native_v31_renderers_and_quality
+    production_behavior_change: false
+  - id: CP61-3
+    name: cloud_tool_port_and_capability_gate
+    production_behavior_change: false
+    real_cloud_allowed: false
+  - id: CP61-4
+    name: editorial_agent_subgraph
+    production_behavior_change: false
+    real_cloud_allowed: false
+  - id: CP61-5
+    name: production_cutover
+    production_behavior_change: true
+  - id: CP61-6
+    name: diagnostics_migration_fault_matrix
+    production_behavior_change: true
+  - id: CP61-7
+    name: offline_golden_ui_acceptance
+    production_behavior_change: true
+    real_cloud_allowed: false
+  - id: CP61-8
+    name: authorized_real_capability_and_rc2
+    production_behavior_change: true
+    real_cloud_requires_separate_authorization: true
+
+authorizations:
+  architecture_document_write: true
+  source_code_implementation: false
+  real_cloud_requests: false
+  cloud_image_upload: false
+  model_download_or_change: false
+  dependency_install_or_reinstall: false
+  long_video_rerun: false
+  portable_rebuild: false
+
+definition_of_done:
+  - "EditorialAgentSubgraph is the only production document editorial path."
+  - "Function Calling, structured cloud and pure local paths pass the same output contract."
+  - "Normal short video meets the two-call target; conditional calls remain bounded."
+  - "No production v3_to_v2 rendering remains."
+  - "Forbidden legacy visible sections are not injected."
+  - "Confirmed math equations map to Word OMML."
+  - "The two high-math golden outputs do not expose long raw erroneous ASR as polished rules or steps."
+  - "Images have role, source, caption, alt text and duplicate control; cloud image requests stay zero."
+  - "Local no-cloud execution produces Document v3.1, Markdown, Word and PDF with truthful status."
+  - "Stage provenance and degraded UI labels are truthful."
+  - "Checkpoint/cache replay produces zero duplicate cost for successful cloud/tool turns."
+  - "Diagnostics identify owner, error code, revision and suggested rerun node."
+  - "All targeted, golden, fault, UI and complete offline acceptance tests pass."
+  - "Product reaches 1.0.0rc2; formal 1.0.0 still requires user release confirmation."

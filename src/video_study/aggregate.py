@@ -17,7 +17,7 @@ from .providers import (
     CloudOutputTruncated,
     FallbackChatClient,
 )
-from .render import DocumentAdapter
+from .render import DocumentAdapterV31
 from .utils import TaskCancelled, ensure_not_cancelled, now_iso, safe_name
 from .execution.artifacts import FileArtifactStore, WorkspaceCatalog, WorkspaceLayout, read_document_v2
 from .execution.events import RunEventJournal
@@ -327,7 +327,78 @@ def _local_aggregate_documents(documents: list[dict], point_map: dict[str, dict]
     return v1_to_v2(document)
 
 
-def aggregate_documents(config: AppConfig, results: list[dict], qwen_settings: dict) -> dict:
+def _read_aggregate_document(path: Path) -> dict:
+    """读取聚合输入：v3.1 用只读投影转 v2 形状；历史 v2 直接读取。"""
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if str(value.get("contract_version", "")) == "document-v3.1":
+        from .editorial.document import v31_to_legacy_document
+        return v31_to_legacy_document(value)
+    return read_document_v2(path)
+
+
+def _aggregate_document_v31(document: dict, *, mode: str) -> dict:
+    """把聚合后的 v2 形状文档确定性编译为 Document v3.1（组件树权威）。"""
+    from .editorial.document import build_v31_document, make_component
+    components: list[dict] = []
+    for index, section in enumerate(document.get("sections", []), start=1):
+        chapter_children: list[dict] = [
+            make_component(
+                "heading", component_id=f"aggregate.{index:03d}.h", semantic_role="heading",
+                text=str(section.get("title", "")), level=2,
+            ),
+        ]
+        summary = str(section.get("summary", "") or "")
+        if summary:
+            chapter_children.append(make_component(
+                "paragraph", component_id=f"aggregate.{index:03d}.summary", semantic_role="paragraph",
+                text=summary, source_refs={},
+            ))
+        for point_index, point in enumerate(section.get("knowledge_points", []), start=1):
+            statement = str(point.get("statement", "") or "")
+            explanation = str(point.get("explanation", "") or "")
+            point_children: list[dict] = [
+                make_component(
+                    "paragraph", component_id=f"aggregate.{index:03d}.p{point_index:03d}.body",
+                    semantic_role="paragraph", text=explanation,
+                    source_refs=dict(point.get("source_refs", {}) or {}),
+                ),
+                make_component(
+                    "source_reference", component_id=f"aggregate.{index:03d}.p{point_index:03d}.src",
+                    semantic_role="source_reference",
+                    source_refs=dict(point.get("source_refs", {}) or {}),
+                    links=list((point.get("source_refs") or {}).get("links", [])) if isinstance(point.get("source_refs"), dict) else [],
+                ),
+            ]
+            chapter_children.append(make_component(
+                "container", component_id=f"aggregate.{index:03d}.p{point_index:03d}",
+                semantic_role="knowledge_point", title=statement, children=point_children,
+            ))
+        components.append(make_component(
+            "container", component_id=f"aggregate.{index:03d}", semantic_role="chapter",
+            title=str(section.get("title", "")), children=chapter_children,
+        ))
+    result = build_v31_document(
+        metadata=dict(document.get("metadata", {})),
+        components=components,
+        provenance={
+            "intent": "local_deterministic" if mode == "local" else "cloud_structured",
+            "evidence_reconcile": "skipped",
+            "blueprint": "local_deterministic" if mode == "local" else "cloud_structured",
+            "chapter_writing": {f"aggregate.{index:03d}": "local_deterministic" if mode == "local" else "cloud_structured" for index, _ in enumerate(document.get("sections", []), start=1)},
+            "page_audit": "local_rules",
+            "final_repair": "local_deterministic",
+        },
+    )
+    for key in (
+        "overview", "learning_objectives", "notice", "mode", "model",
+        "model_attempts", "cloud_usage", "knowledge_pipeline",
+    ):
+        if key in document:
+            result[key] = document[key]
+    return result
+
+
+def _aggregate_documents_graph_node(config: AppConfig, results: list[dict], qwen_settings: dict) -> dict:
     run_id = uuid.uuid4().hex
     ordered_sources = [{
         "position": index,
@@ -397,7 +468,7 @@ def _aggregate_documents_impl(config: AppConfig, results: list[dict], qwen_setti
         markdown_path = Path(result["markdown"])
         if not document_path.is_file() or not markdown_path.is_file():
             raise FileNotFoundError("聚合所需的结构化文档或 Markdown 不完整")
-        documents.append(read_document_v2(document_path))
+        documents.append(_read_aggregate_document(document_path))
         markdown_paths.append(markdown_path)
     _aggregate_event(qwen_settings, "aggregate_inputs_completed", "聚合输入校验完成", source_count=len(documents))
     source, point_map = _aggregate_source(documents)
@@ -610,17 +681,20 @@ def _aggregate_documents_impl(config: AppConfig, results: list[dict], qwen_setti
     document = v1_to_v2(document)
     output_dir = config.path("paths", "output_dir") / document["metadata"]["video_id"]
     title = safe_name(str(document["metadata"].get("document_title") or document["metadata"].get("title", "aggregate")))
-    document_json = output_dir / "document.json"
+    document = _aggregate_document_v31(document, mode="cloud" if document.get("mode") == "cloud_aggregate" else "local")
+    document_json = output_dir / "document-v3.json"
     markdown = output_dir / f"{title}.md"
     docx = output_dir / f"{title}.docx"
     pdf = output_dir / f"{title}.pdf"
-    FileArtifactStore().write_document_v2(document_json, document)
-    document_port = DocumentAdapter(config.root, include_transcript=False)
+    FileArtifactStore().write_document_v3(document_json, document)
+    document_port = DocumentAdapterV31(config.root)
     ensure_not_cancelled(cancel_check)
     _aggregate_event(qwen_settings, "aggregate_render_started", "开始生成聚合 Markdown、Word 和 PDF")
-    document_port.render_markdown(document, markdown)
+    document_port.render_markdown(document, markdown, source_document=document_json)
     document_port.render_word(document_json, docx, cancel_check=cancel_check)
-    pdf_mode = document_port.render_pdf(document, docx, pdf, cancel_check=cancel_check)
+    pdf_mode = document_port.render_pdf(
+        document, docx, pdf, source_document=document_json, cancel_check=cancel_check,
+    )
     _aggregate_event(
         qwen_settings, "aggregate_render_completed", "聚合文档生成完成",
         markdown=markdown, docx=docx, pdf=pdf, pdf_mode=pdf_mode,
@@ -649,23 +723,26 @@ def _local_aggregate_documents_impl(config: AppConfig, results: list[dict], sett
         markdown_path = Path(result["markdown"])
         if not document_path.is_file() or not markdown_path.is_file():
             raise FileNotFoundError("聚合所需的结构化文档或 Markdown 不完整")
-        documents.append(read_document_v2(document_path))
+        documents.append(_read_aggregate_document(document_path))
         markdown_paths.append(markdown_path)
     source, point_map = _aggregate_source(documents)
     document = _local_aggregate_documents(documents, point_map, settings)
     output_dir = config.path("paths", "output_dir") / document["metadata"]["video_id"]
     title = safe_name(str(document["metadata"].get("document_title", "本地聚合")))
-    document_json = output_dir / "document.json"
+    document = _aggregate_document_v31(document, mode="local")
+    document_json = output_dir / "document-v3.json"
     markdown = output_dir / f"{title}.md"
     docx = output_dir / f"{title}.docx"
     pdf = output_dir / f"{title}.pdf"
-    FileArtifactStore().write_document_v2(document_json, document)
-    document_port = DocumentAdapter(config.root, include_transcript=False)
+    FileArtifactStore().write_document_v3(document_json, document)
+    document_port = DocumentAdapterV31(config.root)
     ensure_not_cancelled(cancel_check)
     _aggregate_event(settings, "local_aggregate_render_started", "开始生成本地聚合 Markdown、Word 和 PDF")
-    document_port.render_markdown(document, markdown)
+    document_port.render_markdown(document, markdown, source_document=document_json)
     document_port.render_word(document_json, docx, cancel_check=cancel_check)
-    pdf_mode = document_port.render_pdf(document, docx, pdf, cancel_check=cancel_check)
+    pdf_mode = document_port.render_pdf(
+        document, docx, pdf, source_document=document_json, cancel_check=cancel_check,
+    )
     _aggregate_event(
         settings, "local_aggregate_render_completed", "本地聚合文档生成完成",
         markdown=markdown, docx=docx, pdf=pdf, pdf_mode=pdf_mode,
@@ -677,7 +754,7 @@ def _local_aggregate_documents_impl(config: AppConfig, results: list[dict], sett
     }
 
 
-def local_aggregate_documents(
+def _local_aggregate_documents_graph_node(
     config: AppConfig,
     results: list[dict],
     *,
@@ -738,3 +815,35 @@ def local_aggregate_documents(
             traceback_text=traceback.format_exc(),
         )
         raise
+
+
+def aggregate_documents(config: AppConfig, results: list[dict], qwen_settings: dict) -> dict:
+    """Authorized cloud aggregate production entrypoint through AggregateGraph."""
+    from .execution.graphs.aggregate_graph import AggregateGraph
+
+    state = AggregateGraph().run(
+        "cloud",
+        results,
+        cloud_authorized=True,
+        execute=lambda rows: _aggregate_documents_graph_node(config, rows, qwen_settings),
+    )
+    return dict(state["aggregate_result"])
+
+
+def local_aggregate_documents(
+    config: AppConfig,
+    results: list[dict],
+    *,
+    cancel_check=None,
+) -> dict:
+    """Deterministic local aggregate production entrypoint through AggregateGraph."""
+    from .execution.graphs.aggregate_graph import AggregateGraph
+
+    state = AggregateGraph().run(
+        "local",
+        results,
+        execute=lambda rows: _local_aggregate_documents_graph_node(
+            config, rows, cancel_check=cancel_check,
+        ),
+    )
+    return dict(state["aggregate_result"])

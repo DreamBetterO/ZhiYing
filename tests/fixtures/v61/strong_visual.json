@@ -1,0 +1,47 @@
+{
+  "id": "strong_visual",
+  "kind": "strong_visual",
+  "description": "强视觉样本：讲解含明确指图线索（看这里/左边/这根/图），visual.evidence 给出 select 决策与裁剪建议。用于验证图片职责、来源、caption/alt、去重与相邻内容匹配门。",
+  "policy": {
+    "required": ["图中对象必须与讲解内容对应"],
+    "preferred": ["图片帮助理解"],
+    "forbidden": ["无职责图片", "重复同场景图片"]
+  },
+  "transcript": {
+    "schema_version": 1,
+    "segments": [
+      {"segment_id": "seg_00001", "start_seconds": 0.0, "end_seconds": 6.0, "text": "大家看这里，左边这一根线就是中枢的边界"},
+      {"segment_id": "seg_00002", "start_seconds": 6.0, "end_seconds": 18.0, "text": "图上标出的这个区间，就是重叠区间，价格在这里反复震荡"},
+      {"segment_id": "seg_00003", "start_seconds": 18.0, "end_seconds": 30.0, "text": "我们对比右边这张图，突破之后的走势明显不同"}
+    ]
+  },
+  "plan": {
+    "units": [
+      {"plan_id": "plan_001", "title": "中枢的边界与重叠区间", "role": "core", "type": "concept", "needs_visual": true, "source_segment_ids": ["seg_00001", "seg_00002"]}
+    ]
+  },
+  "visual_evidence": [
+    {
+      "evidence_id": "ve_vq_001_01",
+      "decision": "select",
+      "image_path": "images/candidates/candidate_00001.jpg",
+      "frame_id": "candidate_00001",
+      "source_timestamp": 10.0,
+      "visual_role": "explain",
+      "suggested_caption": "画面中可辨认中枢边界与重叠区间（00:00:10）",
+      "explanation_for_reader": "看哪里：画面中可辨认中枢边界；看到什么：区间与边界标注；为什么重要：支撑重叠区间的讲解",
+      "match_reason": "本地 VLM 比较候选并通过视觉成功条件校验",
+      "source": "qwen3-vl-2b-local",
+      "scene_cluster_id": "scene_00001",
+      "confidence": 0.92
+    }
+  ],
+  "golden": {
+    "allowed_image_decisions": ["supportive", "required"],
+    "image_requires_role_source_caption_alt": true,
+    "scene_duplicate_max": 1,
+    "no_match_is_valid": true,
+    "nearest_frame_silent_fallback": false,
+    "cloud_image_upload": false
+  }
+}

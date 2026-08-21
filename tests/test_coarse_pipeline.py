@@ -5,13 +5,15 @@ import unittest
 from contextlib import ExitStack
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from PIL import Image
 
 from video_study.config import AppConfig
-from video_study.execution.artifacts import ArtifactId
+from video_study.execution.artifacts import ArtifactId, WorkspaceCatalog
 from video_study.execution.steps.coarse import build_coarse_steps
+from video_study.execution.graph_runtime import GraphRuntime
 from video_study.pipeline import process_video
 from video_study.utils import TaskCancelled
 
@@ -135,7 +137,10 @@ class CoarseProductionPipelineTests(unittest.TestCase):
                 "source.probe", "audio.extract", "transcript.decode", "transcript.normalize",
                 "frames.candidates", "frames.select", "knowledge.plan", "visual.jobs",
                 "visual.evidence", "frames.semantics", "knowledge.course_ir",
-                "knowledge.units", "knowledge.selfcheck", "document.assemble", "render.bundle",
+                "knowledge.units", "knowledge.selfcheck", "editorial.policy",
+                "evidence.reconcile", "document.blueprint", "document.write",
+                "document.assemble", "document.validate",
+                "render.markdown", "render.word", "render.pdf", "render.verify",
             ),
         )
 
@@ -161,27 +166,92 @@ class CoarseProductionPipelineTests(unittest.TestCase):
         self.assertEqual(set(result), {
             "video_id", "manifest", "markdown", "docx", "pdf", "pdf_mode", "mode",
             "model", "model_attempts", "cloud_usage", "runtime_events", "degradations",
-            "asr_runtime", "visual_runtime", "compute_summary",
+            "asr_runtime", "visual_runtime", "compute_summary", "status",
+            "editorial_mode", "degradation_summary",
         })
         self.assertTrue(all(Path(result[key]).is_file() for key in ("manifest", "markdown", "docx", "pdf")))
+        document_v3 = Path(result["manifest"]).parent / "knowledge" / "document-v3.json"
+        self.assertEqual(json.loads(document_v3.read_text(encoding="utf-8"))["schema_version"], 3)
+        self.assertFalse((Path(result["manifest"]).parent / "knowledge" / "document.json").exists())
         self.assertTrue(all(row.get("run_id") and row.get("step_id") and row.get("code") for row in events))
         state = json.loads((Path(result["manifest"]).parent / "state" / "pipeline-state.json").read_text(encoding="utf-8"))
         self.assertEqual(set(state["steps"]), {
             "source.probe", "audio.extract", "transcript.decode", "transcript.normalize",
             "frames.candidates", "frames.select", "knowledge.plan", "visual.jobs",
             "visual.evidence", "frames.semantics", "knowledge.course_ir",
-            "knowledge.units", "knowledge.selfcheck", "document.assemble", "render.bundle",
+            "knowledge.units", "knowledge.selfcheck", "editorial.policy",
+            "evidence.reconcile", "document.blueprint", "document.write",
+            "document.assemble", "document.validate",
+            "render.markdown", "render.word", "render.pdf", "render.verify",
         })
-        self.assertTrue(all(value["status"] == "succeeded" for value in state["steps"].values()))
+        self.assertEqual(state["steps"]["document.assemble"]["status"], "degraded")
+        self.assertTrue(all(
+            value["status"] == "succeeded"
+            for key, value in state["steps"].items() if key != "document.assemble"
+        ))
         run_log = Path(result["manifest"]).parent / "state" / "runs" / f"{state['run_id']}.jsonl"
         self.assertTrue(run_log.is_file())
         readable_log = run_log.with_suffix(".log")
         summary_log = run_log.with_suffix(".summary.json")
         self.assertTrue(readable_log.is_file())
         summary = json.loads(summary_log.read_text(encoding="utf-8"))
-        self.assertEqual(summary["status"], "succeeded")
-        self.assertEqual(len(summary["steps"]), 15)
+        self.assertEqual(summary["status"], "degraded")
+        self.assertEqual(len(summary["steps"]), 23)
         self.assertEqual(summary["metadata"]["work_type"], "video_processing")
+
+    def test_real_fifteen_steps_run_through_production_graph(self) -> None:
+        with self.fake_middleware():
+            result = process_video(
+                self.config, self.video, cloud_summary=False
+            )
+        state = json.loads(
+            (Path(result["manifest"]).parent / "state" / "pipeline-state.json")
+            .read_text(encoding="utf-8")
+        )
+        self.assertEqual(len(state["steps"]), 23)
+        self.assertEqual(state["steps"]["document.assemble"]["status"], "degraded")
+        self.assertTrue(all(
+            row["status"] == "succeeded"
+            for key, row in state["steps"].items() if key != "document.assemble"
+        ))
+        self.assertTrue(
+            all(Path(result[key]).is_file() for key in ("markdown", "docx", "pdf"))
+        )
+
+    def test_graph_replay_real_fixture_outputs_and_terminal_events_are_stable(self) -> None:
+        first_events, replay_events = [], []
+        with self.fake_middleware():
+            first_result = process_video(
+                self.config,
+                self.video,
+                cloud_summary=False,
+                event=first_events.append,
+            )
+        expected = {
+            key: Path(first_result[key]).read_bytes()
+            for key in ("markdown", "docx", "pdf")
+        }
+        WorkspaceCatalog(
+            self.config.path("paths", "workspace_dir"),
+            project_root=self.root,
+        ).delete_video(self.video, self.config.path("paths", "output_dir"))
+
+        with self.fake_middleware():
+            replay_result = process_video(
+                self.config,
+                self.video,
+                cloud_summary=False,
+                event=replay_events.append,
+            )
+        for key in ("markdown", "docx", "pdf"):
+            with self.subTest(artifact=key):
+                self.assertEqual(expected[key], Path(replay_result[key]).read_bytes())
+        stable = lambda events: [
+            (event["step_id"], event["status"], event.get("cache_reason"))
+            for event in events
+            if event.get("type") == "step_state"
+        ]
+        self.assertEqual(stable(first_events), stable(replay_events))
 
     def test_second_fully_cached_run_constructs_no_middleware(self) -> None:
         with self.fake_middleware():
@@ -199,7 +269,7 @@ class CoarseProductionPipelineTests(unittest.TestCase):
         for constructor in mocks:
             constructor.assert_not_called()
         step_events = [row for row in second["runtime_events"] if row.get("type") == "step_state"]
-        self.assertEqual(len(step_events), 15)
+        self.assertEqual(len(step_events), 23)
         self.assertTrue(all(row["status"] == "cached" for row in step_events))
         self.assertEqual(second["asr_runtime"]["cache_hit"], True)
         self.assertEqual(first["pdf"], second["pdf"])
