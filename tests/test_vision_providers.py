@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from pathlib import Path
 
-from video_study.execution.adapters.vision import (
+from zhiying.execution.adapters.vision import (
     LocalQwenVLProvider,
     QwenVLSession,
     VisionAdapter,
@@ -26,7 +26,7 @@ class VisionProviderTests(unittest.TestCase):
         )
         provider = MagicMock()
         with patch(
-            "video_study.execution.adapters.vision.create_visual_provider",
+            "zhiying.execution.adapters.vision.create_visual_provider",
             return_value=(provider, ""),
         ) as create:
             session = adapter.open_session({"setting_b": 2})
@@ -50,8 +50,8 @@ class VisionProviderTests(unittest.TestCase):
         process.stdout = None
         process.stderr = None
         with (
-            patch("video_study.execution.adapters.vision.subprocess.Popen", return_value=process),
-            patch("video_study.execution.adapters.vision.threading.Thread"),
+            patch("zhiying.execution.adapters.vision.subprocess.Popen", return_value=process),
+            patch("zhiying.execution.adapters.vision.threading.Thread"),
             patch.object(session, "_wait_for", return_value={"model_load_count": 1}),
         ):
             session.start()

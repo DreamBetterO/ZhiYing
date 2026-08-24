@@ -5,13 +5,13 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from video_study.aggregate import (
+from zhiying.application.aggregation import (
     _aggregate_prompt, _aggregate_source, _split_source_for_prompts,
     _validate_aggregate, aggregate_documents,
 )
-from video_study.providers import ModelAttempt
-from video_study.config import AppConfig
-from video_study.knowledge.adapter import v1_to_v2
+from zhiying.providers import ModelAttempt
+from zhiying.config import AppConfig
+from zhiying.knowledge.adapter import v1_to_v2
 
 
 class AggregateTests(unittest.TestCase):
@@ -132,10 +132,10 @@ class AggregateTests(unittest.TestCase):
             client = SimpleNamespace(create_json=lambda **_kwargs: (payload, "model-a", [], {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}))
             config = AppConfig(root, {"paths": {"output_dir": "output"}})
             qwen = {"_runtime_api_key": "temporary", "_runtime_base_url": "https://example.com/v1", "_runtime_models": ["model-a"], "_runtime_max_calls": 1, "budget": {"max_calls_per_video": 1, "max_input_chars": 60000, "max_output_tokens": 1000}}
-            with patch("video_study.aggregate.FallbackChatClient", return_value=client), patch("video_study.aggregate.DocumentAdapterV31") as adapter:
+            with patch("zhiying.application.aggregation.FallbackChatClient", return_value=client), patch("zhiying.application.aggregation.DocumentAdapterV31") as adapter:
                 adapter.return_value.render_pdf.return_value = "fallback"
                 result = aggregate_documents(config, results, qwen)
-            from video_study.document_v3 import v3_to_v2
+            from zhiying.documents.v3 import v3_to_v2
             stored = json.loads(Path(result["manifest"]).read_text(encoding="utf-8"))
             aggregate = v3_to_v2(stored)
             links = aggregate["sections"][0]["knowledge_points"][0]["source_refs"]["links"]
@@ -208,7 +208,7 @@ class AggregateTests(unittest.TestCase):
                 "_runtime_models": ["model-a"], "_runtime_max_calls": 5,
                 "budget": {"max_calls_per_video": 5, "max_input_chars": 60000, "max_output_tokens": 5000},
             }
-            with patch("video_study.aggregate.FallbackChatClient", return_value=client), patch("video_study.aggregate.DocumentAdapterV31") as adapter:
+            with patch("zhiying.application.aggregation.FallbackChatClient", return_value=client), patch("zhiying.application.aggregation.DocumentAdapterV31") as adapter:
                 adapter.return_value.render_pdf.return_value = "fallback"
                 result = aggregate_documents(config, results, qwen)
 
@@ -218,7 +218,7 @@ class AggregateTests(unittest.TestCase):
             self.assertEqual(result["cloud_usage"]["requests_used"], 3)
             codes = [event["code"] for event in result["runtime_events"]]
             self.assertEqual(codes.count("aggregate_batch_completed"), 2)
-            from video_study.document_v3 import v3_to_v2
+            from zhiying.documents.v3 import v3_to_v2
             aggregate = v3_to_v2(json.loads(Path(result["manifest"]).read_text(encoding="utf-8")))
             point = aggregate["sections"][0]["knowledge_points"][0]
             self.assertEqual(point["source_refs"]["start_seconds"], 1.0)

@@ -6,10 +6,10 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
-from video_study.execution.artifacts import ArtifactId, ArtifactRef, WorkspaceLayout
-from video_study.execution.bootstrap import build_runtime_services
-from video_study.execution.cache import CacheDecision, CacheReason
-from video_study.execution.context import (
+from zhiying.execution.artifacts import ArtifactId, ArtifactRef, WorkspaceLayout
+from zhiying.execution.bootstrap import build_runtime_services
+from zhiying.execution.cache import CacheDecision, CacheReason
+from zhiying.execution.context import (
     CloudCredentials,
     ProcessingContext,
     ProcessingOptions,
@@ -17,11 +17,11 @@ from video_study.execution.context import (
     RuntimeServices,
     VideoSource,
 )
-from video_study.execution.contracts import FingerprintMaterial, StepOutcome, StepSpec, StepStatus
-from video_study.execution.registry import StepRegistry
-from video_study.execution.graph_runtime import GraphRuntime
-from video_study.providers import CloudRequestBudget, OpenAICloudJsonAdapter
-from video_study.utils import LocalProcessAdapter
+from zhiying.execution.contracts import FingerprintMaterial, StepOutcome, StepSpec, StepStatus
+from zhiying.execution.registry import StepRegistry
+from zhiying.execution.graph_runtime import GraphRuntime
+from zhiying.providers import CloudRequestBudget, OpenAICloudJsonAdapter
+from zhiying.utils import LocalProcessAdapter
 
 from tests.fakes_execution import (
     FakeCloudJsonPort,
@@ -60,11 +60,11 @@ class PortFakeContractTests(unittest.TestCase):
 class CompositionRootTests(unittest.TestCase):
     def test_offline_composition_has_no_cloud_factory_and_constructs_nothing(self) -> None:
         with TemporaryDirectory() as directory, \
-                patch("video_study.media.MediaAdapter") as media, \
-                patch("video_study.asr.SpeechAdapter") as speech, \
-                patch("video_study.execution.adapters.vision.VisionAdapter") as vision, \
-                patch("video_study.render.DocumentAdapter") as document, \
-                patch("video_study.utils.LocalProcessAdapter") as process:
+                patch("zhiying.media.processing.MediaAdapter") as media, \
+                patch("zhiying.media.speech.SpeechAdapter") as speech, \
+                patch("zhiying.execution.adapters.vision.VisionAdapter") as vision, \
+                patch("zhiying.render.DocumentAdapter") as document, \
+                patch("zhiying.utils.LocalProcessAdapter") as process:
             services = build_runtime_services(
                 project_root=Path(directory),
                 model_dir=Path(directory) / "models",
@@ -91,7 +91,7 @@ class CompositionRootTests(unittest.TestCase):
                 options=ProcessingOptions(knowledge={"max_output_tokens": 1234}),
                 policy=policy, credentials=credentials, cloud_budget=budget,
             )
-            with patch("video_study.providers.FallbackChatClient") as client:
+            with patch("zhiying.providers.FallbackChatClient") as client:
                 cloud = services.port("cloud")
                 client.assert_not_called()
             self.assertIs(cloud.budget, budget)
@@ -151,7 +151,7 @@ class ConcreteAdapterTests(unittest.TestCase):
         budget = CloudRequestBudget(2)
         fake_client = Mock()
         fake_client.create_json.return_value = ({"ok": True}, "model-a", [], {})
-        with patch("video_study.providers.FallbackChatClient", return_value=fake_client) as constructor:
+        with patch("zhiying.providers.FallbackChatClient", return_value=fake_client) as constructor:
             adapter = OpenAICloudJsonAdapter(
                 api_key="top-secret", base_url="https://example.invalid/v1",
                 models=["model-a"], budget=budget,
@@ -173,21 +173,21 @@ class ConcreteAdapterTests(unittest.TestCase):
             self.assertNotIn(secret, redacted)
 
     def test_document_speech_and_vision_adapters_delegate_without_real_middleware(self) -> None:
-        from video_study.asr import SpeechAdapter
-        from video_study.execution.adapters.vision import VisionAdapter
-        from video_study.render import DocumentAdapter
+        from zhiying.media.speech import SpeechAdapter
+        from zhiying.execution.adapters.vision import VisionAdapter
+        from zhiying.render import DocumentAdapter
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            with patch("video_study.asr.decode_audio", return_value={"segments": []}) as decode_audio:
+            with patch("zhiying.media.speech.decode_audio", return_value={"segments": []}) as decode_audio:
                 speech = SpeechAdapter(root / "models", config_root=root, cancel_check=lambda: False)
                 speech.decode(root / "audio.flac", root / "transcript.json", {"engine": "fake"}, cancel_check=lambda: False)
             self.assertLessEqual(decode_audio.call_count, 1)
 
             document = DocumentAdapter(root)
-            with patch("video_study.render.render_markdown") as markdown, \
-                    patch("video_study.render.render_docx") as word, \
-                    patch("video_study.render.convert_docx_to_pdf", return_value="built_in") as pdf:
+            with patch("zhiying.render.render_markdown") as markdown, \
+                    patch("zhiying.render.render_docx") as word, \
+                    patch("zhiying.render.convert_docx_to_pdf", return_value="built_in") as pdf:
                 document.render_markdown({}, root / "out.md")
                 document.render_word(root / "document.json", root / "out.docx", cancel_check=lambda: False)
                 self.assertEqual(document.render_pdf({}, root / "out.docx", root / "out.pdf", cancel_check=lambda: False), "built_in")
@@ -196,7 +196,7 @@ class ConcreteAdapterTests(unittest.TestCase):
             provider = Mock()
             provider.start_session.return_value = 0.1
             provider.compare_candidates.return_value = {"decision": "no_match"}
-            with patch("video_study.execution.adapters.vision.create_visual_provider", return_value=(provider, "")) as create:
+            with patch("zhiying.execution.adapters.vision.create_visual_provider", return_value=(provider, "")) as create:
                 vision = VisionAdapter({}, cancel_check=lambda: False, event_sink=lambda _event: None, progress_sink=lambda _event: None)
                 session = vision.open_session({})
                 self.assertEqual(session.compare({"question": {}, "candidates": [], "contract": {}})["decision"], "no_match")

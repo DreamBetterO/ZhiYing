@@ -5,14 +5,14 @@ import sys
 import unittest
 from unittest.mock import patch, MagicMock
 
-from video_study.single_instance import acquire_single_instance, _resource_key, SingleInstanceHandle
+from zhiying.infrastructure.single_instance import acquire_single_instance, _resource_key, SingleInstanceHandle
 
 
 class SingleInstanceTests(unittest.TestCase):
     def test_resource_key_is_stable_and_unique_per_project(self) -> None:
         key_a = _resource_key("/project-a")
         key_b = _resource_key("/project-b")
-        self.assertTrue(key_a.startswith("Global\\video-study-"))
+        self.assertTrue(key_a.startswith("Global\\ZhiYing-"))
         self.assertEqual(key_a, _resource_key("/project-a"))
         self.assertNotEqual(key_a, key_b)
 

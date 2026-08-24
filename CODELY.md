@@ -17,7 +17,7 @@
 - 执行文档（推理/架构/实施/测试/交接）放 `docs/迭代升级/`（紧凑 YAML/JSON 亦可），不拷贝进时间线。
 
 ## 执行纪律
-- 诊断先行：只读 `.venv\Scripts\python.exe scripts\diagnose_workspace.py workspace\<video_id>`，
+- 诊断先行：只读 `.venv\Scripts\python.exe scripts\diagnostics\diagnose_workspace.py workspace\<video_id>`，
   按 `step_id/error_code` 查 `docs/diagnostics/problem-index.yaml`，定位 owner/Artifact/测试。
 - 测试先行、最小改动：先补失败回归测试，再改最小责任模块；同任务目录串行，不用并发掩盖写入竞争。
 - 缓存优先：不无理由重跑长视频；先诊断既有 workspace 再决定清理。

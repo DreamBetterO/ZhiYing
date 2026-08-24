@@ -7,9 +7,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from video_study import utils
-from video_study.asr import _decode_qwen_audio
-from video_study.execution.adapters.vision import QwenVLSession
+from zhiying import utils
+from zhiying.media.speech import _decode_qwen_audio
+from zhiying.execution.adapters.vision import QwenVLSession
 
 
 class SubprocessVisibilityTests(unittest.TestCase):
@@ -21,7 +21,7 @@ class SubprocessVisibilityTests(unittest.TestCase):
     @unittest.skipUnless(hasattr(subprocess, "CREATE_NO_WINDOW"), "Windows-only behavior")
     def test_shared_run_uses_background_process_policy(self) -> None:
         completed = subprocess.CompletedProcess(["tool.exe"], 0, "ok", "")
-        with patch("video_study.utils.subprocess.run", return_value=completed) as runner:
+        with patch("zhiying.utils.subprocess.run", return_value=completed) as runner:
             self.assertIs(utils.run(["tool.exe"], capture=True), completed)
         self.assertTrue(runner.call_args.kwargs["creationflags"] & subprocess.CREATE_NO_WINDOW)
 
@@ -30,7 +30,7 @@ class SubprocessVisibilityTests(unittest.TestCase):
         process = MagicMock()
         process.poll.return_value = 0
         process.returncode = 0
-        with patch("video_study.utils.subprocess.Popen", return_value=process) as popen:
+        with patch("zhiying.utils.subprocess.Popen", return_value=process) as popen:
             utils.run_cancellable(["tool.exe"])
         self.assertTrue(popen.call_args.kwargs["creationflags"] & subprocess.CREATE_NO_WINDOW)
 
@@ -59,7 +59,7 @@ class SubprocessVisibilityTests(unittest.TestCase):
                 "qwen_model_dir": str(model),
                 "qwen_runner": str(runner),
             }
-            with patch("video_study.asr.subprocess.Popen", return_value=process) as popen:
+            with patch("zhiying.media.speech.subprocess.Popen", return_value=process) as popen:
                 with self.assertRaises(RuntimeError):
                     _decode_qwen_audio(audio, root / "temporary", settings, None)
         self.assertTrue(popen.call_args.kwargs["creationflags"] & subprocess.CREATE_NO_WINDOW)
@@ -75,8 +75,8 @@ class SubprocessVisibilityTests(unittest.TestCase):
         process.stdout = None
         process.stderr = None
         with (
-            patch("video_study.execution.adapters.vision.subprocess.Popen", return_value=process) as popen,
-            patch("video_study.execution.adapters.vision.threading.Thread"),
+            patch("zhiying.execution.adapters.vision.subprocess.Popen", return_value=process) as popen,
+            patch("zhiying.execution.adapters.vision.threading.Thread"),
             patch.object(session, "_wait_for", return_value={"model_load_count": 1}),
         ):
             session.start()

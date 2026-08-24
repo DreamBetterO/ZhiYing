@@ -4,8 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from video_study.config import AppConfig
-from video_study.desktop.settings import (
+from zhiying.config import AppConfig
+from zhiying.desktop.settings import (
     DesktopSettingsInput,
     save_source_download_dir,
     source_download_dir,

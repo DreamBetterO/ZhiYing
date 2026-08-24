@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from video_study.knowledge.schema import (
+from zhiying.knowledge.schema import (
     ChapterPlan,
     ContentBlock,
     ContentDecision,

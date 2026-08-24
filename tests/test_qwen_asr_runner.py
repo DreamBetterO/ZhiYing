@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import scripts.qwen_asr_runner as runner
+import scripts.workers.qwen_asr_runner as runner
 
 
 class QwenAsrRunnerTests(unittest.TestCase):
@@ -26,7 +26,7 @@ class QwenAsrRunnerTests(unittest.TestCase):
         def fake_find_spec(name: str):
             return object() if name == "qwen_asr" else None
 
-        with patch("scripts.qwen_asr_runner.importlib.util.find_spec", side_effect=fake_find_spec):
+        with patch("scripts.workers.qwen_asr_runner.importlib.util.find_spec", side_effect=fake_find_spec):
             self.assertEqual(runner._missing_modules(modules), ["nagisa"])
 
     def test_speed_threshold_is_warning_only_after_samples(self) -> None:

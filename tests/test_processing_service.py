@@ -5,10 +5,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from video_study.application.processing import DefaultProcessingService
-from video_study.application.requests import CloudAuthorization, ProcessingHandle, ProcessingRequest, ProcessingResult
-from video_study.config import AppConfig
-from video_study.progress import ProgressEvent
+from zhiying.application.processing import DefaultProcessingService
+from zhiying.application.requests import CloudAuthorization, ProcessingHandle, ProcessingRequest, ProcessingResult
+from zhiying.config import AppConfig
+from zhiying.progress import ProgressEvent
 
 
 class ProcessingServiceTests(unittest.TestCase):
@@ -75,7 +75,7 @@ class ProcessingServiceTests(unittest.TestCase):
                     "docx": "a.docx", "pdf": "a.pdf",
                 }
 
-            with patch("video_study.execution.bootstrap.run_compatible_pipeline", side_effect=fake_process):
+            with patch("zhiying.execution.bootstrap.run_compatible_pipeline", side_effect=fake_process):
                 handle = DefaultProcessingService(config).process(ProcessingRequest(video))
                 events = []
                 handle.subscribe(events.append)
@@ -98,7 +98,7 @@ class ProcessingServiceTests(unittest.TestCase):
                 self.assertEqual(url, "https://example.com/video")
                 return {"video_id": "url-id", "manifest": "m.json", "markdown": "a.md", "docx": "a.docx", "pdf": "a.pdf"}
 
-            with patch("video_study.execution.bootstrap.run_compatible_pipeline_from_url", side_effect=fake_from_url):
+            with patch("zhiying.execution.bootstrap.run_compatible_pipeline_from_url", side_effect=fake_from_url):
                 handle = DefaultProcessingService(config).process(ProcessingRequest(url="https://example.com/video"))
                 result = handle.wait(1)
 
@@ -117,7 +117,7 @@ class ProcessingServiceTests(unittest.TestCase):
             def fake_acquire(_config, url, **kwargs):
                 return {"path": "C:/v.mp4", "title": "T", "url": url, "video_id": "id", "cached": False}
 
-            with patch("video_study.execution.bootstrap.acquire_source_from_url", side_effect=fake_acquire):
+            with patch("zhiying.execution.bootstrap.acquire_source_from_url", side_effect=fake_acquire):
                 acquired = DefaultProcessingService(config).download_url("https://example.com/video")
 
             self.assertEqual(acquired["cached"], False)

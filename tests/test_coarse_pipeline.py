@@ -10,12 +10,12 @@ from unittest.mock import patch
 
 from PIL import Image
 
-from video_study.config import AppConfig
-from video_study.execution.artifacts import ArtifactId, WorkspaceCatalog
-from video_study.execution.steps.coarse import build_coarse_steps
-from video_study.execution.graph_runtime import GraphRuntime
-from video_study.pipeline import process_video
-from video_study.utils import TaskCancelled
+from zhiying.config import AppConfig
+from zhiying.execution.artifacts import ArtifactId, WorkspaceCatalog
+from zhiying.execution.steps.coarse import build_coarse_steps
+from zhiying.execution.graph_runtime import GraphRuntime
+from zhiying.application.pipeline import process_video
+from zhiying.utils import TaskCancelled
 
 
 class CoarseProductionPipelineTests(unittest.TestCase):
@@ -120,13 +120,13 @@ class CoarseProductionPipelineTests(unittest.TestCase):
 
     def fake_middleware(self) -> ExitStack:
         stack = ExitStack()
-        stack.enter_context(patch("video_study.media.MediaAdapter.probe", return_value={"format": {"duration": "1.0"}}))
-        stack.enter_context(patch("video_study.media.MediaAdapter.extract_audio", side_effect=self._audio))
-        stack.enter_context(patch("video_study.asr.SpeechAdapter.decode", side_effect=self._decode))
-        stack.enter_context(patch("video_study.media.MediaAdapter.extract_frame_candidates", side_effect=self._frames))
-        stack.enter_context(patch("video_study.render.DocumentAdapter.render_markdown", side_effect=self._render))
-        stack.enter_context(patch("video_study.render.DocumentAdapter.render_word", side_effect=self._render))
-        stack.enter_context(patch("video_study.render.DocumentAdapter.render_pdf", side_effect=self._pdf))
+        stack.enter_context(patch("zhiying.media.processing.MediaAdapter.probe", return_value={"format": {"duration": "1.0"}}))
+        stack.enter_context(patch("zhiying.media.processing.MediaAdapter.extract_audio", side_effect=self._audio))
+        stack.enter_context(patch("zhiying.media.speech.SpeechAdapter.decode", side_effect=self._decode))
+        stack.enter_context(patch("zhiying.media.processing.MediaAdapter.extract_frame_candidates", side_effect=self._frames))
+        stack.enter_context(patch("zhiying.render.DocumentAdapter.render_markdown", side_effect=self._render))
+        stack.enter_context(patch("zhiying.render.DocumentAdapter.render_word", side_effect=self._render))
+        stack.enter_context(patch("zhiying.render.DocumentAdapter.render_pdf", side_effect=self._pdf))
         return stack
 
     def test_registry_has_stable_steps_after_p6_knowledge_split(self) -> None:
@@ -151,9 +151,9 @@ class CoarseProductionPipelineTests(unittest.TestCase):
             return {"format": {"duration": "100.0"}}
 
         with ExitStack() as stack:
-            stack.enter_context(patch("video_study.media.MediaAdapter.probe", side_effect=probe))
-            stack.enter_context(patch("video_study.media.MediaAdapter.extract_audio", side_effect=self._audio))
-            decode = stack.enter_context(patch("video_study.asr.SpeechAdapter.decode", side_effect=self._decode))
+            stack.enter_context(patch("zhiying.media.processing.MediaAdapter.probe", side_effect=probe))
+            stack.enter_context(patch("zhiying.media.processing.MediaAdapter.extract_audio", side_effect=self._audio))
+            decode = stack.enter_context(patch("zhiying.media.speech.SpeechAdapter.decode", side_effect=self._decode))
             with self.assertRaisesRegex(RuntimeError, "音频提取不完整"):
                 process_video(self.config, self.video, cloud_summary=False)
 
@@ -257,11 +257,11 @@ class CoarseProductionPipelineTests(unittest.TestCase):
         with self.fake_middleware():
             first = process_video(self.config, self.video, cloud_summary=False)
         constructors = (
-            "video_study.media.MediaAdapter",
-            "video_study.asr.SpeechAdapter",
-            "video_study.execution.adapters.vision.VisionAdapter",
-            "video_study.render.DocumentAdapter",
-            "video_study.utils.LocalProcessAdapter",
+            "zhiying.media.processing.MediaAdapter",
+            "zhiying.media.speech.SpeechAdapter",
+            "zhiying.execution.adapters.vision.VisionAdapter",
+            "zhiying.render.DocumentAdapter",
+            "zhiying.utils.LocalProcessAdapter",
         )
         with ExitStack() as stack:
             mocks = [stack.enter_context(patch(name)) for name in constructors]
@@ -282,8 +282,8 @@ class CoarseProductionPipelineTests(unittest.TestCase):
         record = work / "state" / "cache" / "audio.extract.json"
         old_audio = audio.read_bytes()
         old_record = record.read_bytes()
-        with patch("video_study.media.MediaAdapter.probe", side_effect=AssertionError("source should be cached")), \
-                patch("video_study.media.MediaAdapter.extract_audio", side_effect=TaskCancelled("cancelled")):
+        with patch("zhiying.media.processing.MediaAdapter.probe", side_effect=AssertionError("source should be cached")), \
+                patch("zhiying.media.processing.MediaAdapter.extract_audio", side_effect=TaskCancelled("cancelled")):
             with self.assertRaises(TaskCancelled):
                 process_video(self.config, self.video, force=True, cloud_summary=False)
         self.assertEqual(audio.read_bytes(), old_audio)

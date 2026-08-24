@@ -9,9 +9,9 @@ from pathlib import Path
 
 from PIL import Image
 
-from video_study.editorial.document import build_v31_document, make_component
-from video_study.render import DocumentAdapterV31
-from video_study.render_v31 import (
+from zhiying.editorial.document import build_v31_document, make_component
+from zhiying.render import DocumentAdapterV31
+from zhiying.documents.render_v31 import (
     component_statistics,
     render_docx_v31,
     render_markdown_v31,
@@ -101,7 +101,7 @@ class NativeWordTests(unittest.TestCase):
             self.assertNotIn(label, document_xml)
 
     def test_word_omml_count_matches_equation_components(self) -> None:
-        from video_study.render_v31 import count_word_omml
+        from zhiying.documents.render_v31 import count_word_omml
         document = _v31_document()
         equations = component_statistics(document)["equations"]
         self.assertEqual(equations, 1)

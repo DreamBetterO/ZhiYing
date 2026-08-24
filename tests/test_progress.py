@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from video_study.progress import EtaEstimator, ProgressEvent
+from zhiying.progress import EtaEstimator, ProgressEvent
 
 
 class EtaEstimatorTests(unittest.TestCase):

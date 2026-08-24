@@ -6,8 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from video_study.render import convert_docx_to_pdf
-from video_study.utils import TaskCancelled
+from zhiying.render import convert_docx_to_pdf
+from zhiying.utils import TaskCancelled
 
 
 class PdfConversionTests(unittest.TestCase):
@@ -22,9 +22,9 @@ class PdfConversionTests(unittest.TestCase):
                 (root / "lesson.word-export.pdf").write_bytes(b"word-pdf")
 
             with (
-                patch("video_study.render.os.name", "nt"),
-                patch("video_study.render.run_cancellable", side_effect=fake_run),
-                patch("video_study.render.render_pdf_fallback") as fallback,
+                patch("zhiying.render.os.name", "nt"),
+                patch("zhiying.render.run_cancellable", side_effect=fake_run),
+                patch("zhiying.render.render_pdf_fallback") as fallback,
             ):
                 mode = convert_docx_to_pdf(docx, pdf, {})
 
@@ -40,12 +40,12 @@ class PdfConversionTests(unittest.TestCase):
             docx.write_bytes(b"docx")
 
             with (
-                patch("video_study.render.os.name", "nt"),
+                patch("zhiying.render.os.name", "nt"),
                 patch(
-                    "video_study.render.run_cancellable",
+                    "zhiying.render.run_cancellable",
                     side_effect=subprocess.CalledProcessError(1, ["powershell.exe"]),
                 ),
-                patch("video_study.render.render_pdf_fallback") as fallback,
+                patch("zhiying.render.render_pdf_fallback") as fallback,
             ):
                 mode = convert_docx_to_pdf(docx, pdf, {})
 
@@ -60,9 +60,9 @@ class PdfConversionTests(unittest.TestCase):
             docx.write_bytes(b"docx")
 
             with (
-                patch("video_study.render.os.name", "nt"),
-                patch("video_study.render.run_cancellable", side_effect=TaskCancelled("cancelled")),
-                patch("video_study.render.render_pdf_fallback") as fallback,
+                patch("zhiying.render.os.name", "nt"),
+                patch("zhiying.render.run_cancellable", side_effect=TaskCancelled("cancelled")),
+                patch("zhiying.render.render_pdf_fallback") as fallback,
             ):
                 with self.assertRaises(TaskCancelled):
                     convert_docx_to_pdf(docx, pdf, {})

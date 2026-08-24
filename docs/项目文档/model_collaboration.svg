@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="680" viewBox="0 0 1280 680" role="img" aria-labelledby="title desc">
+  <title id="title">知影中的模型协作关系</title>
+  <desc id="desc">语音模型、本地视觉模型和可选云端LLM不直接交流，而是通过带来源的文字证据、视觉事实、知识单元和文档组件协作；本地规则负责所有控制和验收。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#2563eb"/></marker>
+    <style>
+      text{font-family:'Microsoft YaHei','Noto Sans CJK SC',sans-serif;fill:#111827}.title{font-size:28px;font-weight:700}.sub{font-size:14px;fill:#4b5563}.h{font-size:17px;font-weight:700}.t{font-size:13px}.note{font-size:12px;fill:#4b5563}.box{fill:#fff;stroke:#374151;stroke-width:1.5}.focus{fill:#eff6ff;stroke:#2563eb;stroke-width:2}.flow{stroke:#2563eb;stroke-width:2;fill:none;marker-end:url(#arrow)}.guard{stroke:#6b7280;stroke-width:1.5;stroke-dasharray:6 5;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1280" height="680" fill="#fff"/>
+  <text x="640" y="38" text-anchor="middle" class="title">模型通过证据协作，不直接彼此对话</text>
+  <text x="640" y="78" text-anchor="middle" class="sub">每个模型只完成一种判断；本地流程连接产物、校验结果并决定是否降级</text>
+
+  <rect x="35" y="135" width="210" height="120" rx="5" class="box"/>
+  <text x="140" y="170" text-anchor="middle" class="h">语音识别模型</text>
+  <text x="140" y="199" text-anchor="middle" class="t">faster-whisper 或 Qwen3-ASR</text>
+  <text x="140" y="225" text-anchor="middle" class="note">听懂音频，不负责写文章</text>
+
+  <path d="M245 195H315" class="flow"/>
+  <rect x="315" y="135" width="210" height="120" rx="5" class="focus"/>
+  <text x="420" y="170" text-anchor="middle" class="h">文字证据</text>
+  <text x="420" y="199" text-anchor="middle" class="t">字幕片段 · 时间戳 · 置信度</text>
+  <text x="420" y="225" text-anchor="middle" class="note">后续事实引用的文字来源</text>
+
+  <rect x="35" y="330" width="210" height="130" rx="5" class="box"/>
+  <text x="140" y="365" text-anchor="middle" class="h">OCR + 本地 VLM</text>
+  <text x="140" y="394" text-anchor="middle" class="t">读取文字 · 比较候选图</text>
+  <text x="140" y="420" text-anchor="middle" class="t">核实对象、关系与公式线索</text>
+  <text x="140" y="444" text-anchor="middle" class="note">只处理本地候选图片</text>
+
+  <path d="M245 395H315" class="flow"/>
+  <rect x="315" y="330" width="210" height="130" rx="5" class="focus"/>
+  <text x="420" y="365" text-anchor="middle" class="h">视觉证据</text>
+  <text x="420" y="394" text-anchor="middle" class="t">图片 ID · 时间戳 · 可见事实</text>
+  <text x="420" y="420" text-anchor="middle" class="t">成功条件 · no_match</text>
+  <text x="420" y="444" text-anchor="middle" class="note">未核实的图片不能进入正文</text>
+
+  <path d="M525 195H600V270H650" class="flow"/>
+  <path d="M525 395H600V320H650" class="flow"/>
+  <rect x="650" y="215" width="235" height="160" rx="5" class="focus"/>
+  <text x="767" y="250" text-anchor="middle" class="h">知识单元与来源索引</text>
+  <text x="767" y="280" text-anchor="middle" class="t">主题、步骤、条件与边界</text>
+  <text x="767" y="306" text-anchor="middle" class="t">关联字幕和合格视觉证据</text>
+  <text x="767" y="332" text-anchor="middle" class="t">用户要求与图文需求</text>
+  <text x="767" y="356" text-anchor="middle" class="note">本地可完成；授权后可由云端增强</text>
+
+  <rect x="650" y="455" width="235" height="110" rx="5" class="box"/>
+  <text x="767" y="490" text-anchor="middle" class="h">本地规则与执行器</text>
+  <text x="767" y="518" text-anchor="middle" class="t">权限 · 预算 · 缓存 · 去重</text>
+  <text x="767" y="543" text-anchor="middle" class="t">结构校验 · 质量门 · 最终状态</text>
+  <path d="M767 455V390" class="guard"/>
+
+  <path d="M885 295H950" class="flow"/>
+  <rect x="950" y="120" width="285" height="175" rx="5" class="box"/>
+  <text x="1092" y="155" text-anchor="middle" class="h">云端 LLM（可选）</text>
+  <text x="1092" y="186" text-anchor="middle" class="t">课程规划与知识组织</text>
+  <text x="1092" y="212" text-anchor="middle" class="t">文档蓝图与章节写作</text>
+  <text x="1092" y="238" text-anchor="middle" class="t">问题范围内的有限修订</text>
+  <text x="1092" y="269" text-anchor="middle" class="note">提交结构化候选，不直接写文件</text>
+
+  <path d="M1092 295V355" class="flow"/>
+  <rect x="950" y="355" width="285" height="145" rx="5" class="focus"/>
+  <text x="1092" y="391" text-anchor="middle" class="h">统一内容结构</text>
+  <text x="1092" y="420" text-anchor="middle" class="t">正文 · 列表 · 公式 · 图片 · 来源</text>
+  <text x="1092" y="446" text-anchor="middle" class="t">供质量检查和三种渲染器共用</text>
+  <text x="1092" y="477" text-anchor="middle" class="note">无云端时由本地确定性编辑生成</text>
+
+  <path d="M885 510H920V427H950" class="guard"/>
+  <text x="935" y="544" text-anchor="middle" class="note">验收</text>
+  <text x="640" y="630" text-anchor="middle" class="sub">协作介质是可追溯产物；权限和最终决定不交给任何模型</text>
+</svg>

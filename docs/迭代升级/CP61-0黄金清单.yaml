@@ -9,7 +9,7 @@ baseline:
   product_version: "1.0.0rc1"
   architecture: "V6 LangGraph 23-node full-pipeline runtime"
   orchestrator: "GraphRuntime → NodeExecutor → ArtifactStore/WorkspaceCache"
-  graph_version: "v6-document-v3-1"            # src/video_study/execution/terminal_events.py
+  graph_version: "v6-document-v3-1"            # src/zhiying/execution/terminal_events.py
   document_contract: "document-v3 (schema_version=3, contract_version=document-v3)"
   blueprint_contract: "document-plan-v2（实现为 schema_version=1，机械包装旧 section）"
   renderer: "DocumentAdapter 生产路径经 v3_to_v2 适配（render.py）"
@@ -91,23 +91,23 @@ frozen_outputs:
 known_problems:
   document_plan_is_legacy_wrapper:
     evidence: "knowledge/document-plan.json：schema_version=1、chapters[].source_section 原样复制旧 section、全部 layout_hint=full_width"
-    code_refs: ["src/video_study/document_v3.py:build_document_plan/compose_chapters"]
+    code_refs: ["src/zhiying/documents/v3.py:build_document_plan/compose_chapters"]
     tests: ["test_v610_plan_contains_legacy_source_section", "test_v61_plan_is_not_legacy_wrapper"]
   renderer_downgrades_v3_to_v2:
-    evidence: "src/video_study/render.py:DocumentAdapter._legacy_render_view / render_markdown 对 schema_version=3 调用 v3_to_v2；render_word 写 .render-v2.json"
-    code_refs: ["src/video_study/render.py:568-585", "src/video_study/document_v3.py:v3_to_v2"]
+    evidence: "src/zhiying/render.py:DocumentAdapter._legacy_render_view / render_markdown 对 schema_version=3 调用 v3_to_v2；render_word 写 .render-v2.json"
+    code_refs: ["src/zhiying/render.py:568-585", "src/zhiying/documents/v3.py:v3_to_v2"]
     tests: ["test_v610_renderer_downgrades_v3_to_v2", "test_v61_render_does_not_downgrade_v3_to_v2"]
   word_omml_zero:
     evidence: "两份冻结 docx 的 word/document.xml 均无 m:oMath / m:oMathPara（OMML=0），确认公式未原生渲染"
-    code_refs: ["scripts/render_docx.mjs", "src/video_study/render.py"]
+    code_refs: ["scripts/renderers/render_docx.mjs", "src/zhiying/render.py"]
     tests: ["test_v610_frozen_docx_omml_is_zero", "test_v61_word_omml_matches_confirmed_equations"]
   degraded_units_masked_as_cloud_summary:
     evidence: "定积分定义样本 knowledge.units status=degraded/capability=offline，但 document-v3.json mode=cloud_summary / model=deepseek-v4-flash-0731；renderer 输出『Qwen 智能整理』"
-    code_refs: ["src/video_study/execution/steps/knowledge.py:DocumentPlanStep 合并 cloud_info", "src/video_study/render.py:166/334"]
+    code_refs: ["src/zhiying/execution/steps/knowledge.py:DocumentPlanStep 合并 cloud_info", "src/zhiying/render.py:166/334"]
     tests: ["test_v610_frozen_degraded_sample_document_mode_is_cloud_summary", "test_v61_degraded_units_not_labeled_cloud_summary"]
   render_verify_checks_nonempty_only:
-    evidence: "src/video_study/execution/steps/coarse.py:RenderVerifyStep.validate 仅校验文件存在且非空"
-    code_refs: ["src/video_study/execution/steps/coarse.py:683-687"]
+    evidence: "src/zhiying/execution/steps/coarse.py:RenderVerifyStep.validate 仅校验文件存在且非空"
+    code_refs: ["src/zhiying/execution/steps/coarse.py:683-687"]
     tests: ["test_v610_render_verify_accepts_nonempty_files_with_forbidden_content", "test_v61_render_verify_checks_content_and_parity"]
   raw_asr_errors_in_body:
     evidence: "定积分定义 markdown 正文含 圆寒数/长数/级分/阶段/便上线级分/寒数 等 ASR 错词（如『圆寒数』=原函数、『级分』=积分）"
@@ -119,7 +119,7 @@ known_problems:
     tests: ["test_v610_frozen_markdown_leaks_local_absolute_image_path"]
   renderer_injects_forbidden_legacy_sections:
     evidence: "renderer 自动注入 内容导览/学习目标/课程复习/知识主线/关键规则清单/待回看与未展开问题/看图重点/这张图帮助理解/固定章节编号（## 01 · 标题）"
-    code_refs: ["src/video_study/render.py:167-221/179-191"]
+    code_refs: ["src/zhiying/render.py:167-221/179-191"]
     tests: ["test_v61_renderer_does_not_inject_forbidden_legacy_sections"]
 
 # ============ 4. 黄金期望（CP61-7 验收指标；CP61-0 只冻结，不实现） ============

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import unittest
 
-from video_study.execution.decision_policy import (
+from zhiying.execution.decision_policy import (
     AdvisorAdmission, LocalDecisionPolicy, VisualNeedLevel,
 )
-from video_study.knowledge.schema import UnitPlan, VisualNeed, VisualQuestion
+from zhiying.knowledge.schema import UnitPlan, VisualNeed, VisualQuestion
 
 
 class V6DecisionPolicyTests(unittest.TestCase):

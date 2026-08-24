@@ -4,32 +4,34 @@
 
 ## 当前技术状态
 
+- 用户可见产品名为“知影”；源码命名空间与发行包均为 `zhiying`，便携可执行文件沿用 `ZhiYing` 工程标识，旧 `video-study` 命令仅作兼容别名，`video-study://` 本地协议保持不变。
+- 发行入口位于源码仓库根目录 `release/`：Git 只保存用户文档、官方组件链接和机器清单；`scripts/release/` 只负责轻量核心 ZIP，`release/output/` 被 Git 忽略。
 - 生产路径是 23 节点 `Source/Job/Video/Aggregate Graph → NodeExecutor → ArtifactStore/WorkspaceCache`；`GraphRuntime` 是唯一生产编排器。
 - CourseIR、单视频 VLM 会话、完整候选池视觉检索、紧凑 CloudPayload、DocumentPlan/Canonical Document v3、任务 ETA、Application/Desktop 分层均为当前合同。
-- V5.0 新增「视频链接源获取」：`SourcePort`（`src/video_study/source.py`）预检/下载/ffprobe 时长一致性校验；`run_compatible_pipeline_from_url`/`acquire_source_from_url` 方式一入口；`WorkspaceCatalog.find_by_url` 下载前缓存命中；桌面「＋ 添加链接」对话框 + 队列来源列 + 下载中/已就绪状态与 `source_ready` 事件；D1–D7 决策全部落地。
+- V5.0 新增「视频链接源获取」：`SourcePort`（`src/zhiying/source.py`）预检/下载/ffprobe 时长一致性校验；`run_compatible_pipeline_from_url`/`acquire_source_from_url` 方式一入口；`WorkspaceCatalog.find_by_url` 下载前缓存命中；桌面「＋ 添加链接」对话框 + 队列来源列 + 下载中/已就绪状态与 `source_ready` 事件；D1–D7 决策全部落地。
 - 实测事实：W3C trailer（默认 UA，52s/4.37MB/aac）✅、test-videos.co.uk（10s/无音轨）✅、Mux HLS ✅；B 站 BV1cmTu6mEL3 阶段性 412/握手超时（preflight 分类 `DOWNLOAD_TIMEOUT`）；抖音明确「暂不支持」（TC-020）。
 
-## V6.0 运行基线与 V6.1 已批准目标
+## V6.1 正式版本与后续质量确认
 
 - 用户已于 2026-08-20 批准 `V6.0 LangGraph 全链路架构升级`；实施版本从 `1.0.0-alpha` 开始，通过发布门后升为 `1.0.0`。
 - [主架构方案](迭代升级/V6.0%20LangGraph全链路架构升级方案.md)定义目标和不可违反合同；[执行计划](迭代升级/V6.0%20LangGraph全链路升级执行计划.md)是唯一阶段/恢复点来源；[目标合同 YAML](迭代升级/V6.0%20LangGraph全链路目标合同.yaml)供 Agent/测试机器核对。
 - V6 目标是 LangGraph 接管 Source、单/多视频、知识、文档、Markdown/Word/PDF、聚合和 Job 终态，成为唯一生产编排器；先等价接管，后升级模型、视觉和 Document v3。
-- 当前代码版本为 `1.0.0rc1`；CP0–CP8 已实现，active `docs/architecture/*.yaml` 已切换到 Graph/Document v3。但两份新增高数产物暴露文档质量未达目标，`rc1` 不得提升正式 `1.0.0`。
+- 当前代码版本为 `1.0.0`；用户已于 2026-08-24 明确确认正式版本号。active `docs/architecture/*.yaml` 已切换到 Graph/Document v3.1。
 - 用户已于 2026-08-21 批准 [V6.1 主方案](迭代升级/V6.1%20Function%20Calling编辑Harness升级方案.md)、[执行计划](迭代升级/V6.1%20Function%20Calling编辑Harness执行计划.md)和[目标合同](迭代升级/V6.1%20Function%20Calling编辑Harness目标合同.yaml)；CP61-0～CP61-6 已完成，CP61-7 最新自动化 Gate 已通过 602 项离线测试（5 项预期失败），图片生产插入链路已补齐，当前等待用户确认两份高数审阅成品方向。
-- V6.1 目标实现版本是 `1.0.0rc2`：保留确定性主图，在 `EditorialAgentSubgraph` 内以阶段限定 Function Calling 赋予 LLM 主动观察和局部编辑权；原生渲染 Document v3.1，并以 `tool_native → structured_only → local_deterministic` 完成可审计降级。
+- V6.1 已以 `1.0.0` 作为当前产品版本：保留确定性主图，在 `EditorialAgentSubgraph` 内以阶段限定 Function Calling 赋予 LLM 主动观察和局部编辑权；原生渲染 Document v3.1，并以 `tool_native → structured_only → local_deterministic` 完成可审计降级。
 
 ## 待执行
 
 1. 当前先由用户确认 `output/pdf/cp61-7-review/` 两份审阅 PDF 的内容方向；未确认前 CP61-7 保持 in_progress。
 2. 两次逐次授权探针已确认：`deepseek-v4-flash-0731` 被端点拒绝；`glm-5.2` 成功返回原生 `get_renderer_capabilities` 工具调用（597 tokens）。默认模型首位与能力注册已切到 `glm-5.2/tool_native`；下一次真实课程请求仍须重新披露并逐次确认。
-3. CP61-8 只有在单独获批后才能探测真实云模型工具能力、运行指定 UI 等价链路和形成 `1.0.0rc2`；发布 `1.0.0` 仍需最终质量门和用户确认。
-4. V5.0 便携包如需发布，按 `packing/script` 增量重建并验证；**便携包重建需单独授权**。
-5. B 站锚点（BV1cmTu6mEL3）再次在线验证前先跑 `scripts/check_test_links.py` 健康检查。
+3. CP61-8 只有在单独获批后才能运行真实云模型和指定 UI 等价链路；产品版本号已由用户确认为 `1.0.0`，但该确认不替代剩余质量门。
+4. ZhiYing 1.0.0 发行采用“同版本、双通道”：源码/README/release 清单进入 `main` 与 `v1.0.0` 标签，核心 ZIP + SHA-256 进入同版本 GitHub Release 附件；ZIP 不进 Git 历史。`release/` 用户文档与随包 README 已改为普通使用者视角，新核心附件为 133710154 bytes、SHA-256 `9d587dc2e4157cf1f509c35e297f3716c372419ed2f660ad2bb76356a18ab86e`；`stable.json.ready_for_local_review=true / published=true`。下一次便携重建和远程发布仍需重新授权。
+5. B 站锚点（BV1cmTu6mEL3）再次在线验证前先跑 `scripts/diagnostics/check_test_links.py` 健康检查。
 
 ## 直接行动
 
 1. 若执行 V6.1，先读取 V6.1 主方案、执行计划和目标合同，检查 `当前架构升级状态.yaml` 的最新 CP，只做该阶段任务；当前入口为 CP61-7 黄金与 UI 等价链路离线验收。
-2. 若诊断现有故障 Workspace，先运行 `.venv\Scripts\python.exe scripts\diagnose_workspace.py workspace\<video_id>`。
+2. 若诊断现有故障 Workspace，先运行 `.venv\Scripts\python.exe scripts\diagnostics\diagnose_workspace.py workspace\<video_id>`。
 3. 按 `step_id/error_code` 查 [故障索引](diagnostics/problem-index.yaml)。
 4. 只读 [模块边界](architecture/module-boundaries.yaml) 指定的 owner、Artifact 与测试；先补失败回归测试，再修改最小责任模块。
 5. 当前影响范围以 [步骤目录](architecture/pipeline-steps.yaml)、GraphRuntime 和 NodeExecutor 为运行事实；不得恢复旧 Runner。V6.1 切换后不得保留生产 `v3 → v2` 降级渲染或旧固定模板绕行。
@@ -52,6 +54,7 @@
 - 复用前必须按上一版清单校验模型和工具完整性；不完整时停止，不得用缺件目录生成完整包。
 - 未经用户明确批准，不重新下载、重拷、覆盖、移动或升级模型、CUDA 运行时及工具文件。
 - 详细执行规则见 [`打包方案`](../packing/scheme/打包方案.md#后续迭代的增量打包约束)。
+- 面向 GitHub 的发行体系使用根目录 `release/` 与 `scripts/release/`；不再创建独立 `ZhiYing-Releases` 仓库，也不再构建完整离线/工具/运行时分卷。旧 `packing/` 只作为历史便携实现，不进入新发行目录。
 
 ## 验收
 

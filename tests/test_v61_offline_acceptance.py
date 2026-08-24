@@ -7,14 +7,14 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from video_study.editorial.evidence import build_evidence_overlay
-from video_study.editorial.intent import compile_editorial_policy
-from video_study.editorial.local import build_local_blueprint
-from video_study.editorial.quality import audit_render_outputs
-from video_study.execution.steps.editorial_steps import _enrich_units_with_sources, run_editorial_session
-from video_study.knowledge.editorial import load_brief
-from video_study.knowledge.schema import ChapterPlan, LessonPlan, UnitPlan
-from video_study.render_v31 import render_docx_v31, render_markdown_v31, render_pdf_fallback_v31
+from zhiying.editorial.evidence import build_evidence_overlay
+from zhiying.editorial.intent import compile_editorial_policy
+from zhiying.editorial.local import build_local_blueprint
+from zhiying.editorial.quality import audit_render_outputs
+from zhiying.execution.steps.editorial_steps import _enrich_units_with_sources, run_editorial_session
+from zhiying.knowledge.editorial import load_brief
+from zhiying.knowledge.schema import ChapterPlan, LessonPlan, UnitPlan
+from zhiying.documents.render_v31 import render_docx_v31, render_markdown_v31, render_pdf_fallback_v31
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,7 +45,7 @@ class _ReplayToolPort:
         self.calls = 0
 
     def invoke_turn(self, **_kwargs):
-        from video_study.execution.tool_calling import ToolCallRecord, ToolTurn
+        from zhiying.execution.tool_calling import ToolCallRecord, ToolTurn
         self.calls += 1
         return ToolTurn(tool_calls=(ToolCallRecord(
             name="submit_blueprint", args={"blueprint": self.blueprint},
@@ -70,8 +70,16 @@ class V61OfflineAcceptanceTests(unittest.TestCase):
     def test_two_high_math_cached_workspaces_replay_all_three_capabilities(self) -> None:
         for video_id, forbidden_raw in WORKSPACES:
             workspace = ROOT / "workspace" / video_id
-            if not workspace.is_dir():
-                self.skipTest(f"冻结 Workspace 缺失：{video_id}")
+            required = (
+                workspace / "manifest.json",
+                workspace / "transcript" / "transcript.json",
+                workspace / "knowledge" / "lesson-plan.json",
+                workspace / "knowledge" / "knowledge-units.json",
+                workspace / "knowledge" / "visual-evidence.json",
+            )
+            missing = [path.relative_to(ROOT).as_posix() for path in required if not path.is_file()]
+            if missing:
+                self.skipTest(f"冻结 Workspace 不完整：{video_id}；缺少 {', '.join(missing)}")
             manifest = _read(workspace / "manifest.json")
             transcript = _read(workspace / "transcript" / "transcript.json")
             plan = LessonPlan.from_dict(_read(workspace / "knowledge" / "lesson-plan.json").get("plan", {}))

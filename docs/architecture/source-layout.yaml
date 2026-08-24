@@ -1,0 +1,73 @@
+schema_version: 1
+package_root: src/zhiying
+
+project_identity:
+  display_name: 知影
+  import_package: zhiying
+  distribution_name: zhiying
+  primary_cli: zhiying
+  compatibility_cli: video-study
+  stable_local_protocol: video-study
+
+principles:
+  - "按业务能力内聚，而不是按迭代版本堆叠文件"
+  - "application 负责用例编排，execution 负责 Graph 运行合同"
+  - "media 与 infrastructure 隔离外部进程、操作系统和设备细节"
+  - "documents 统一持有 Canonical Document 与跨格式渲染能力"
+  - "desktop 只负责界面、状态和控制器，不直接调用外部进程"
+
+packages:
+  - package: application
+    responsibility: "桌面无关的应用用例、请求模型、单视频与聚合入口"
+    required_modules: [aggregation.py, pipeline.py, processing.py, requests.py]
+  - package: desktop
+    responsibility: "Windows 桌面展示、交互状态与控制器"
+    required_modules: [controller.py, models.py, settings.py, view.py]
+  - package: execution
+    responsibility: "LangGraph、步骤、Artifact、缓存、端口与运行状态"
+    required_modules: [graph_runtime.py, node_executor.py, ports.py, registry.py]
+  - package: media
+    responsibility: "媒体探测与抽取、语音识别、帧选择、转写标准化"
+    required_modules: [processing.py, speech.py, frames.py, transcript.py]
+  - package: knowledge
+    responsibility: "Course IR、知识规划、视觉证据与知识单元"
+    required_modules: [course_ir.py, planning.py, organizer.py, schema.py]
+  - package: editorial
+    responsibility: "受控编辑子图、蓝图、章节、补丁与质量审计"
+    required_modules: [agent.py, blueprint.py, document.py, quality.py]
+  - package: documents
+    responsibility: "Document v3 合同、v3.1 原生渲染与发布质量检查"
+    required_modules: [v3.py, render_v31.py, release_quality.py]
+  - package: infrastructure
+    responsibility: "操作系统集成、本地播放器与进程级单实例能力"
+    required_modules: [playback.py, single_instance.py]
+
+stable_top_level_modules:
+  - {module: cli.py, reason: "命令行入口"}
+  - {module: config.py, reason: "配置加载公共入口"}
+  - {module: progress.py, reason: "跨层进度值对象"}
+  - {module: providers.py, reason: "云端口适配器公共入口"}
+  - {module: render.py, reason: "DocumentPort 公共入口与历史只读兼容"}
+  - {module: runtime.py, reason: "项目运行时路径解析"}
+  - {module: source.py, reason: "SourcePort 公共入口"}
+  - {module: utils.py, reason: "待后续按调用方渐进收窄的基础工具"}
+
+script_groups:
+  - directory: diagnostics
+    responsibility: "只读诊断、链接健康检查与产物核验"
+    required_files: [check_test_links.py, diagnose_workspace.py, verify_outputs.py]
+  - directory: workers
+    responsibility: "隔离模型运行时的子进程入口"
+    required_files: [qwen_asr_runner.py, qwen_vl_runner.py]
+  - directory: renderers
+    responsibility: "Node.js Word 渲染桥接"
+    required_files: [render_docx.mjs, render_docx_v31.mjs]
+  - directory: release
+    responsibility: "ZhiYing Windows 轻量核心包构建、校验与本地发行清单定稿"
+    required_files: [build_core.ps1, verify_core.py, finalize_release_repo.py]
+
+data_boundaries:
+  generated_or_user_data: [Resource, workspace, output, models, 视频, tools, packing]
+  temporary: tmp
+  source_or_contracts: [src, tests, scripts, release, docs/architecture, docs/diagnostics]
+  release_output: "根目录 release/output；仅本机生成且被 Git 忽略，模型/工具/运行时不复制到此目录"

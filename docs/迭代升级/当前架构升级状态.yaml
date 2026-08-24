@@ -11,15 +11,15 @@ cp61_5_completed_at: "2026-08-21 14:46 Asia/Shanghai"
 cp61_6_completed_at: "2026-08-21 15:00 Asia/Shanghai"
 
 baseline:
-  product_version: "1.0.0rc1"
-  active_architecture: "V6 LangGraph 23-node full-pipeline runtime with DocumentPlan/Document v3"
-  last_completed_change: v6-0-langgraph-full-pipeline-rc1
-  tests_last_confirmed: 460
+  product_version: "1.0.0"
+  active_architecture: "V6.1 LangGraph 23-node full-pipeline runtime with EditorialAgentSubgraph and Document v3.1"
+  last_completed_change: zhiying_ui_copy_and_v1_0_0
+  tests_last_confirmed: 623
   dirty_worktree: "保留用户/前序 Agent 已有改动；实施前必须重新记录基线"
 
 target:
   architecture_version: "V6.1"
-  implementation_version: "1.0.0rc2"
+  implementation_version: "1.0.0"
   release_version: "1.0.0"
   orchestrator: LangGraph
   scope: "受控编辑子图、Function Calling、Document v3.1 原生渲染、本地确定性降级、质量与谱系门禁"
@@ -38,12 +38,59 @@ closed_decisions:
   - "Markdown、Word、PDF 原生消费 Document v3.1；生产不再 v3 → v2，历史 v2 只读。"
   - "允许降级产物自动输出，但必须标记 degraded、实际模型链、原因和未满足质量项。"
   - "云端图片默认禁止，仅保留未来独立能力接口；MCP、多Agent、Web服务与通用插件不进入V6.1。"
-  - "V6.0 1.0.0rc1 不提升正式版；V6.1 实施目标为 1.0.0rc2，通过发布门后才升 1.0.0。"
+  - "用户已于 2026-08-24 确认产品正式版本为 1.0.0；版本确认不替代 CP61-7 内容审阅和 CP61-8 真实链路授权门。"
 
 active_runtime_warning:
-  - "V6.1 CP61-5 已切换生产 EditorialAgentSubgraph 与 Document v3.1 原生三端路径；产品版本仍保持1.0.0rc1，待后续质量门完成后才形成1.0.0rc2。"
-  - "V6.0文档质量未达用户目标，1.0.0rc1不得提升为正式1.0.0。"
+  - "V6.1 CP61-5 已切换生产 EditorialAgentSubgraph 与 Document v3.1 原生三端路径；当前产品版本为 1.0.0。"
+  - "两份高数审阅成品仍待用户确认，CP61-7 保持 in_progress；不得因正式版本号而把剩余质量门记为完成。"
   - "active docs/architecture 已切换为 GraphRuntime；不得恢复旧 PipelineRunner 双执行路径。"
+
+namespace_validation:
+  written_at: "2026-08-24 12:44 Asia/Shanghai"
+  display_name: "知影"
+  python_package: zhiying
+  distribution_name: zhiying
+  primary_cli: zhiying
+  compatibility_cli: video-study
+  stable_protocol: video-study
+  unittest: "609 tests OK；skipped=1；expected failures=5"
+  portable_entrypoint_tests: "3 tests OK；portable build 未执行"
+  cloud_requests: 0
+
+release_validation:
+  written_at: "2026-08-24 14:02 Asia/Shanghai"
+  product_version: "1.0.0"
+  display_name: "知影"
+  unittest: "609 tests OK；skipped=1；expected failures=5"
+  portable_entrypoint_tests: "3 tests OK；portable build 未执行"
+  compileall: passed
+  pip_check: "No broken requirements found；既有 ~ransformers invalid distribution warning"
+  git_diff_check: passed
+  cloud_requests: 0
+  model_or_dependency_changes: 0
+  long_video_reruns: 0
+  portable_builds: 0
+
+lightweight_distribution_validation:
+  written_at: "2026-08-24 Asia/Shanghai"
+  product_version: "1.0.0"
+  source_tooling: "scripts/release"
+  release_directory: "release"
+  local_output: "release/output/ZhiYing-Core-1.0.0-win-x64.zip"
+  ready_for_local_review: true
+  published: true
+  core_archive: "133710154 bytes; sha256 9d587dc2e4157cf1f509c35e297f3716c372419ed2f660ad2bb76356a18ab86e"
+  external_components: "模型/工具/CUDA 运行时只记录官方链接和固定修订，不进入 Git 或 release/output"
+  asset_delivery: "源码标签 + 同版本 GitHub Release；核心 ZIP/SHA-256 作为 Release 附件，不进入 Git 历史"
+  source_license: MIT
+  removed_generated_bytes: 35530453071
+  removed_external_repository: "D:/Study/实习/ZhiYing-Releases"
+  cloud_requests: 0
+  model_downloads_or_changes: 0
+  dependency_installs_or_reinstalls: 0
+  long_video_reruns: 0
+  github_operations: 0
+  blocker: null
 
 authorizations:
   architecture_document_write: true
@@ -55,7 +102,7 @@ authorizations:
   long_video_rerun: false
   online_smoke: false
   portable_rebuild: false
-  authorization_note: "用户 2026-08-21 授权一次性连续推进 CP61-1→CP61-5；真实云/模型/依赖/长视频/便携仍分别授权。"
+  authorization_note: "用户 2026-08-24 授权的轻量核心便携重建已完成并消耗；真实云/模型/依赖/长视频/下一次便携重建仍分别授权。"
 
 documentation_validation:
   written_at: "2026-08-21 09:54 Asia/Shanghai"
@@ -102,8 +149,8 @@ cp61_1_validation:
   written_at: "2026-08-21 12:10 Asia/Shanghai"
   scope: "编辑协议与完整本地语义链（未接生产）"
   deliverables:
-    - "src/video_study/editorial/{policy,intent,evidence,blueprint,document,local}.py"
-    - "src/video_study/execution/artifacts.py → V61_ARTIFACTS（editorial.policy/evidence.corrections/document.blueprint/document.chapter_v31；未并入 STANDARD_ARTIFACTS）"
+    - "src/zhiying/editorial/{policy,intent,evidence,blueprint,document,local}.py"
+    - "src/zhiying/execution/artifacts.py → V61_ARTIFACTS（editorial.policy/evidence.corrections/document.blueprint/document.chapter_v31；未并入 STANDARD_ARTIFACTS）"
     - "tests/test_v61_{editorial_policy,evidence_overlay,blueprint,local_editor,artifacts}.py"
   validation:
     unittest: "532 passed in 101.265s；OK(expected failures=7)；460 基线无回归 + 72 v61（65 通过、7 按预期失败）"
@@ -124,9 +171,9 @@ cp61_2_validation:
   written_at: "2026-08-21 13:00 Asia/Shanghai"
   scope: "Document v3.1 原生三端渲染与质量审计（候选路径，未切生产）"
   deliverables:
-    - "src/video_study/render_v31.py：Markdown/Word/PDF 原生 v3.1 渲染 + resolve_v31_figures + count_word_omml + 跨格式统计"
-    - "scripts/render_docx_v31.mjs：Word 原生 v3.1（docx 9.7.1 Math → OMML；LaTeX 子集解析器：frac/sup/sub/sqrt/希腊字母/积分等）"
-    - "src/video_study/editorial/quality.py：QualityReport v2 + PageAuditReport v1 + audit_render_outputs"
+    - "src/zhiying/documents/render_v31.py：Markdown/Word/PDF 原生 v3.1 渲染 + resolve_v31_figures + count_word_omml + 跨格式统计"
+    - "scripts/renderers/render_docx_v31.mjs：Word 原生 v3.1（docx 9.7.1 Math → OMML；LaTeX 子集解析器：frac/sup/sub/sqrt/希腊字母/积分等）"
+    - "src/zhiying/editorial/quality.py：QualityReport v2 + PageAuditReport v1 + audit_render_outputs"
     - "tests/test_v61_native_renderers.py + tests/test_v61_quality.py"
     - "tests/test_v61_characterization.py：OMML 计数改为 <m:oMath> 开标签精确统计"
   validation:
@@ -146,8 +193,8 @@ cp61_3_validation:
   written_at: "2026-08-21 13:50 Asia/Shanghai"
   scope: "CloudToolPort 与模型能力门禁（mock/replay，不接业务 Agent）"
   deliverables:
-    - "src/video_study/execution/tool_calling.py：ToolTurn/ToolCallRecord/StageBudget/ModelCapabilityRegistry/工具错误码/变更策略/schema 分阶段绑定/OpenAI 兼容 invoke_turn adapter/有界返回截断"
-    - "src/video_study/execution/ports.py：CloudToolPort 协议（invoke_turn）"
+    - "src/zhiying/execution/tool_calling.py：ToolTurn/ToolCallRecord/StageBudget/ModelCapabilityRegistry/工具错误码/变更策略/schema 分阶段绑定/OpenAI 兼容 invoke_turn adapter/有界返回截断"
+    - "src/zhiying/execution/ports.py：CloudToolPort 协议（invoke_turn）"
     - "tests/test_v61_tool_protocol.py（25 项）"
   validation:
     unittest: "全量待最终确认（见执行事实）；25 项工具协议测试通过"
@@ -164,10 +211,10 @@ cp61_4_validation:
   written_at: "2026-08-21 15:20 Asia/Shanghai"
   scope: "EditorialAgentSubgraph 与有限编辑循环（测试挂载，未接生产）"
   deliverables:
-    - "src/video_study/editorial/tools.py：EditorialToolContext（授权投影）+ EditorialTools（lookup_evidence/lookup_visual_facts/get_renderer_capabilities/get_page_detail 只读 + submit_blueprint/submit_chapter/submit_patch/finish_editing 只写候选 State）+ build_langchain_tools 分阶段绑定 + validate_patch"
-    - "src/video_study/editorial/writer.py：强制结构化章节写作（分批 + 章指纹缓存，成功章不因其他章失败丢失）"
-    - "src/video_study/editorial/patch.py：白名单操作 apply（add/remove/replace/move/set_layout_hint/set_style_token；禁止整篇替换/任意指针/docx_xml/脚本）"
-    - "src/video_study/editorial/agent.py：LangGraph StateGraph 显式子图（blueprint.agent→tools→validate→commit→chapter.write→assemble→preview→quality→revision→patch→finalize；ToolNode 为一等节点；条件路由显式；checkpointer 可选）"
+    - "src/zhiying/editorial/tools.py：EditorialToolContext（授权投影）+ EditorialTools（lookup_evidence/lookup_visual_facts/get_renderer_capabilities/get_page_detail 只读 + submit_blueprint/submit_chapter/submit_patch/finish_editing 只写候选 State）+ build_langchain_tools 分阶段绑定 + validate_patch"
+    - "src/zhiying/editorial/writer.py：强制结构化章节写作（分批 + 章指纹缓存，成功章不因其他章失败丢失）"
+    - "src/zhiying/editorial/patch.py：白名单操作 apply（add/remove/replace/move/set_layout_hint/set_style_token；禁止整篇替换/任意指针/docx_xml/脚本）"
+    - "src/zhiying/editorial/agent.py：LangGraph StateGraph 显式子图（blueprint.agent→tools→validate→commit→chapter.write→assemble→preview→quality→revision→patch→finalize；ToolNode 为一等节点；条件路由显式；checkpointer 可选）"
     - "tests/test_v61_editorial_graph.py（9 项）"
   validation:
     unittest: "全量待最终确认（见执行事实）；9 项子图测试通过"
@@ -185,7 +232,7 @@ cp61_6_validation:
   written_at: "2026-08-21 15:00 Asia/Shanghai"
   scope: "Workspace 诊断、历史只读迁移、稳定工具故障归属与有限降级"
   deliverables:
-    - "scripts/diagnose_workspace.py：V6.1 版本/能力/模型/turn/Token/cache/provenance/degraded/质量/revision/组件统计与建议局部重跑摘要"
+    - "scripts/diagnostics/diagnose_workspace.py：V6.1 版本/能力/模型/turn/Token/cache/provenance/degraded/质量/revision/组件统计与建议局部重跑摘要"
     - "缺失 Artifact 路径由 STANDARD_ARTIFACTS 解析，不再把 Workspace 根目录误报为 present"
     - "历史 Document v2 与 pre-v3.1 Document v3 均只读识别，不转换 Checkpoint、不覆盖旧 Output"
     - "docs/diagnostics/problem-index.yaml 与 v61-fault-matrix.yaml：10 个工具错误族的稳定 owner/error_code/safe rerun"
@@ -198,6 +245,24 @@ cp61_6_validation:
     cached_workspace_diagnosis: "两份高数 Workspace 均 succeeded + legacy_v3_read_only；未写入"
     cloud_requests: 0
     long_video_reruns: 0
+
+zhiying_release_local_review:
+  written_at: "2026-08-24 Asia/Shanghai"
+  scope: "ZhiYing 1.0.0 轻量发行目录复核；远程发布冻结"
+  validation:
+    unittest: "623 tests passed；skipped=1；expected failures=5"
+    release_tests: "14 passed"
+    package_integrity: "新 Core ZIP 可完整解压；133707892 bytes；SHA-256 与 SHA256SUMS 一致"
+    cleanliness: "Full/Runtime/Tools 产物与四份解压副本已删除；Core 不携带模型/工具"
+    documentation_gate: "release 用户文档与核心 README 已改为简明使用说明，并随新版 ZIP 验证通过"
+    rebuild_contract: "build_core.ps1 已要求把完整用户文档复制进 docs/；finalizer 缺件即失败"
+    public_repository_docs: "根 README、scripts/release/PUBLISHING.md、MIT LICENSE、CONTRIBUTING.md、SECURITY.md 已建立；release/ 仅保留用户文档"
+    github_operations: 0
+    release_remote_configured: false
+  gate:
+    - "用户人工检查并明确批准前，不创建远程仓库、不推送、不上传 Release"
+    - "ZhiYing 1.0.0 已进入 main 与同版本 GitHub Release；下一次构建和发布重新走授权门"
+    - "Git 只跟踪 release 文档/清单；release/output 只供本机检查并被忽略"
 
 next:
   - "CP61-7 最新自动化 Gate 已通过 602 项离线测试（5 项预期失败）；图片证据到 Markdown/Word/PDF 的生产插入链路已补齐；等待用户人工确认两份高数审阅 PDF 的内容方向。"

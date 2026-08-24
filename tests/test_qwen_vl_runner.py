@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 
 def _load_runner_module():
-    path = Path(__file__).resolve().parents[1] / "scripts" / "qwen_vl_runner.py"
+    path = Path(__file__).resolve().parents[1] / "scripts" / "workers" / "qwen_vl_runner.py"
     spec = importlib.util.spec_from_file_location("qwen_vl_runner", path)
     if spec is None or spec.loader is None:
         raise RuntimeError("cannot load qwen_vl_runner")

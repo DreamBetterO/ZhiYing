@@ -4,8 +4,8 @@ import json
 import unittest
 from pathlib import Path
 
-from video_study.document_v3 import build_document_plan, compile_document_v3, compose_chapters
-from video_study.release_quality import audit_candidate_index, audit_document_v3, audit_visual_evidence
+from zhiying.documents.v3 import build_document_plan, compile_document_v3, compose_chapters
+from zhiying.documents.release_quality import audit_candidate_index, audit_document_v3, audit_visual_evidence
 
 
 class V6GoldenSampleTests(unittest.TestCase):

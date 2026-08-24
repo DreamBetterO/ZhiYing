@@ -8,8 +8,8 @@ from pathlib import Path
 
 from PIL import Image
 
-from video_study.knowledge.adapter import v1_to_v2
-from video_study.render import render_markdown, render_pdf_fallback
+from zhiying.knowledge.adapter import v1_to_v2
+from zhiying.render import render_markdown, render_pdf_fallback
 
 
 class ContentBlocksRenderTests(unittest.TestCase):

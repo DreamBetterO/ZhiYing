@@ -15,7 +15,7 @@ from typing import Any
 import yaml
 from langchain_core.messages import AIMessage, ToolMessage
 
-from video_study.execution.tool_calling import (
+from zhiying.execution.tool_calling import (
     CAPABILITY_STRUCTURED_ONLY,
     CAPABILITY_TOOL_NATIVE,
     TOOL_ARGS_INVALID,

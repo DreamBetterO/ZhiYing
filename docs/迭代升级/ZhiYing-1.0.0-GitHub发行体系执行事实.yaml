@@ -1,0 +1,176 @@
+change_id: zhiying-1.0.0-github-distribution
+approved_at: "2026-08-24 Asia/Shanghai"
+status: superseded_by_lightweight_root_release
+
+decision:
+  source_repository: "DreamBetterO/ZhiYing"
+  user_repository: null
+  release_directory: "release"
+  public_brand: "ZhiYing / 知影"
+  delivery:
+    - "根目录 release/：随源码提交用户文档、官方组件链接和机器清单"
+    - "release/output/：仅本机保留轻量核心 ZIP，Git 忽略"
+  git_boundary: "模型、工具、CUDA运行时和完整离线目录均不进入 Git；不再使用独立 ZhiYing-Releases 仓库"
+  asset_delivery: "ZhiYing-Core ZIP 与 SHA256SUMS 进入源码仓库同版本 GitHub Release，不进入普通 Git 提交"
+  source_license: MIT
+
+source_deliverables:
+  root: scripts/release
+  files:
+    - build_core.ps1
+    - finalize_release_repo.py
+    - verify_core.py
+    - ../../release/manifests/components.json
+  regression_tests: tests/test_release_distribution.py
+
+release_repository:
+  local_path: "D:/Study/实习/视频归纳/release"
+  commit: null
+  git_worktree: "属于现有源码工作树，未提交"
+  tracked_scope: "用户README/快速开始/下载/GPU/故障/隐私/组件和稳定清单"
+  ignored_scope: "release/output/*（保留 .gitkeep）"
+  remote_created: false
+  published: false
+
+artifacts:
+  core:
+    file: ZhiYing-Core-1.0.0-win-x64.zip
+    bytes: 133700280
+    sha256: 3a9e52ab2f125a5baf353c2879d490dc2bd88dab6ea2c693c1267054e7c64150
+    payload_files: 0
+  external_components:
+    manifest: release/manifests/components.json
+    payload_files: 0
+  removed_generated_output:
+    path: "D:/Study/实习/ZhiYing-Releases"
+    bytes: 35530453071
+    recoverable: false
+
+boundaries:
+  cloud_requests: 0
+  model_downloads: 0
+  model_changes: 0
+  dependency_installs: 0
+  long_video_reruns: 0
+  source_models_modified: false
+  source_tools_modified: false
+
+local_review_validation:
+  reviewed_at: "2026-08-24 Asia/Shanghai"
+  github_operations: 0
+  release_remote_configured: false
+  release_worktree: "源码工作树内，未提交"
+  retained_binary_assets: 1
+  archive_integrity: "Core ZIP SHA-256 迁移前后一致"
+  cleanliness: "模型/工具/运行时/完整离线产物 0；外部临时仓库已删除"
+  final_acceptance: "622 tests passed；skipped=1；expected failures=5；release tests 13 passed"
+
+documentation_closure_review:
+  reviewed_at: "2026-08-24 Asia/Shanghai"
+  current_core_program_closure: passed
+  current_core_documentation_closure: failed
+  missing_from_current_zip:
+    - docs/QUICK_START.md
+    - docs/DOWNLOADS.md
+    - docs/GPU_GUIDE.md
+    - docs/TROUBLESHOOTING.md
+    - docs/PRIVACY.md
+    - docs/manifests/components.json
+  stale_reference: "README.md 指向已删除的 ZhiYing-Releases"
+  manifest_status: "ready_for_local_review=false；assets 为空；旧 ZIP 仅列为 superseded_local_check_copy"
+  implemented_gate: "下一次 build_core 内嵌文档；finalize_release_repo 缺任一文档即拒绝定稿"
+  public_repository_docs:
+    - README.md
+    - LICENSE
+    - CONTRIBUTING.md
+    - SECURITY.md
+    - scripts/release/PUBLISHING.md
+  portable_rebuild_authorized: false
+  validation:
+    release_tests: "13 passed"
+    full_unittest: "622 passed；skipped=1；expected failures=5"
+    markdown_links: "根 README + CONTRIBUTING + SECURITY + release 共 11 组链接通过"
+    compileall: passed
+    pip_check: "No broken requirements found；既有 ~ransformers invalid distribution warning"
+    yaml_json_parse: passed
+    git_diff_check: "passed；仅既有 LF/CRLF warning"
+    git_ignore_probe: "release/output 核心 ZIP ignored；release/output/.gitkeep 可提交"
+
+remaining:
+  - "用户检查 Git 变更与 release/output 中的新核心 ZIP"
+  - "用户再次明确批准后，才执行 commit、v1.0.0 标签、推送与 Release 上传"
+  - "商业推广前补代码签名、SBOM和第三方许可证人工审计"
+
+portable_rebuild_validation:
+  built_at: "2026-08-24 16:33 Asia/Shanghai"
+  authorization_consumed: true
+  git_commit_performed: false
+  github_operations: 0
+  archive:
+    file: "release/output/ZhiYing-Core-1.0.0-win-x64.zip"
+    bytes: 133707892
+    sha256: "02f28133b67737fca9a38d084e2c360e6c3b0b7d600e86a3a7414e95d5bd5e4c"
+    entries: 1247
+    zip_integrity: passed
+  unpacked:
+    bytes: 306502999
+    manifest_files: 1240
+    model_files: 0
+    tool_files: 0
+    forbidden_names: 0
+  usability:
+    smoke: passed
+    packaged_markdown_links: "6 groups passed"
+    documentation_closure: passed
+    mit_license: passed
+    main_exe_subsystem: "Windows GUI (2)"
+    console_exe_subsystem: "Windows Console (3)"
+  boundaries:
+    cloud_requests: 0
+    model_downloads_or_changes: 0
+    dependency_installs_or_reinstalls: 0
+    source_models_modified: false
+    source_tools_modified: false
+
+user_facing_documentation_revision:
+  written_at: "2026-08-24 16:55 Asia/Shanghai"
+  user_problem: "发行目录混入候选状态、Git 边界和维护者流程，不符合普通用户简单明了、能直接使用的原则"
+  changes:
+    - "release/README.md 改为下载、解压、组件、启动、使用和排错入口"
+    - "QUICK_START/DOWNLOADS/GPU_GUIDE/TROUBLESHOOTING/PRIVACY/checksums README 全部改为用户操作说明"
+    - "维护者流程由 release/PUBLISHING.md 移至 scripts/release/PUBLISHING.md"
+    - "scripts/release/CORE-README.md 同步为随包用户说明"
+    - "新增合同测试，禁止发行 README 出现内部状态词和 Git 提交说明"
+  validation:
+    release_tests: "14 passed"
+    documentation_and_architecture_tests: "18 passed"
+    full_unittest: "623 passed；skipped=1；expected failures=5"
+    compileall: passed
+    pip_check: "No broken requirements found；既有 ~ransformers invalid distribution warning"
+    git_diff_check: passed
+  package_state:
+    ready_for_local_review: false
+    reason: "现有 ZIP 仍含修改前文档；再次便携重建需要单独授权"
+  github_operations: 0
+
+github_release_publication:
+  written_at: "2026-08-24 17:53 Asia/Shanghai"
+  authorization: "用户明确要求提交到 main，commit 为 ui修复、发行版整理、项目文档梳理，并上传发行附件"
+  repository: "DreamBetterO/ZhiYing"
+  branch: main
+  tag: v1.0.0
+  release_page: "https://github.com/DreamBetterO/ZhiYing/releases/tag/v1.0.0"
+  commit_message: "ui修复、发行版整理、项目文档梳理"
+  assets:
+    - name: ZhiYing-Core-1.0.0-win-x64.zip
+      bytes: 133710154
+      sha256: 9d587dc2e4157cf1f509c35e297f3716c372419ed2f660ad2bb76356a18ab86e
+    - name: SHA256SUMS.txt
+      bytes: 97
+  package_validation:
+    zip_entries: 1247
+    smoke: passed
+    new_user_documentation: passed
+    model_files: 0
+    tool_files: 0
+  publication_channel: "源码/main + v1.0.0 标签；ZIP/SHA256SUMS 仅作为 GitHub Release 附件"

@@ -3,9 +3,9 @@ from tempfile import TemporaryDirectory
 
 import yaml
 
-from video_study import __version__
-from video_study.config import AppConfig
-from video_study.desktop import (
+from zhiying import __version__
+from zhiying.config import AppConfig
+from zhiying.desktop import (
     QueueItem,
     STAGE_LABELS,
     cloud_authorization_message,
@@ -21,7 +21,7 @@ from video_study.desktop import (
     blended_hex,
     watermark_options,
 )
-from video_study.desktop.view import PRIMARY_UI_ACTIONS
+from zhiying.desktop.view import PRIMARY_UI_ACTIONS, PRODUCT_DISPLAY_NAME, UI_COPY
 
 
 class DesktopLogicTests(unittest.TestCase):
@@ -33,7 +33,19 @@ class DesktopLogicTests(unittest.TestCase):
         })
 
     def test_ui_version_matches_package_version(self) -> None:
-        self.assertEqual(__version__, "1.0.0rc1")
+        self.assertEqual(__version__, "1.0.0")
+
+    def test_primary_ui_uses_consistent_product_language(self) -> None:
+        self.assertEqual(PRODUCT_DISPLAY_NAME, "知影")
+        self.assertEqual(UI_COPY["tagline"], "将教学视频整理为可溯源的学习文档")
+        self.assertEqual(UI_COPY["add_local"], "＋ 添加本地视频")
+        self.assertEqual(UI_COPY["add_link"], "＋ 添加视频链接")
+        self.assertEqual(UI_COPY["local_process"], "生成本地文档")
+        self.assertEqual(UI_COPY["cloud_process"], "使用云端优化")
+        self.assertEqual(UI_COPY["local_merge"], "合并本地文档")
+        self.assertEqual(UI_COPY["cloud_merge"], "云端优化合并")
+        self.assertEqual(UI_COPY["settings"], "模型与服务设置")
+        self.assertNotIn("聚合", "".join(UI_COPY.values()))
 
     def test_qwen_model_is_only_offered_when_runtime_and_weights_are_complete(self) -> None:
         from pathlib import Path
@@ -60,7 +72,7 @@ class DesktopLogicTests(unittest.TestCase):
             self.assertFalse(qwen_asr_ready(config))
 
     def test_clear_workspace_cache_keeps_output_and_workspace_directory(self) -> None:
-        from video_study.application.processing import DefaultProcessingService
+        from zhiying.application.processing import DefaultProcessingService
         from pathlib import Path
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -79,7 +91,7 @@ class DesktopLogicTests(unittest.TestCase):
             self.assertTrue((output / "lesson.pdf").is_file())
 
     def test_clear_workspace_cache_rejects_project_root(self) -> None:
-        from video_study.application.processing import DefaultProcessingService
+        from zhiying.application.processing import DefaultProcessingService
         from pathlib import Path
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -196,7 +208,7 @@ class DesktopLogicTests(unittest.TestCase):
             self.assertNotIn("temporary-secret", str(config.raw))
 
     def test_selected_video_can_recover_cached_render_result(self) -> None:
-        from video_study.application.processing import DefaultProcessingService
+        from zhiying.application.processing import DefaultProcessingService
         from pathlib import Path
         with TemporaryDirectory() as directory:
             root = Path(directory); video = root / "lesson.mp4"; video.write_bytes(b"video")
@@ -215,7 +227,7 @@ class DesktopLogicTests(unittest.TestCase):
 
     def test_cached_result_scans_output_dir_when_manifest_render_incomplete(self) -> None:
         """manifest.stages.render 可能只有 markdown，docx/pdf 应从 output 目录扫描补全。"""
-        from video_study.application.processing import DefaultProcessingService
+        from zhiying.application.processing import DefaultProcessingService
         from pathlib import Path
         with TemporaryDirectory() as directory:
             root = Path(directory); video = root / "lesson.mp4"; video.write_bytes(b"video")

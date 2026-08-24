@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import unittest
 
-from video_study.knowledge.course_ir import (
+from zhiying.knowledge.course_ir import (
     build_course_ir,
     build_source_blocks,
     course_ir_to_units,
     route_claims_to_blocks,
 )
-from video_study.knowledge.dedup import run_dedup_gate, validate_title
-from video_study.knowledge.schema import (
+from zhiying.knowledge.dedup import run_dedup_gate, validate_title
+from zhiying.knowledge.schema import (
     ChapterPlan,
     Claim,
     CourseIR,
@@ -17,7 +17,7 @@ from video_study.knowledge.schema import (
     LessonPlan,
     UnitPlan,
 )
-from video_study.knowledge.source_blocks import build_cloud_source_blocks
+from zhiying.knowledge.source_blocks import build_cloud_source_blocks
 
 
 def _transcript(*texts: str) -> dict:

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from video_study.frames import select_keyframe_candidates
+from zhiying.media.frames import select_keyframe_candidates
 
 
 class KeyframeSelectionTests(unittest.TestCase):

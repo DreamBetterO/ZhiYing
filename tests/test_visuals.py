@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import unittest
 
-from video_study.knowledge.visuals import (
+from zhiying.knowledge.visuals import (
     build_frame_semantics,
     cluster_visual_scenes,
     cleanup_bindings,
     _nearby_transcript,
 )
-from video_study.knowledge.schema import VisualBinding
+from zhiying.knowledge.schema import VisualBinding
 
 
 class NearbyTranscriptTests(unittest.TestCase):

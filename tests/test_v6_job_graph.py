@@ -4,10 +4,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from video_study.application.requests import JobRequest, ProcessingRequest
-from video_study.execution.graphs.aggregate_graph import AggregateGraph
-from video_study.execution.graphs.job_graph import JobGraph
-from video_study.execution.graphs.source_graph import SourceGraph
+from zhiying.application.requests import JobRequest, ProcessingRequest
+from zhiying.execution.graphs.aggregate_graph import AggregateGraph
+from zhiying.execution.graphs.job_graph import JobGraph
+from zhiying.execution.graphs.source_graph import SourceGraph
 
 
 class V6JobGraphTests(unittest.TestCase):
@@ -59,7 +59,7 @@ class V6JobGraphTests(unittest.TestCase):
             graph.run("cloud", ({"video_id": "a"}, {"video_id": "b"}), execute=lambda _rows: {})
 
     def test_job_checkpoint_persists_refs_not_runtime_events_or_secrets(self) -> None:
-        from video_study.execution.checkpointing import SqliteCheckpointAdapter
+        from zhiying.execution.checkpointing import SqliteCheckpointAdapter
 
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "job.sqlite3"

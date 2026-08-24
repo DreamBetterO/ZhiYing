@@ -3,7 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from video_study.runtime import find_tool
+from zhiying.runtime import find_tool
 
 
 class RuntimeToolTests(unittest.TestCase):
@@ -14,7 +14,7 @@ class RuntimeToolTests(unittest.TestCase):
             ffprobe.parent.mkdir(parents=True)
             ffprobe.touch()
 
-            with patch("video_study.runtime.project_root", return_value=root):
+            with patch("zhiying.runtime.project_root", return_value=root):
                 self.assertEqual(find_tool("ffprobe"), str(ffprobe))
 
 

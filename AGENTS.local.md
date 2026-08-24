@@ -26,7 +26,7 @@ Python desktop application for video-to-document summarization. Pipeline: JSON â
 
 ## Execution Discipline
 
-- **Diagnosis first**: run `.venv\Scripts\python.exe scripts\diagnose_workspace.py workspace\<video_id>` (read-only), then locate failures by `step_id/error_code` in `docs/diagnostics/problem-index.yaml`.
+- **Diagnosis first**: run `.venv\Scripts\python.exe scripts\diagnostics\diagnose_workspace.py workspace\<video_id>` (read-only), then locate failures by `step_id/error_code` in `docs/diagnostics/problem-index.yaml`.
 - **Test-first, minimal change**: add a failing regression test before modifying the smallest responsible module. Tasks in the same directory must run serially â€” no concurrency to mask write races.
 - **Cache priority**: do not rerun long videos without reason; diagnose existing workspaces before cleaning.
 - **Link integrity**: validate via the UI-logic equivalent path, not just CLI.

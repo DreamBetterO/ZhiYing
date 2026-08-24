@@ -5,15 +5,15 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
-from video_study.execution.artifacts import ArtifactId, ArtifactRef
-from video_study.execution.artifacts import WorkspaceLayout, file_digest
-from video_study.execution.cache import (
+from zhiying.execution.artifacts import ArtifactId, ArtifactRef
+from zhiying.execution.artifacts import WorkspaceLayout, file_digest
+from zhiying.execution.cache import (
     CacheDecision, CacheReason, CacheRecord, FileWorkspaceCache, LegacyAdoptingWorkspaceCache,
 )
-from video_study.execution.context import (
+from zhiying.execution.context import (
     ProcessingContext, ProcessingOptions, RunPolicy, RuntimeServices, VideoSource,
 )
-from video_study.execution.contracts import FingerprintMaterial, StepOutcome, StepSpec, StepStatus
+from zhiying.execution.contracts import FingerprintMaterial, StepOutcome, StepSpec, StepStatus
 
 
 class WorkspaceCacheContractTests(unittest.TestCase):
@@ -126,7 +126,7 @@ class FileWorkspaceCacheTests(unittest.TestCase):
     def test_record_round_trip_and_unchanged_metadata_avoids_rehash(self) -> None:
         with TemporaryDirectory() as directory:
             context, _artifact, _output, spec, fingerprint, cache = self._record(Path(directory))
-            with patch("video_study.execution.cache.file_digest", side_effect=AssertionError("must not hash")):
+            with patch("zhiying.execution.cache.file_digest", side_effect=AssertionError("must not hash")):
                 decision = cache.decide(context, spec, fingerprint, {})
             self.assertTrue(decision.hit)
             self.assertEqual(decision.reason, CacheReason.CACHE_HIT)

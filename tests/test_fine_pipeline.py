@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from tests import test_coarse_pipeline as coarse
-from video_study.pipeline import process_video
+from zhiying.application.pipeline import process_video
 
 
 class SelectiveInvalidationIntegrationTests(unittest.TestCase):

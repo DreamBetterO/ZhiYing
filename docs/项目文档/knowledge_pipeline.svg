@@ -1,290 +1,58 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 1080" font-family="'Microsoft YaHei','Segoe UI',sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="560" viewBox="0 0 1080 560" role="img" aria-labelledby="title desc">
+  <title id="title">知影知识与编辑流程</title>
+  <desc id="desc">转写、画面和用户要求先合并为可追溯的知识，再经过蓝图、章节和质量审计形成文档。</desc>
   <defs>
-    <linearGradient id="bgK" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#f8fafc"/>
-      <stop offset="100%" stop-color="#f1f5f9"/>
-    </linearGradient>
-    <linearGradient id="planGrad" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#e0e7ff"/><stop offset="100%" stop-color="#c7d2fe"/>
-    </linearGradient>
-    <linearGradient id="visGrad" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#fef3c7"/><stop offset="100%" stop-color="#fde68a"/>
-    </linearGradient>
-    <linearGradient id="orgGrad" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#dcfce7"/><stop offset="100%" stop-color="#bbf7d0"/>
-    </linearGradient>
-    <linearGradient id="chkGrad" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#fce7f3"/><stop offset="100%" stop-color="#fbcfe8"/>
-    </linearGradient>
-    <linearGradient id="adpGrad" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#fed7aa"/><stop offset="100%" stop-color="#fdba74"/>
-    </linearGradient>
-    <linearGradient id="dataGrad" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#f5f5f5"/><stop offset="100%" stop-color="#e5e5e5"/>
-    </linearGradient>
-    <linearGradient id="cloudGrad" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#fef9c3"/><stop offset="100%" stop-color="#fde047"/>
-    </linearGradient>
-    <filter id="sh3">
-      <feDropShadow dx="1" dy="2" stdDeviation="2" flood-opacity="0.12"/>
-    </filter>
-    <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
-    </marker>
-    <marker id="a3g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
-      <path d="M0,0 L10,5 L0,10 z" fill="#22c55e"/>
-    </marker>
-    <marker id="a3y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
-      <path d="M0,0 L10,5 L0,10 z" fill="#eab308"/>
-    </marker>
-    <marker id="a3r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
-      <path d="M0,0 L10,5 L0,10 z" fill="#ef4444"/>
-    </marker>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#2563eb"/></marker>
+    <style>text{font-family:'Microsoft YaHei','Noto Sans CJK SC',sans-serif;fill:#111827}.title{font-size:26px;font-weight:700}.subtitle{font-size:14px;fill:#4b5563}.box{fill:#fff;stroke:#374151;stroke-width:1.5}.active{fill:#eff6ff;stroke:#2563eb;stroke-width:2}.h{font-size:16px;font-weight:700}.t{font-size:12px;fill:#4b5563}.arrow{stroke:#2563eb;stroke-width:2;fill:none;marker-end:url(#arrow)}.dash{stroke:#6b7280;stroke-width:1.5;stroke-dasharray:6 5;fill:none}</style>
   </defs>
+  <rect width="1080" height="560" fill="#fff"/>
+  <text x="540" y="42" text-anchor="middle" class="title">知识与编辑流程</text>
+  <text x="540" y="68" text-anchor="middle" class="subtitle">先确认“依据是什么”，再决定“文档怎样写”</text>
 
-  <rect width="1100" height="1080" fill="url(#bgK)"/>
+  <text x="120" y="108" text-anchor="middle" class="t">输入</text>
+  <rect x="45" y="128" width="150" height="64" rx="4" class="box"/>
+  <text x="120" y="156" text-anchor="middle" class="h">转写</text><text x="120" y="178" text-anchor="middle" class="t">文字 + 时间戳</text>
+  <rect x="45" y="228" width="150" height="64" rx="4" class="box"/>
+  <text x="120" y="256" text-anchor="middle" class="h">画面</text><text x="120" y="278" text-anchor="middle" class="t">经过核验的帧</text>
+  <rect x="45" y="328" width="150" height="64" rx="4" class="box"/>
+  <text x="120" y="356" text-anchor="middle" class="h">用户要求</text><text x="120" y="378" text-anchor="middle" class="t">详略与偏好</text>
 
-  <!-- Title -->
-  <text x="550" y="36" text-anchor="middle" font-size="22" font-weight="700" fill="#1e293b">知影 · 知识子系统流程图</text>
-  <text x="550" y="56" text-anchor="middle" font-size="12" fill="#64748b">execution/steps/knowledge.py — 8 个可恢复 Step</text>
+  <path d="M195 160H240V260H285" class="arrow"/>
+  <path d="M195 260H285" class="arrow"/>
+  <path d="M195 360H240V260H285" class="arrow"/>
 
-  <!-- Inputs -->
-  <rect x="60" y="80" width="250" height="70" rx="10" fill="url(#dataGrad)" stroke="#a3a3a3" stroke-width="1.5" filter="url(#sh3)"/>
-  <text x="185" y="102" text-anchor="middle" font-size="12" font-weight="600" fill="#404040">输入</text>
-  <text x="185" y="118" text-anchor="middle" font-size="10" fill="#525252">transcript.json (带时间戳转写)</text>
-  <text x="185" y="133" text-anchor="middle" font-size="10" fill="#525252">keyframes.json (筛选后关键帧)</text>
-  <text x="185" y="145" text-anchor="middle" font-size="10" fill="#525252">manifest.json (视频元数据)</text>
+  <rect x="285" y="212" width="190" height="96" rx="4" class="active"/>
+  <text x="380" y="245" text-anchor="middle" class="h">建立可追溯知识</text>
+  <text x="380" y="270" text-anchor="middle" class="t">CourseIR + 知识单元</text>
+  <text x="380" y="291" text-anchor="middle" class="t">每条内容保留来源</text>
 
-  <rect x="350" y="80" width="250" height="70" rx="10" fill="url(#dataGrad)" stroke="#a3a3a3" stroke-width="1.5" filter="url(#sh3)"/>
-  <text x="475" y="102" text-anchor="middle" font-size="12" font-weight="600" fill="#404040">配置</text>
-  <text x="475" y="118" text-anchor="middle" font-size="10" fill="#525252">content_level: 精简/推荐/丰富</text>
-  <text x="475" y="133" text-anchor="middle" font-size="10" fill="#525252">visual_teaching.level: auto</text>
-  <text x="475" y="145" text-anchor="middle" font-size="10" fill="#525252">cloud: True/False</text>
+  <path d="M475 260H520" class="arrow"/>
+  <rect x="520" y="212" width="150" height="96" rx="4" class="box"/>
+  <text x="595" y="245" text-anchor="middle" class="h">规划文档</text>
+  <text x="595" y="270" text-anchor="middle" class="t">策略 + 蓝图</text>
+  <text x="595" y="291" text-anchor="middle" class="t">确定章节与证据</text>
 
-  <rect x="640" y="80" width="250" height="70" rx="10" fill="url(#dataGrad)" stroke="#a3a3a3" stroke-width="1.5" filter="url(#sh3)"/>
-  <text x="765" y="102" text-anchor="middle" font-size="12" font-weight="600" fill="#404040">输出</text>
-  <text x="765" y="118" text-anchor="middle" font-size="10" fill="#525252">document.json (Schema v2)</text>
-  <text x="765" y="133" text-anchor="middle" font-size="10" fill="#525252">→ Markdown / Word / PDF</text>
+  <path d="M670 260H715" class="arrow"/>
+  <rect x="715" y="212" width="150" height="96" rx="4" class="box"/>
+  <text x="790" y="245" text-anchor="middle" class="h">写作组装</text>
+  <text x="790" y="270" text-anchor="middle" class="t">章节 → v3.1</text>
+  <text x="790" y="291" text-anchor="middle" class="t">不补造证据</text>
 
-  <!-- Arrows from inputs to step 1 -->
-  <line x1="185" y1="150" x2="185" y2="185" stroke="#64748b" stroke-width="1.5" marker-end="url(#a3)"/>
-  <line x1="475" y1="150" x2="475" y2="185" stroke="#64748b" stroke-width="1.5" marker-end="url(#a3)"/>
+  <path d="M865 260H910" class="arrow"/>
+  <rect x="910" y="212" width="130" height="96" rx="4" class="active"/>
+  <text x="975" y="245" text-anchor="middle" class="h">质量审计</text>
+  <text x="975" y="270" text-anchor="middle" class="t">内容与页面</text>
+  <text x="975" y="291" text-anchor="middle" class="t">必要时局部修订</text>
 
-  <!-- ========== Step 1: Planning ========== -->
-  <rect x="50" y="175" width="1000" height="200" rx="10" fill="url(#planGrad)" stroke="#818cf8" stroke-width="1.5" filter="url(#sh3)"/>
-  <text x="70" y="199" font-size="13" font-weight="600" fill="#312e81">步骤 1 · 课程规划 (planning.py → build_lesson_plan)</text>
+  <path d="M975 308V410H790" class="arrow"/>
+  <rect x="640" y="410" width="300" height="70" rx="4" class="box"/>
+  <text x="790" y="440" text-anchor="middle" class="h">统一内容结构</text>
+  <text x="790" y="462" text-anchor="middle" class="t">真实记录来源、能力层级与降级原因</text>
 
-  <!-- merge_segments -->
-  <rect x="70" y="210" width="170" height="50" rx="8" fill="#e0e7ff" stroke="#6366f1" stroke-width="1.2" filter="url(#sh3)"/>
-  <text x="155" y="230" text-anchor="middle" font-size="11" font-weight="600" fill="#312e81">合并转写碎片</text>
-  <text x="155" y="246" text-anchor="middle" font-size="9" fill="#4f46e5">merge_segments</text>
+  <rect x="285" y="410" width="250" height="70" rx="4" class="box"/>
+  <text x="410" y="438" text-anchor="middle" class="h">可选云端增强</text>
+  <text x="410" y="462" text-anchor="middle" class="t">逐次授权；失败则回到本地链</text>
+  <path d="M410 410V338H595V308" class="dash"/>
 
-  <line x1="240" y1="235" x2="270" y2="235" stroke="#64748b" stroke-width="1.2" marker-end="url(#a3)"/>
-
-  <!-- Domain inference -->
-  <rect x="270" y="210" width="170" height="50" rx="8" fill="#e0e7ff" stroke="#6366f1" stroke-width="1.2" filter="url(#sh3)"/>
-  <text x="355" y="230" text-anchor="middle" font-size="11" font-weight="600" fill="#312e81">课程画像</text>
-  <text x="355" y="246" text-anchor="middle" font-size="9" fill="#4f46e5">领域·形态·视觉画像</text>
-
-  <line x1="440" y1="235" x2="470" y2="235" stroke="#64748b" stroke-width="1.2" marker-end="url(#a3)"/>
-
-  <!-- Chapter/Unit planning -->
-  <rect x="470" y="210" width="170" height="50" rx="8" fill="#c7d2fe" stroke="#6366f1" stroke-width="1.2" filter="url(#sh3)"/>
-  <text x="555" y="230" text-anchor="middle" font-size="11" font-weight="600" fill="#312e81">分章 + 知识点</text>
-  <text x="555" y="246" text-anchor="middle" font-size="9" fill="#4f46e5">role·type·facets</text>
-
-  <line x1="640" y1="235" x2="670" y2="235" stroke="#64748b" stroke-width="1.2" marker-end="url(#a3)"/>
-
-  <!-- Depth assignment -->
-  <rect x="670" y="210" width="170" height="50" rx="8" fill="#c7d2fe" stroke="#6366f1" stroke-width="1.2" filter="url(#sh3)"/>
-  <text x="755" y="230" text-anchor="middle" font-size="11" font-weight="600" fill="#312e81">详略分配</text>
-  <text x="755" y="246" text-anchor="middle" font-size="9" fill="#4f46e5">depth_factors 评分</text>
-
-  <line x1="840" y1="235" x2="870" y2="235" stroke="#64748b" stroke-width="1.2" marker-end="url(#a3)"/>
-
-  <!-- Visual questions -->
-  <rect x="870" y="210" width="160" height="50" rx="8" fill="#c7d2fe" stroke="#6366f1" stroke-width="1.2" filter="url(#sh3)"/>
-  <text x="950" y="230" text-anchor="middle" font-size="11" font-weight="600" fill="#312e81">视觉问题</text>
-  <text x="950" y="246" text-anchor="middle" font-size="9" fill="#4f46e5">VisualQuestion + 成功条件</text>
-
-  <!-- Cloud vs Offline for planning -->
-  <rect x="70" y="275" width="420" height="85" rx="8" fill="#f0fdf4" stroke="#22c55e" stroke-width="1.2" filter="url(#sh3)"/>
-  <text x="280" y="295" text-anchor="middle" font-size="11" font-weight="600" fill="#14532d">离线规划 plan_offline()</text>
-  <text x="280" y="312" text-anchor="middle" font-size="9" fill="#166534">• 120s 间隙分章 · 关键词统计推断领域</text>
-  <text x="280" y="326" text-anchor="middle" font-size="9" fill="#166534">• 信息量评分 → role (core/supporting/peripheral)</text>
-  <text x="280" y="340" text-anchor="middle" font-size="9" fill="#166534">• _assign_depth_contracts: deep/standard/brief/mention</text>
-  <text x="280" y="354" text-anchor="middle" font-size="9" fill="#166534">• 生成视觉问题 + 像素成功条件</text>
-
-  <rect x="550" y="275" width="420" height="85" rx="8" fill="#fef9c3" stroke="#eab308" stroke-width="1.2" filter="url(#sh3)"/>
-  <text x="760" y="295" text-anchor="middle" font-size="11" font-weight="600" fill="#713f12">云端规划 plan_cloud()</text>
-  <text x="760" y="312" text-anchor="middle" font-size="9" fill="#854d0e">• 发送压缩 source_blocks 给 LLM</text>
-  <text x="760" y="326" text-anchor="middle" font-size="9" fill="#854d0e">• LLM 返回结构化 LessonPlan JSON</text>
-  <text x="760" y="340" text-anchor="middle" font-size="9" fill="#854d0e">• 本地校验: plan_id 唯一 · 来源块真实</text>
-  <text x="760" y="354" text-anchor="middle" font-size="9" fill="#dc2626">→ 失败时回退到离线规划</text>
-
-  <!-- Cache -->
-  <rect x="490" y="358" width="280" height="22" rx="6" fill="url(#dataGrad)" stroke="#a3a3a3" stroke-width="1" stroke-dasharray="4,2"/>
-  <text x="630" y="372" text-anchor="middle" font-size="9" fill="#525252">📁 缓存: lesson-plan.json · 签名=转写内容哈希</text>
-
-  <!-- Arrow to step 2 -->
-  <line x1="550" y1="380" x2="550" y2="405" stroke="#64748b" stroke-width="2" marker-end="url(#a3)"/>
-  <text x="560" y="398" font-size="9" fill="#64748b">LessonPlan</text>
-
-  <!-- ========== Step 2: Visual Evidence ========== -->
-  <rect x="50" y="400" width="1000" height="200" rx="10" fill="url(#visGrad)" stroke="#fbbf24" stroke-width="1.5" filter="url(#sh3)"/>
-  <text x="70" y="424" font-size="13" font-weight="600" fill="#92400e">步骤 2 · 视觉证据检索 (visual_retrieval.py → build_visual_evidence)</text>
-
-  <!-- Collect jobs -->
-  <rect x="70" y="435" width="180" height="50" rx="8" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.2" filter="url(#sh3)"/>
-  <text x="160" y="455" text-anchor="middle" font-size="11" font-weight="600" fill="#78350f">收集视觉任务</text>
-  <text x="160" y="471" text-anchor="middle" font-size="9" fill="#a16207">collect_visual_jobs</text>
-
-  <line x1="250" y1="460" x2="280" y2="460" stroke="#64748b" stroke-width="1.2" marker-end="url(#a3)"/>
-
-  <!-- Candidate recall -->
-  <rect x="280" y="435" width="170" height="50" rx="8" fill="#fde68a" stroke="#f59e0b" stroke-width="1.2" filter="url(#sh3)"/>
-  <text x="365" y="455" text-anchor="middle" font-size="11" font-weight="600" fill="#78350f">候选帧召回</text>
-  <text x="365" y="471" text-anchor="middle" font-size="9" fill="#a16207">时间锚 + 场景聚类</text>
-
-  <line x1="450" y1="460" x2="480" y2="460" stroke="#64748b" stroke-width="1.2" marker-end="url(#a3)"/>
-
-  <!-- VLM compare -->
-  <rect x="480" y="435" width="170" height="50" rx="8" fill="#fde68a" stroke="#f59e0b" stroke-width="1.2" filter="url(#sh3)"/>
-  <text x="565" y="455" text-anchor="middle" font-size="11" font-weight="600" fill="#78350f">VLM 核验</text>
-  <text x="565" y="471" text-anchor="middle" font-size="9" fill="#a16207">Qwen3-VL compare</text>
-
-  <line x1="650" y1="460" x2="680" y2="460" stroke="#64748b" stroke-width="1.2" marker-end="url(#a3)"/>
-
-  <!-- Criteria check -->
-  <rect x="680" y="435" width="170" height="50" rx="8" fill="#fde68a" stroke="#f59e0b" stroke-width="1.2" filter="url(#sh3)"/>
-  <text x="765" y="455" text-anchor="middle" font-size="11" font-weight="600" fill="#78350f">成功条件核验</text>
-  <text x="765" y="471" text-anchor="middle" font-size="9" fill="#a16207">criteria_met 检查</text>
-
-  <line x1="850" y1="460" x2="880" y2="460" stroke="#64748b" stroke-width="1.2" marker-end="url(#a3)"/>
-
-  <!-- Decision -->
-  <polygon points="950,435 1020,460 950,485 880,460" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.2" filter="url(#sh3)"/>
-  <text x="950" y="457" text-anchor="middle" font-size="10" font-weight="600" fill="#78350f">通过?</text>
-  <text x="950" y="470" text-anchor="middle" font-size="9" fill="#a16207">门槛</text>
-
-  <!-- select / no_match -->
-  <line x1="1020" y1="460" x2="1020" y2="495" stroke="#22c55e" stroke-width="1.5" marker-end="url(#a3g)"/>
-  <text x="1035" y="480" font-size="9" fill="#22c55e">是</text>
-
-  <line x1="950" y1="485" x2="950" y2="495" stroke="#ef4444" stroke-width="1.5" marker-end="url(#a3r)"/>
-  <text x="925" y="493" font-size="9" fill="#ef4444">否</text>
-
-  <rect x="970" y="495" width="80" height="30" rx="6" fill="#dcfce7" stroke="#22c55e" stroke-width="1"/>
-  <text x="1010" y="514" text-anchor="middle" font-size="9" fill="#14532d">select ✓</text>
-
-  <rect x="890" y="495" width="80" height="30" rx="6" fill="#fee2e2" stroke="#ef4444" stroke-width="1"/>
-  <text x="930" y="514" text-anchor="middle" font-size="9" fill="#991b1b">no_match</text>
-
-  <!-- VLM session info -->
-  <rect x="70" y="530" width="440" height="55" rx="8" fill="#fffbeb" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4,2"/>
-  <text x="290" y="548" text-anchor="middle" font-size="10" font-weight="600" fill="#78350f">VLM 会话管理 (session 模式)</text>
-  <text x="290" y="563" text-anchor="middle" font-size="9" fill="#a16207">每视频单会话 · model_load_count=1 · compare/detail 顺序执行</text>
-  <text x="290" y="577" text-anchor="middle" font-size="9" fill="#a16207">批次级 OOM/会话故障熔断后续 job · 历史缓存故障不重复 warning</text>
-
-  <rect x="550" y="530" width="420" height="55" rx="8" fill="#fffbeb" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4,2"/>
-  <text x="760" y="548" text-anchor="middle" font-size="10" font-weight="600" fill="#78350f">故障分离</text>
-  <text x="760" y="563" text-anchor="middle" font-size="9" fill="#a16207">provider_error/oom/detail_failed → warning</text>
-  <text x="760" y="577" text-anchor="middle" font-size="9" fill="#a16207">候选不足/门槛未满足/场景去重 → 正常 no_match (info)</text>
-
-  <!-- Cache -->
-  <rect x="350" y="588" width="400" height="22" rx="6" fill="url(#dataGrad)" stroke="#a3a3a3" stroke-width="1" stroke-dasharray="4,2"/>
-  <text x="550" y="602" text-anchor="middle" font-size="9" fill="#525252">📁 缓存: visual-evidence.json · frame-semantics.json</text>
-
-  <!-- Arrow to step 3 -->
-  <line x1="550" y1="610" x2="550" y2="635" stroke="#64748b" stroke-width="2" marker-end="url(#a3)"/>
-  <text x="560" y="628" font-size="9" fill="#64748b">VisualEvidence[]</text>
-
-  <!-- ========== Step 3: Organizer ========== -->
-  <rect x="50" y="630" width="1000" height="200" rx="10" fill="url(#orgGrad)" stroke="#86efac" stroke-width="1.5" filter="url(#sh3)"/>
-  <text x="70" y="654" font-size="13" font-weight="600" fill="#166534">步骤 3 · 知识整理 (organizer.py → build_units)</text>
-
-  <!-- Offline path -->
-  <rect x="70" y="665" width="430" height="150" rx="8" fill="#f0fdf4" stroke="#22c55e" stroke-width="1.2" filter="url(#sh3)"/>
-  <text x="285" y="685" text-anchor="middle" font-size="11" font-weight="600" fill="#14532d">离线整理 organize_offline()</text>
-
-  <rect x="85" y="695" width="180" height="40" rx="6" fill="#dcfce7" stroke="#22c55e" stroke-width="1"/>
-  <text x="175" y="712" text-anchor="middle" font-size="10" font-weight="600" fill="#14532d">CourseIR 构建</text>
-  <text x="175" y="726" text-anchor="middle" font-size="9" fill="#166534">source_blocks → claims → 路由</text>
-
-  <line x1="265" y1="715" x2="285" y2="715" stroke="#64748b" stroke-width="1.2" marker-end="url(#a3)"/>
-
-  <rect x="285" y="695" width="200" height="40" rx="6" fill="#dcfce7" stroke="#22c55e" stroke-width="1"/>
-  <text x="385" y="712" text-anchor="middle" font-size="10" font-weight="600" fill="#14532d">Claim → ContentBlock</text>
-  <text x="385" y="726" text-anchor="middle" font-size="9" fill="#166534">route_claims_to_blocks</text>
-
-  <rect x="85" y="745" width="400" height="55" rx="6" fill="#f0fdf4" stroke="#22c55e" stroke-width="1" stroke-dasharray="3,2"/>
-  <text x="285" y="763" text-anchor="middle" font-size="9" fill="#166534">• exact 去重: 相同指纹自动合并</text>
-  <text x="285" y="776" text-anchor="middle" font-size="9" fill="#166534">• containment 去重: 可证明包含关系自动去重</text>
-  <text x="285" y="789" text-anchor="middle" font-size="9" fill="#166534">• near-duplicate: 仅报告，不删除 (report_only)</text>
-
-  <!-- Cloud path -->
-  <rect x="560" y="665" width="430" height="150" rx="8" fill="#fef9c3" stroke="#eab308" stroke-width="1.2" filter="url(#sh3)"/>
-  <text x="775" y="685" text-anchor="middle" font-size="11" font-weight="600" fill="#713f12">云端整理 organize_cloud()</text>
-
-  <rect x="575" y="695" width="180" height="40" rx="6" fill="#fef9c3" stroke="#eab308" stroke-width="1"/>
-  <text x="665" y="712" text-anchor="middle" font-size="10" font-weight="600" fill="#713f12">CloudPayload 构建</text>
-  <text x="665" y="726" text-anchor="middle" font-size="9" fill="#854d0e">紧凑 CourseIR 投影</text>
-
-  <line x1="755" y1="715" x2="775" y2="715" stroke="#64748b" stroke-width="1.2" marker-end="url(#a3)"/>
-
-  <rect x="775" y="695" width="200" height="40" rx="6" fill="#fde047" stroke="#eab308" stroke-width="1"/>
-  <text x="875" y="712" text-anchor="middle" font-size="10" font-weight="600" fill="#713f12">分批发送 LLM</text>
-  <text x="875" y="726" text-anchor="middle" font-size="9" fill="#854d0e">plan_payload_batches</text>
-
-  <rect x="575" y="745" width="400" height="55" rx="6" fill="#fef9c3" stroke="#eab308" stroke-width="1" stroke-dasharray="3,2"/>
-  <text x="775" y="763" text-anchor="middle" font-size="9" fill="#854d0e">• 每批校验: plan_id 覆盖 · 来源块真实 · content_blocks 非空</text>
-  <text x="775" y="776" text-anchor="middle" font-size="9" fill="#854d0e">• 合并批次结果: sections + objectives + review</text>
-  <text x="775" y="789" text-anchor="middle" font-size="9" fill="#dc2626">→ 整篇失败 → 分章节 → 离线回退</text>
-
-  <!-- Cache -->
-  <rect x="350" y="818" width="400" height="22" rx="6" fill="url(#dataGrad)" stroke="#a3a3a3" stroke-width="1" stroke-dasharray="4,2"/>
-  <text x="550" y="832" text-anchor="middle" font-size="9" fill="#525252">📁 缓存: knowledge-units.json · course-ir.json · cloud-payload.json</text>
-
-  <!-- Arrow to step 4 -->
-  <line x1="550" y1="840" x2="550" y2="865" stroke="#64748b" stroke-width="2" marker-end="url(#a3)"/>
-  <text x="560" y="858" font-size="9" fill="#64748b">KnowledgeUnit[]</text>
-
-  <!-- ========== Step 4+5: Selfcheck + Adapter ========== -->
-  <rect x="50" y="860" width="1000" height="130" rx="10" fill="url(#chkGrad)" stroke="#f9a8d4" stroke-width="1.5" filter="url(#sh3)"/>
-  <text x="70" y="884" font-size="13" font-weight="600" fill="#831843">步骤 4-5 · 自检 + 适配器 (selfcheck.py + adapter.py)</text>
-
-  <rect x="70" y="895" width="280" height="80" rx="8" fill="#fce7f3" stroke="#ec4899" stroke-width="1.2" filter="url(#sh3)"/>
-  <text x="210" y="915" text-anchor="middle" font-size="11" font-weight="600" fill="#831843">轻量自检 run_selfcheck()</text>
-  <text x="210" y="932" text-anchor="middle" font-size="9" fill="#9f1239">• plan 覆盖率检查</text>
-  <text x="210" y="946" text-anchor="middle" font-size="9" fill="#9f1239">• 来源 segment 引用验证</text>
-  <text x="210" y="960" text-anchor="middle" font-size="9" fill="#9f1239">• 视觉绑定一致性</text>
-
-  <line x1="350" y1="935" x2="380" y2="935" stroke="#64748b" stroke-width="1.5" marker-end="url(#a3)"/>
-
-  <rect x="380" y="895" width="300" height="80" rx="8" fill="url(#adpGrad)" stroke="#f97316" stroke-width="1.2" filter="url(#sh3)"/>
-  <text x="530" y="915" text-anchor="middle" font-size="11" font-weight="600" fill="#7c2d12">适配器 units_to_document()</text>
-  <text x="530" y="932" text-anchor="middle" font-size="9" fill="#9a3412">• KnowledgeUnit[] → document.json</text>
-  <text x="530" y="946" text-anchor="middle" font-size="9" fill="#9a3412">• 按 lesson_plan 章节分组</text>
-  <text x="530" y="960" text-anchor="middle" font-size="9" fill="#9a3412">• 应用 VisualEvidence 绑定</text>
-
-  <line x1="680" y1="935" x2="710" y2="935" stroke="#64748b" stroke-width="1.5" marker-end="url(#a3)"/>
-
-  <rect x="710" y="895" width="280" height="80" rx="8" fill="#fff7ed" stroke="#f97316" stroke-width="1.2" filter="url(#sh3)"/>
-  <text x="850" y="915" text-anchor="middle" font-size="11" font-weight="600" fill="#7c2d12">Canonical Document v2</text>
-  <text x="850" y="932" text-anchor="middle" font-size="9" fill="#9a3412">• v1_to_v2: 仅旧缓存只读迁移</text>
-  <text x="850" y="946" text-anchor="middle" font-size="9" fill="#9a3412">• content_blocks: 正文唯一事实源</text>
-  <text x="850" y="960" text-anchor="middle" font-size="9" fill="#9a3412">• source_refs: 时间戳与本地回看</text>
-
-  <!-- Arrow to output -->
-  <line x1="850" y1="975" x2="850" y2="1000" stroke="#64748b" stroke-width="2" marker-end="url(#a3)"/>
-
-  <!-- ========== Output ========== -->
-  <rect x="200" y="1000" width="700" height="60" rx="10" fill="url(#adpGrad)" stroke="#f97316" stroke-width="1.5" filter="url(#sh3)"/>
-  <text x="550" y="1024" text-anchor="middle" font-size="13" font-weight="600" fill="#7c2d12">document.json (Schema v2)</text>
-  <text x="550" y="1042" text-anchor="middle" font-size="10" fill="#9a3412">content_blocks (唯一事实源) · source_refs · visual_evidence · selfcheck · knowledge_pipeline 元数据</text>
-
-  <!-- Cloud budget annotation -->
-  <rect x="850" y="175" width="200" height="25" rx="6" fill="url(#cloudGrad)" stroke="#eab308" stroke-width="1"/>
-  <text x="950" y="191" text-anchor="middle" font-size="9" fill="#713f12">💰 CloudRequestBudget 共享</text>
+  <text x="540" y="530" text-anchor="middle" class="t">本地确定性链始终可完成；模型只能查询批准的证据并提交结构化结果</text>
 </svg>

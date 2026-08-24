@@ -4,9 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from video_study.knowledge.organizer import _validate_organizer_payload, build_units, organize_offline
-from video_study.knowledge.prompts import compose_course_ir_prompt
-from video_study.knowledge.schema import (
+from zhiying.knowledge.organizer import _validate_organizer_payload, build_units, organize_offline
+from zhiying.knowledge.prompts import compose_course_ir_prompt
+from zhiying.knowledge.schema import (
     ChapterPlan,
     KnowledgeUnit,
     LessonPlan,

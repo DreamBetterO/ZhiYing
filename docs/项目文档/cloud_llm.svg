@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760" role="img" aria-labelledby="title desc">
+  <title id="title">云端 LLM 在知识组织和文档编辑中的参与方式</title>
+  <desc id="desc">本地证据经用户授权和预算门后，可由云端LLM参与课程规划、知识单元、文档蓝图、章节写作和一次有限修订；所有结构校验、质量门和降级决定都由本地程序执行。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#2563eb"/></marker>
+    <style>
+      text{font-family:'Microsoft YaHei','Noto Sans CJK SC',sans-serif;fill:#111827}.title{font-size:28px;font-weight:700}.sub{font-size:14px;fill:#4b5563}.h{font-size:17px;font-weight:700}.t{font-size:13px}.note{font-size:12px;fill:#4b5563}.box{fill:#fff;stroke:#374151;stroke-width:1.5}.focus{fill:#eff6ff;stroke:#2563eb;stroke-width:2}.flow{stroke:#2563eb;stroke-width:2;fill:none;marker-end:url(#arrow)}.fallback{stroke:#6b7280;stroke-width:1.5;stroke-dasharray:6 5;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1280" height="760" fill="#fff"/>
+  <text x="640" y="42" text-anchor="middle" class="title">云端 LLM 参与两段工作，但不接管流程</text>
+  <text x="640" y="69" text-anchor="middle" class="sub">发送裁剪后的结构化文字；视频、截图、权限判断、文件写入和最终验收留在本地</text>
+
+  <rect x="35" y="145" width="205" height="145" rx="5" class="box"/>
+  <text x="137" y="180" text-anchor="middle" class="h">本地输入</text>
+  <text x="137" y="210" text-anchor="middle" class="t">转写证据与时间戳</text>
+  <text x="137" y="236" text-anchor="middle" class="t">已核实的视觉事实</text>
+  <text x="137" y="262" text-anchor="middle" class="t">用户要求</text>
+
+  <path d="M240 217H290" class="flow"/>
+  <rect x="290" y="145" width="205" height="145" rx="5" class="focus"/>
+  <text x="392" y="180" text-anchor="middle" class="h">本地准入门</text>
+  <text x="392" y="210" text-anchor="middle" class="t">是否明确授权</text>
+  <text x="392" y="236" text-anchor="middle" class="t">端点 · 模型链 · 共享预算</text>
+  <text x="392" y="262" text-anchor="middle" class="note">未授权：不创建云端客户端</text>
+
+  <path d="M495 217H550" class="flow"/>
+  <text x="522" y="204" text-anchor="middle" class="note">已授权</text>
+  <rect x="550" y="110" width="300" height="215" rx="5" class="box"/>
+  <text x="700" y="145" text-anchor="middle" class="h">云端参与一：知识组织</text>
+  <text x="580" y="181" class="t">课程规划：确定主题、顺序和详略</text>
+  <text x="580" y="212" class="t">知识单元：整理步骤、条件和边界</text>
+  <text x="580" y="243" class="t">视觉需求：为知识点提出图片问题</text>
+  <text x="700" y="282" text-anchor="middle" class="note">失败 → 保留证据，重新走本地规划与组织</text>
+
+  <path d="M850 217H905" class="flow"/>
+  <rect x="905" y="110" width="340" height="215" rx="5" class="focus"/>
+  <text x="1075" y="145" text-anchor="middle" class="h">本地接纳</text>
+  <text x="935" y="181" class="t">校验知识覆盖与结构</text>
+  <text x="935" y="212" class="t">关联字幕来源和视觉证据</text>
+  <text x="935" y="243" class="t">去重并形成稳定知识单元</text>
+  <text x="1075" y="282" text-anchor="middle" class="note">模型返回不能直接成为正式产物</text>
+
+  <path d="M1075 325V390" class="flow"/>
+  <rect x="905" y="390" width="340" height="215" rx="5" class="box"/>
+  <text x="1075" y="425" text-anchor="middle" class="h">云端参与二：文档编辑</text>
+  <text x="935" y="461" class="t">蓝图：章节和组件怎样组织</text>
+  <text x="935" y="492" class="t">写作：按知识单元生成结构化章节</text>
+  <text x="935" y="523" class="t">修订：只处理质量报告指出的范围</text>
+  <text x="1075" y="562" text-anchor="middle" class="note">工具可用时最多一次修订循环</text>
+
+  <path d="M905 497H850" class="flow"/>
+  <rect x="550" y="390" width="300" height="215" rx="5" class="focus"/>
+  <text x="700" y="425" text-anchor="middle" class="h">本地质量与提交</text>
+  <text x="580" y="461" class="t">验证蓝图、章节和修改范围</text>
+  <text x="580" y="492" class="t">检查来源、公式、图片和用户要求</text>
+  <text x="580" y="523" class="t">写入统一内容结构，再生成三种格式</text>
+  <text x="700" y="562" text-anchor="middle" class="note">决定成功、降级或失败</text>
+
+  <path d="M550 497H495" class="fallback"/>
+  <rect x="290" y="410" width="205" height="175" rx="5" class="box"/>
+  <text x="392" y="445" text-anchor="middle" class="h">本地完成路径</text>
+  <text x="392" y="480" text-anchor="middle" class="t">本地课程规划</text>
+  <text x="392" y="509" text-anchor="middle" class="t">本地蓝图与章节</text>
+  <text x="392" y="538" text-anchor="middle" class="t">同一质量门和渲染器</text>
+  <text x="392" y="566" text-anchor="middle" class="note">无云端仍可完整交付</text>
+
+  <path d="M392 290V410" class="fallback"/>
+  <text x="410" y="355" class="note">未授权 / 模型链失败 / 预算耗尽</text>
+  <text x="640" y="695" text-anchor="middle" class="sub">模型按配置顺序尝试，共享每段视频的调用预算；尝试记录与降级原因会保留</text>
+</svg>

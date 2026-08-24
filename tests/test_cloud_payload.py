@@ -6,22 +6,22 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from video_study.knowledge.cloud_payload import (
+from zhiying.knowledge.cloud_payload import (
     CloudPayloadError,
     build_cloud_payload,
     plan_payload_batches,
     validate_cloud_response,
 )
-from video_study.knowledge.course_ir import build_course_ir
-from video_study.knowledge.organizer import organize_cloud
-from video_study.knowledge.schema import (
+from zhiying.knowledge.course_ir import build_course_ir
+from zhiying.knowledge.organizer import organize_cloud
+from zhiying.knowledge.schema import (
     ChapterPlan,
     LessonPlan,
     UnitPlan,
     VisualEvidence,
     VisualNeed,
 )
-from video_study.knowledge.source_blocks import build_cloud_source_blocks
+from zhiying.knowledge.source_blocks import build_cloud_source_blocks
 
 
 class CloudPayloadTests(unittest.TestCase):

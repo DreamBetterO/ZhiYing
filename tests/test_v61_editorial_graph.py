@@ -10,17 +10,17 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from video_study.editorial.agent import _initial_state, build_editorial_agent
-from video_study.editorial.blueprint import DocumentBlueprint
-from video_study.editorial.document import validate_document_v31
-from video_study.editorial.evidence import EvidenceCorrectionOverlay, detect_local_corrections, transcript_digest
-from video_study.editorial.intent import compile_editorial_policy
-from video_study.editorial.local import build_local_blueprint
-from video_study.editorial.tools import EditorialToolContext
-from video_study.editorial.writer import write_chapters_in_batches
-from video_study.execution.tool_calling import StageBudget, ToolCallRecord, ToolTurn, build_stage_budget
-from video_study.knowledge.editorial import brief_from_text
-from video_study.knowledge.schema import ChapterPlan, LessonPlan, UnitPlan
+from zhiying.editorial.agent import _initial_state, build_editorial_agent
+from zhiying.editorial.blueprint import DocumentBlueprint
+from zhiying.editorial.document import validate_document_v31
+from zhiying.editorial.evidence import EvidenceCorrectionOverlay, detect_local_corrections, transcript_digest
+from zhiying.editorial.intent import compile_editorial_policy
+from zhiying.editorial.local import build_local_blueprint
+from zhiying.editorial.tools import EditorialToolContext
+from zhiying.editorial.writer import write_chapters_in_batches
+from zhiying.execution.tool_calling import StageBudget, ToolCallRecord, ToolTurn, build_stage_budget
+from zhiying.knowledge.editorial import brief_from_text
+from zhiying.knowledge.schema import ChapterPlan, LessonPlan, UnitPlan
 
 FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "v61"
 
@@ -232,7 +232,7 @@ class EditorialGraphTests(unittest.TestCase):
             ToolCallRecord(name="submit_blueprint", args={"blueprint": poisoned}, tool_call_id="call_1"),
         ), model="replay", finish_reason="tool_calls")
         # 干净章节容器（用于替换）
-        from video_study.editorial.writer import compose_chapter
+        from zhiying.editorial.writer import compose_chapter
         clean_blueprint = DocumentBlueprint.from_dict(poisoned)
         clean_blueprint.chapters[0].title = "原函数"
         clean_container = compose_chapter(clean_blueprint.chapters[0], units, overlay, [])

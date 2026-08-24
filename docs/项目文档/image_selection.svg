@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760" role="img" aria-labelledby="title desc">
+  <title id="title">知影从候选帧中选择文档证据图</title>
+  <desc id="desc">完整候选池分出全局关键帧和知识点证据图两条路线；正文图片经过问题定义、召回、OCR排序、本地VLM比较和本地验收，不满足成功条件时返回no_match。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#2563eb"/></marker>
+    <style>
+      text{font-family:'Microsoft YaHei','Noto Sans CJK SC',sans-serif;fill:#111827}.title{font-size:28px;font-weight:700}.sub{font-size:14px;fill:#4b5563}.h{font-size:17px;font-weight:700}.t{font-size:13px}.note{font-size:12px;fill:#4b5563}.box{fill:#fff;stroke:#374151;stroke-width:1.5}.focus{fill:#eff6ff;stroke:#2563eb;stroke-width:2}.flow{stroke:#2563eb;stroke-width:2;fill:none;marker-end:url(#arrow)}.branch{stroke:#6b7280;stroke-width:1.5;stroke-dasharray:6 5;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1280" height="760" fill="#fff"/>
+  <text x="640" y="42" text-anchor="middle" class="title">图片不是“截得近”，而是“能回答问题”</text>
+  <text x="640" y="69" text-anchor="middle" class="sub">全局关键帧负责概览；正文证据图从完整候选池中按知识问题重新选择</text>
+
+  <rect x="35" y="255" width="165" height="120" rx="5" class="box"/>
+  <text x="117" y="291" text-anchor="middle" class="h">沿时间轴采样</text>
+  <text x="117" y="322" text-anchor="middle" class="t">ffmpeg 抽帧</text>
+  <text x="117" y="348" text-anchor="middle" class="note">长视频拉大间隔</text>
+  <path d="M200 315H245" class="flow"/>
+
+  <rect x="245" y="230" width="200" height="170" rx="5" class="focus"/>
+  <text x="345" y="266" text-anchor="middle" class="h">完整候选池</text>
+  <text x="345" y="299" text-anchor="middle" class="t">总量不超过 600</text>
+  <text x="345" y="327" text-anchor="middle" class="t">中央区域差异与信息量</text>
+  <text x="345" y="355" text-anchor="middle" class="t">场景、时间戳、文件指纹</text>
+  <text x="345" y="382" text-anchor="middle" class="note">后续两条路线共用</text>
+
+  <path d="M345 230V145H510" class="branch"/>
+  <rect x="510" y="105" width="250" height="120" rx="5" class="box"/>
+  <text x="635" y="141" text-anchor="middle" class="h">全局关键帧：视频概览</text>
+  <text x="635" y="172" text-anchor="middle" class="t">每场景选高信息量代表帧</text>
+  <text x="635" y="198" text-anchor="middle" class="note">兼顾时间覆盖，默认最多 8 张</text>
+  <text x="795" y="170" class="note">不等于正文证据图</text>
+
+  <path d="M445 315H490" class="flow"/>
+  <rect x="490" y="255" width="180" height="120" rx="5" class="box"/>
+  <text x="580" y="291" text-anchor="middle" class="h">定义视觉问题</text>
+  <text x="580" y="322" text-anchor="middle" class="t">对象 · 关系 · 时间范围</text>
+  <text x="580" y="348" text-anchor="middle" class="note">明确可验证的成功条件</text>
+
+  <path d="M670 315H715" class="flow"/>
+  <rect x="715" y="230" width="200" height="170" rx="5" class="box"/>
+  <text x="815" y="266" text-anchor="middle" class="h">召回与排序</text>
+  <text x="815" y="299" text-anchor="middle" class="t">场景去重</text>
+  <text x="815" y="327" text-anchor="middle" class="t">内容 80% + 时间 20%</text>
+  <text x="815" y="355" text-anchor="middle" class="t">OCR 可选重排</text>
+  <text x="815" y="382" text-anchor="middle" class="note">每个问题最多 6 张</text>
+
+  <path d="M915 315H960" class="flow"/>
+  <rect x="960" y="230" width="285" height="170" rx="5" class="focus"/>
+  <text x="1102" y="266" text-anchor="middle" class="h">本地 VLM 比较</text>
+  <text x="1102" y="299" text-anchor="middle" class="t">最多比较 4 张候选</text>
+  <text x="1102" y="327" text-anchor="middle" class="t">必要时提取局部细节</text>
+  <text x="1102" y="355" text-anchor="middle" class="t">显存不足缩至 2 张重试</text>
+  <text x="1102" y="382" text-anchor="middle" class="note">只返回候选 ID 与可见事实</text>
+
+  <path d="M1102 400V465" class="flow"/>
+  <rect x="820" y="465" width="425" height="145" rx="5" class="focus"/>
+  <text x="1032" y="501" text-anchor="middle" class="h">本地验收与课程级仲裁</text>
+  <text x="850" y="533" class="t">候选 ID 合法 · 有可见证据 · 成功条件全部满足</text>
+  <text x="850" y="562" class="t">同场景跨知识点去重 · 限制每个知识单元的图片数</text>
+  <text x="1032" y="590" text-anchor="middle" class="note">模型“选中了”不等于图片“被接纳”</text>
+
+  <path d="M820 537H690" class="flow"/>
+  <rect x="465" y="465" width="225" height="145" rx="5" class="box"/>
+  <text x="577" y="501" text-anchor="middle" class="h">最终判断</text>
+  <text x="577" y="537" text-anchor="middle" class="t">合格 → 进入正文并带来源</text>
+  <text x="577" y="570" text-anchor="middle" class="t">不合格 → no_match</text>
+  <text x="577" y="594" text-anchor="middle" class="note">不拿邻近时间帧偷偷补位</text>
+
+  <text x="640" y="690" text-anchor="middle" class="sub">VLM 不可用时退到 OCR / 规则的保守判断；证据不足就不插图，文字文档继续生成</text>
+</svg>

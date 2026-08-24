@@ -4,7 +4,7 @@ import threading
 import time
 import unittest
 
-from video_study.execution.resource_leases import ResourceLeaseManager
+from zhiying.execution.resource_leases import ResourceLeaseManager
 
 
 class V6ResourceLeaseTests(unittest.TestCase):

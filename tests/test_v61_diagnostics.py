@@ -21,7 +21,7 @@ class V61DiagnosticsTests(unittest.TestCase):
         return root
 
     def test_missing_registered_artifact_is_not_reported_as_workspace_root(self) -> None:
-        from scripts.diagnose_workspace import diagnose
+        from scripts.diagnostics.diagnose_workspace import diagnose
 
         with tempfile.TemporaryDirectory() as directory:
             root = self._workspace(directory)
@@ -33,7 +33,7 @@ class V61DiagnosticsTests(unittest.TestCase):
         self.assertNotEqual(Path(policy["path"]), root)
 
     def test_v61_summary_reports_versions_capability_usage_quality_and_revision(self) -> None:
-        from scripts.diagnose_workspace import diagnose
+        from scripts.diagnostics.diagnose_workspace import diagnose
 
         with tempfile.TemporaryDirectory() as directory:
             root = self._workspace(directory)

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from video_study.knowledge.selfcheck import run_selfcheck
-from video_study.knowledge.schema import KnowledgeUnit, LessonPlan, ChapterPlan, UnitPlan
+from zhiying.knowledge.selfcheck import run_selfcheck
+from zhiying.knowledge.schema import KnowledgeUnit, LessonPlan, ChapterPlan, UnitPlan
 
 
 class SelfCheckTests(unittest.TestCase):

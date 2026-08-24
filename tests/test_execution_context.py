@@ -5,8 +5,8 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from video_study.execution.artifacts import WorkspaceLayout
-from video_study.execution.context import (
+from zhiying.execution.artifacts import WorkspaceLayout
+from zhiying.execution.context import (
     CloudCredentials,
     ProcessingContext,
     ProcessingOptions,

@@ -5,11 +5,11 @@ import json
 import unittest
 from pathlib import Path
 
-from video_study.editorial.blueprint import DocumentBlueprint
-from video_study.editorial.document import build_v31_document, make_component
-from video_study.editorial.evidence import EvidenceCorrectionOverlay, detect_local_corrections, transcript_digest
-from video_study.editorial.intent import compile_editorial_policy
-from video_study.execution.artifacts import (
+from zhiying.editorial.blueprint import DocumentBlueprint
+from zhiying.editorial.document import build_v31_document, make_component
+from zhiying.editorial.evidence import EvidenceCorrectionOverlay, detect_local_corrections, transcript_digest
+from zhiying.editorial.intent import compile_editorial_policy
+from zhiying.execution.artifacts import (
     CHAPTER_V31,
     DOCUMENT_BLUEPRINT,
     EDITORIAL_SESSION,
@@ -18,7 +18,7 @@ from video_study.execution.artifacts import (
     V61_ARTIFACTS,
     canonical_json_hash,
 )
-from video_study.knowledge.editorial import brief_from_text
+from zhiying.knowledge.editorial import brief_from_text
 
 
 class V61ArtifactContractTests(unittest.TestCase):
@@ -34,7 +34,7 @@ class V61ArtifactContractTests(unittest.TestCase):
 
     def test_standard_artifacts_include_v61_editorial_artifacts_after_cutover(self) -> None:
         # CP61-5 后 v61 编辑 Artifact 已并入生产 STANDARD_ARTIFACTS
-        from video_study.execution.artifacts import STANDARD_ARTIFACTS
+        from zhiying.execution.artifacts import STANDARD_ARTIFACTS
         self.assertIn("editorial.policy", STANDARD_ARTIFACTS)
         self.assertIn("evidence.corrections", STANDARD_ARTIFACTS)
         self.assertIn("document.blueprint", STANDARD_ARTIFACTS)
@@ -77,7 +77,7 @@ class V61ArtifactContractTests(unittest.TestCase):
         self.assertEqual(restored.to_dict(), blueprint.to_dict())
 
     def test_v31_document_artifact_is_stable_and_valid(self) -> None:
-        from video_study.editorial.document import validate_document_v31
+        from zhiying.editorial.document import validate_document_v31
         document = build_v31_document(
             metadata={"video_id": "x"},
             components=[

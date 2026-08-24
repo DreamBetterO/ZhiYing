@@ -15,16 +15,16 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from video_study.application.requests import ProcessingRequest
-from video_study.config import AppConfig
-from video_study.execution.artifacts import WorkspaceCatalog, WorkspaceLayout
-from video_study.execution.bootstrap import (
+from zhiying.application.requests import ProcessingRequest
+from zhiying.config import AppConfig
+from zhiying.execution.artifacts import WorkspaceCatalog, WorkspaceLayout
+from zhiying.execution.bootstrap import (
     _source_download_dir,
     _stable_source_video_id,
     acquire_source_from_url,
     run_compatible_pipeline_from_url,
 )
-from video_study.source import DOWNLOAD_INCOMPLETE, SourceError
+from zhiying.source import DOWNLOAD_INCOMPLETE, SourceError
 
 
 class FakeSourcePort:
@@ -162,7 +162,7 @@ class RunFromUrlTests(unittest.TestCase):
                 captured["video_id"] = kwargs.get("video_id")
                 return {"video_id": "BV1cmTu6mEL3", "manifest": "m.json", "markdown": "a.md", "docx": "a.docx", "pdf": "a.pdf"}
 
-            with patch("video_study.execution.bootstrap.run_compatible_pipeline", side_effect=fake_pipeline):
+            with patch("zhiying.execution.bootstrap.run_compatible_pipeline", side_effect=fake_pipeline):
                 result = run_compatible_pipeline_from_url(
                     config, "https://www.bilibili.com/video/BV1cmTu6mEL3", source_port=port,
                 )
@@ -187,7 +187,7 @@ class RunFromUrlTests(unittest.TestCase):
             source_dir.mkdir(parents=True)
             downloaded = source_dir / "测试视频.mp4"
             downloaded.write_bytes(b"cached-bytes")
-            manifest = layout.artifact_paths(__import__("video_study.execution.artifacts", fromlist=["SOURCE_MANIFEST"]).SOURCE_MANIFEST)[0]
+            manifest = layout.artifact_paths(__import__("zhiying.execution.artifacts", fromlist=["SOURCE_MANIFEST"]).SOURCE_MANIFEST)[0]
             manifest.write_text(json.dumps({
                 "schema_version": 1, "video_id": video_id, "title": "测试视频",
                 "source_path": str(downloaded), "fingerprint": "abc",
@@ -203,7 +203,7 @@ class RunFromUrlTests(unittest.TestCase):
                 captured["video"] = Path(video)
                 return {"video_id": video_id, "manifest": "m.json", "markdown": "a.md", "docx": "a.docx", "pdf": "a.pdf"}
 
-            with patch("video_study.execution.bootstrap.run_compatible_pipeline", side_effect=fake_pipeline):
+            with patch("zhiying.execution.bootstrap.run_compatible_pipeline", side_effect=fake_pipeline):
                 run_compatible_pipeline_from_url(
                     config, "https://www.bilibili.com/video/BV1cmTu6mEL3", source_port=port,
                 )
@@ -218,7 +218,7 @@ class RunFromUrlTests(unittest.TestCase):
             config = self._config(root)
             port = FakeSourcePort(fail_code=DOWNLOAD_INCOMPLETE)
 
-            with patch("video_study.execution.bootstrap.run_compatible_pipeline") as fake_pipeline:
+            with patch("zhiying.execution.bootstrap.run_compatible_pipeline") as fake_pipeline:
                 with self.assertRaises(SourceError) as ctx:
                     run_compatible_pipeline_from_url(
                         config, "https://www.bilibili.com/video/BV1cmTu6mEL3", source_port=port,
@@ -243,7 +243,7 @@ class RunFromUrlTests(unittest.TestCase):
 class FindByUrlTests(unittest.TestCase):
     def _entry(self, workspace_root: Path, video_id: str, source_url: str, source_path: Path) -> None:
         layout = WorkspaceLayout(workspace_root, video_id)
-        manifest = layout.artifact_paths(__import__("video_study.execution.artifacts", fromlist=["SOURCE_MANIFEST"]).SOURCE_MANIFEST)[0]
+        manifest = layout.artifact_paths(__import__("zhiying.execution.artifacts", fromlist=["SOURCE_MANIFEST"]).SOURCE_MANIFEST)[0]
         manifest.parent.mkdir(parents=True, exist_ok=True)
         manifest.write_text(json.dumps({
             "schema_version": 1, "video_id": video_id, "title": video_id,

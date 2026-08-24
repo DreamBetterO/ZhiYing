@@ -35,7 +35,7 @@ non_negotiable:
     - artifact_store_is_business_data_authority
     - graph_state_contains_references_not_blobs
     - json_to_markdown_to_word_to_pdf_preserved
-    - timestamp_and_video_study_protocol_preserved
+    - timestamp_and_zhiying_protocol_preserved
     - historical_workspaces_not_proactively_deleted
   safety:
     - cloud_is_opt_in
@@ -450,7 +450,7 @@ test_gates:
     - cancellation_and_recovery
     - idempotent_replay
     - architecture_boundaries
-    - timestamp_and_video_study_links
+    - timestamp_and_zhiying_links
     - historical_workspace_preservation
   parity:
     - legacy_15_step_outputs

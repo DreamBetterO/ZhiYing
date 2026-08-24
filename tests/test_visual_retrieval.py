@@ -7,9 +7,9 @@ from unittest.mock import patch
 
 from PIL import Image, ImageDraw
 
-from video_study.execution.task_groups import FileTaskGroupCache
-from video_study.knowledge.schema import ChapterPlan, EvidenceSpan, LessonPlan, UnitPlan, VisualEvidence, VisualNeed, VisualQuestion
-from video_study.knowledge.visual_retrieval import (
+from zhiying.execution.task_groups import FileTaskGroupCache
+from zhiying.knowledge.schema import ChapterPlan, EvidenceSpan, LessonPlan, UnitPlan, VisualEvidence, VisualNeed, VisualQuestion
+from zhiying.knowledge.visual_retrieval import (
     _criteria_supported_by_visible_evidence,
     _resolve_candidate_id,
     _vlm_select,
@@ -18,7 +18,7 @@ from video_study.knowledge.visual_retrieval import (
     recall_candidates_for_question,
     sanitize_visual_evidence_for_reader,
 )
-from video_study.execution.adapters.vision import VisualProviderOOMError
+from zhiying.execution.adapters.vision import VisualProviderOOMError
 
 
 class FakeVLM:
@@ -78,15 +78,15 @@ class OOMVLM(FakeVLM):
 
 class VisualRetrievalTests(unittest.TestCase):
     def test_visual_evidence_step_consumes_candidate_pool_not_global_selection(self) -> None:
-        from video_study.execution.artifacts import FRAMES_CANDIDATES, FRAMES_SELECTED
-        from video_study.execution.steps.knowledge import VisualEvidenceStep, VisualJobsStep
+        from zhiying.execution.artifacts import FRAMES_CANDIDATES, FRAMES_SELECTED
+        from zhiying.execution.steps.knowledge import VisualEvidenceStep, VisualJobsStep
 
         self.assertIn(FRAMES_CANDIDATES, VisualEvidenceStep.spec.inputs)
         self.assertNotIn(FRAMES_SELECTED, VisualEvidenceStep.spec.inputs)
         self.assertIn(FRAMES_CANDIDATES, VisualJobsStep.spec.inputs)
 
     def test_candidate_artifact_rows_keep_candidate_identity(self) -> None:
-        from video_study.knowledge.visual_retrieval import _candidate_rows
+        from zhiying.knowledge.visual_retrieval import _candidate_rows
 
         rows = _candidate_rows(Path("unused"), {
             "candidates": [{
@@ -485,15 +485,15 @@ class VisualRetrievalTests(unittest.TestCase):
     def test_visual_step_unexpected_provider_error_degrades_and_writes_artifact(self) -> None:
         from types import SimpleNamespace
 
-        from video_study.execution.artifacts import (
+        from zhiying.execution.artifacts import (
             FRAMES_CANDIDATES,
             KNOWLEDGE_PLAN,
             TRANSCRIPT_NORMALIZED,
             VISUAL_JOBS,
             ArtifactRef,
         )
-        from video_study.execution.contracts import StepStatus
-        from video_study.execution.steps.knowledge import VisualEvidenceStep
+        from zhiying.execution.contracts import StepStatus
+        from zhiying.execution.steps.knowledge import VisualEvidenceStep
 
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -522,7 +522,7 @@ class VisualRetrievalTests(unittest.TestCase):
             )
             step = VisualEvidenceStep()
             with patch(
-                "video_study.execution.steps.knowledge.build_visual_evidence",
+                "zhiying.execution.steps.knowledge.build_visual_evidence",
                 side_effect=[NameError("tempfile is not defined"), []],
             ) as build:
                 outcome = step.execute(context, inputs, root / "staging")

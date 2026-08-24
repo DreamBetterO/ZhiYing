@@ -4,8 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from video_study.knowledge.editorial import DEFAULT_BRIEF_TEXT, EditorialBrief, load_brief
-from video_study.knowledge.planning import (
+from zhiying.knowledge.editorial import DEFAULT_BRIEF_TEXT, EditorialBrief, load_brief
+from zhiying.knowledge.planning import (
     _assign_depth_contracts,
     _validate_plan_payload,
     build_lesson_plan,
@@ -13,7 +13,7 @@ from video_study.knowledge.planning import (
     plan_offline,
     validate_visual_question,
 )
-from video_study.knowledge.schema import ChapterPlan, LessonPlan, UnitPlan, VisualNeed, VisualQuestion
+from zhiying.knowledge.schema import ChapterPlan, LessonPlan, UnitPlan, VisualNeed, VisualQuestion
 
 
 class PlanningTests(unittest.TestCase):

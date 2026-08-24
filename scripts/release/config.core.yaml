@@ -1,0 +1,63 @@
+paths:
+  input_dir: Resource
+  workspace_dir: workspace
+  output_dir: output
+  model_dir: models/faster-whisper-small
+api_config: api.yaml
+asr:
+  engine: qwen3-asr-0.6b
+  model_id: Systran/faster-whisper-small
+  device: auto
+  compute_type: int8_float16
+  language: zh
+  beam_size: 5
+  qwen_runtime_python: models/qwen3-asr-runtime/python.exe
+  qwen_runtime_dir: models/qwen3-asr-runtime
+  qwen_model_dir: models/qwen3-asr-0.6b-hf
+  qwen_runner: scripts/qwen_asr_runner.py
+  qwen_chunk_seconds: 60
+  qwen_max_rtf: 0.75
+  hotwords: []
+  terminology_replacements: {}
+frames:
+  sample_interval_seconds: 10
+  max_candidates: 600
+  max_keyframes: 8
+  scene_change_threshold: 0.025
+  min_content_entropy: 2.4
+  content_start_padding_seconds: 30
+  min_keyframe_gap_seconds: 480
+  max_width: 1280
+visual_teaching:
+  level: enhanced
+visual_evidence:
+  enabled: true
+  backend: local_auto
+  ocr_enabled: false
+  max_candidates_per_question: 6
+  scene_neighbor_seconds: 45
+  scene_max_span_seconds: 150
+  scene_hash_threshold: 6
+  scene_ssim_threshold: 0.97
+  local_vlm_enabled: auto
+  vlm_compare_max_candidates: 4
+  allow_detail_pass: true
+  local_vlm_runtime_python: models/qwen3-asr-runtime/python.exe
+  local_vlm_runtime_dir: models/qwen3-asr-runtime
+  local_vlm_model_dir: models/qwen3-vl-2b-instruct
+  local_vlm_runner: scripts/qwen_vl_runner.py
+  local_vlm_model: Qwen/Qwen3-VL-2B-Instruct
+render:
+  source_link_base: video-study://play
+  include_full_transcript: false
+  offline_section_seconds: 300
+  offline_points_per_section: 2
+desktop:
+  speech_models:
+    - qwen3-asr-0.6b
+    - faster-whisper
+  content_level: 推荐
+  visual_teaching_level: enhanced
+  watermark:
+    text: powed by Fx
+    opacity: 0.14

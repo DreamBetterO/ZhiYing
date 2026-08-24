@@ -5,9 +5,9 @@ import time
 import unittest
 from pathlib import Path
 
-from video_study.application.requests import JobHandle, JobResult, ProcessingHandle, ProcessingRequest, ProcessingResult
-from video_study.desktop.controller import DesktopController
-from video_study.desktop.models import DesktopState
+from zhiying.application.requests import JobHandle, JobResult, ProcessingHandle, ProcessingRequest, ProcessingResult
+from zhiying.desktop.controller import DesktopController
+from zhiying.desktop.models import DesktopState
 
 
 def result(path: Path) -> ProcessingResult:
@@ -150,7 +150,7 @@ class DesktopControllerTests(unittest.TestCase):
             controller.reorder(0, 1)
 
     def test_aggregate_is_async_command(self) -> None:
-        from video_study.application.requests import AggregateRequest, CloudAuthorization
+        from zhiying.application.requests import AggregateRequest, CloudAuthorization
         controller = DesktopController(FakeService())
         request = AggregateRequest((result(Path(".")), result(Path("."))), CloudAuthorization(True, "x", "https://example.com", ("m",), max_calls=1))
         controller.aggregate(request)
@@ -210,7 +210,7 @@ class DesktopControllerTests(unittest.TestCase):
         self.assertEqual(item.progress, 50)
 
     def test_add_url_downloads_then_ready_and_emits_source_ready(self) -> None:
-        from video_study.desktop.models import UiEvent
+        from zhiying.desktop.models import UiEvent
 
         def download(url, *, progress=None, cancel_check=None):
             progress({"phase": "download", "percent": 100, "total_bytes": 10, "speed_bytes": None})
@@ -272,14 +272,14 @@ class DesktopControllerTests(unittest.TestCase):
         self.assertIn("已复用本地缓存", ready.message)
 
     def test_add_url_duplicate_rejected(self) -> None:
-        from video_study.desktop.models import QueueItem
+        from zhiying.desktop.models import QueueItem
         controller = DesktopController(FakeService())
         controller.items.append(QueueItem(source_kind="url", source_url="https://x.example/v"))
         with self.assertRaises(ValueError):
             controller.add_url("https://x.example/v")
 
     def test_url_item_ready_then_processing_uses_url_request(self) -> None:
-        from video_study.desktop.models import QueueItem
+        from zhiying.desktop.models import QueueItem
 
         captured = {}
 

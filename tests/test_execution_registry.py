@@ -3,9 +3,9 @@ from __future__ import annotations
 import unittest
 from dataclasses import dataclass
 
-from video_study.execution.artifacts import ArtifactId
-from video_study.execution.contracts import RemoteCost, StepSpec
-from video_study.execution.registry import StepRegistry
+from zhiying.execution.artifacts import ArtifactId
+from zhiying.execution.contracts import RemoteCost, StepSpec
+from zhiying.execution.registry import StepRegistry
 
 
 @dataclass

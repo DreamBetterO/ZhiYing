@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import unittest
 
-from video_study.editorial.blueprint import (
+from zhiying.editorial.blueprint import (
     BlueprintChapter,
     DocumentBlueprint,
     validate_blueprint,

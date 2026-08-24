@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-from video_study.document_v3 import (
+from zhiying.documents.v3 import (
     build_document_plan, compile_document_v3, compose_chapters,
     repair_chapters, v3_to_v2, validate_chapters, validate_document_v3,
 )
@@ -49,7 +49,7 @@ class DocumentV3Tests(unittest.TestCase):
             validate_document_v3(document)
 
     def test_document_adapter_renders_v3_through_temporary_v2_read_view(self) -> None:
-        from video_study.render import DocumentAdapter
+        from zhiying.render import DocumentAdapter
 
         plan = build_document_plan(self.fixture())
         document = compile_document_v3(plan, compose_chapters(plan))
@@ -76,8 +76,8 @@ class DocumentV3Tests(unittest.TestCase):
                 output.write_bytes(b"pdf")
                 return "built_in"
 
-            with patch("video_study.render.render_docx", side_effect=fake_docx), patch(
-                "video_study.render.convert_docx_to_pdf", side_effect=fake_pdf,
+            with patch("zhiying.render.render_docx", side_effect=fake_docx), patch(
+                "zhiying.render.convert_docx_to_pdf", side_effect=fake_pdf,
             ):
                 adapter.render_word(source, word, cancel_check=lambda: False)
                 mode = adapter.render_pdf(document, word, pdf, cancel_check=lambda: False)
@@ -87,7 +87,7 @@ class DocumentV3Tests(unittest.TestCase):
 
     def test_document_adapter_creates_word_staging_parent_before_v3_projection(self) -> None:
         """Each graph render node owns a fresh staging tree with no pre-created subfolders."""
-        from video_study.render import DocumentAdapter
+        from zhiying.render import DocumentAdapter
 
         plan = build_document_plan(self.fixture())
         document = compile_document_v3(plan, compose_chapters(plan))
@@ -101,7 +101,7 @@ class DocumentV3Tests(unittest.TestCase):
                 self.assertTrue(path.is_file())
                 output.write_bytes(b"docx")
 
-            with patch("video_study.render.render_docx", side_effect=fake_docx):
+            with patch("zhiying.render.render_docx", side_effect=fake_docx):
                 DocumentAdapter(root).render_word(source, word, cancel_check=lambda: False)
 
             self.assertEqual(word.read_bytes(), b"docx")

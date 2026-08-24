@@ -5,17 +5,17 @@ import json
 import unittest
 from pathlib import Path
 
-from video_study.editorial.blueprint import DocumentBlueprint, validate_blueprint
-from video_study.editorial.document import validate_document_v31
-from video_study.editorial.evidence import EvidenceCorrectionOverlay, detect_local_corrections, transcript_digest
-from video_study.editorial.intent import compile_editorial_policy
-from video_study.editorial.local import (
+from zhiying.editorial.blueprint import DocumentBlueprint, validate_blueprint
+from zhiying.editorial.document import validate_document_v31
+from zhiying.editorial.evidence import EvidenceCorrectionOverlay, detect_local_corrections, transcript_digest
+from zhiying.editorial.intent import compile_editorial_policy
+from zhiying.editorial.local import (
     build_local_blueprint,
     compose_local_document,
     local_deterministic_repair,
 )
-from video_study.knowledge.editorial import brief_from_text
-from video_study.knowledge.schema import LessonPlan, UnitPlan, ChapterPlan
+from zhiying.knowledge.editorial import brief_from_text
+from zhiying.knowledge.schema import LessonPlan, UnitPlan, ChapterPlan
 
 FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "v61"
 

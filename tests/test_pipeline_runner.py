@@ -7,17 +7,17 @@ from tempfile import TemporaryDirectory
 from typing import Mapping
 from types import SimpleNamespace
 
-from video_study.execution.artifacts import ArtifactId, ArtifactRef, WorkspaceLayout
-from video_study.execution.cache import CacheDecision, CacheReason
-from video_study.execution.context import (
+from zhiying.execution.artifacts import ArtifactId, ArtifactRef, WorkspaceLayout
+from zhiying.execution.cache import CacheDecision, CacheReason
+from zhiying.execution.context import (
     ProcessingContext,
     ProcessingOptions,
     RunPolicy,
     RuntimeServices,
     VideoSource,
 )
-from video_study.execution.node_executor import NodeExecutor
-from video_study.execution.contracts import (
+from zhiying.execution.node_executor import NodeExecutor
+from zhiying.execution.contracts import (
     ErrorInfo,
     ExecutionCancelled,
     FingerprintMaterial,
@@ -25,9 +25,9 @@ from video_study.execution.contracts import (
     StepSpec,
     StepStatus,
 )
-from video_study.execution.registry import StepRegistry
-from video_study.execution.graph_runtime import GraphRuntime
-from video_study.execution.run_state import GraphRunState
+from zhiying.execution.registry import StepRegistry
+from zhiying.execution.graph_runtime import GraphRuntime
+from zhiying.execution.run_state import GraphRunState
 
 
 class GraphTestRunner:
@@ -201,14 +201,14 @@ class PipelineRunnerTests(unittest.TestCase):
         self.assertEqual(state.statuses[step.spec.step_id], StepStatus.SUCCEEDED)
 
     def test_production_contains_no_legacy_runner_module_or_call(self) -> None:
-        import video_study.execution as execution
-        from video_study.execution import bootstrap
+        import zhiying.execution as execution
+        from zhiying.execution import bootstrap
 
         self.assertFalse(hasattr(execution, "PipelineRunner"))
         self.assertNotIn(".runner().run", Path(bootstrap.__file__).read_text(encoding="utf-8"))
 
     def test_graph_runtime_matches_single_step_runner_terminal_status(self) -> None:
-        from video_study.execution.graph_runtime import GraphRuntime
+        from zhiying.execution.graph_runtime import GraphRuntime
 
         step = make_step()
         kernel = SimpleNamespace(
@@ -222,8 +222,8 @@ class PipelineRunnerTests(unittest.TestCase):
         self.assertEqual(result["outcomes"][step.spec.step_id]["status"], StepStatus.SUCCEEDED.value)
 
     def test_graph_runtime_writes_same_version_sqlite_checkpoint(self) -> None:
-        from video_study.execution.checkpointing import SqliteCheckpointAdapter
-        from video_study.execution.graph_runtime import GraphRuntime
+        from zhiying.execution.checkpointing import SqliteCheckpointAdapter
+        from zhiying.execution.graph_runtime import GraphRuntime
 
         step = make_step()
         kernel = SimpleNamespace(context=self.context, registry=StepRegistry([step]), artifacts=self.store, cache=FakeCache())
@@ -237,8 +237,8 @@ class PipelineRunnerTests(unittest.TestCase):
             adapter.close()
 
     def test_graph_runtime_same_version_resume_does_not_rerun_completed_node(self) -> None:
-        from video_study.execution.checkpointing import SqliteCheckpointAdapter
-        from video_study.execution.graph_runtime import GraphRuntime
+        from zhiying.execution.checkpointing import SqliteCheckpointAdapter
+        from zhiying.execution.graph_runtime import GraphRuntime
 
         step = make_step()
         kernel = SimpleNamespace(context=self.context, registry=StepRegistry([step]), artifacts=self.store, cache=FakeCache())
@@ -252,8 +252,8 @@ class PipelineRunnerTests(unittest.TestCase):
             adapter.close()
 
     def test_graph_runtime_resume_preserves_completed_dependency_chain(self) -> None:
-        from video_study.execution.checkpointing import SqliteCheckpointAdapter
-        from video_study.execution.graph_runtime import GraphRuntime
+        from zhiying.execution.checkpointing import SqliteCheckpointAdapter
+        from zhiying.execution.graph_runtime import GraphRuntime
 
         first, second = make_step("first"), make_step("second", dependencies=("first",))
         kernel = SimpleNamespace(context=self.context, registry=StepRegistry([first, second]), artifacts=self.store, cache=FakeCache())
@@ -267,8 +267,8 @@ class PipelineRunnerTests(unittest.TestCase):
             adapter.close()
 
     def test_graph_runtime_resumes_from_interrupted_middle_node(self) -> None:
-        from video_study.execution.checkpointing import SqliteCheckpointAdapter
-        from video_study.execution.graph_runtime import GraphRuntime
+        from zhiying.execution.checkpointing import SqliteCheckpointAdapter
+        from zhiying.execution.graph_runtime import GraphRuntime
 
         first, second = make_step("first"), make_step("second", dependencies=("first",))
         kernel = SimpleNamespace(context=self.context, registry=StepRegistry([first, second]), artifacts=self.store, cache=FakeCache())
@@ -283,7 +283,7 @@ class PipelineRunnerTests(unittest.TestCase):
             adapter.close()
 
     def test_graph_runtime_executes_fifteen_node_chain_with_projected_state(self) -> None:
-        from video_study.execution.graph_runtime import GraphRuntime
+        from zhiying.execution.graph_runtime import GraphRuntime
 
         ids = [
             "source.probe", "audio.extract", "transcript.decode", "transcript.normalize",
@@ -299,7 +299,7 @@ class PipelineRunnerTests(unittest.TestCase):
         self.assertTrue(all(result["outcomes"][step_id]["artifacts"] for step_id in ids))
 
     def test_fifteen_node_runner_and_graph_have_equivalent_terminal_statuses(self) -> None:
-        from video_study.execution.graph_runtime import GraphRuntime
+        from zhiying.execution.graph_runtime import GraphRuntime
 
         ids = [f"fixture.step-{index:02d}" for index in range(15)]
         runner_steps = [make_step(step_id, dependencies=(ids[index - 1],) if index else ()) for index, step_id in enumerate(ids)]
@@ -313,7 +313,7 @@ class PipelineRunnerTests(unittest.TestCase):
         )
 
     def test_fifteen_node_runner_and_graph_have_equivalent_terminal_events(self) -> None:
-        from video_study.execution.graph_runtime import GraphRuntime
+        from zhiying.execution.graph_runtime import GraphRuntime
 
         ids = [f"fixture.event-{index:02d}" for index in range(15)]
         runner_events, graph_events = [], []
@@ -327,7 +327,7 @@ class PipelineRunnerTests(unittest.TestCase):
         self.assertEqual(stable(runner_events), stable(graph_events))
 
     def test_fifteen_node_runner_and_graph_have_equivalent_cache_reasons(self) -> None:
-        from video_study.execution.graph_runtime import GraphRuntime
+        from zhiying.execution.graph_runtime import GraphRuntime
 
         ids = [f"fixture.cache-{index:02d}" for index in range(15)]
         steps = [make_step(step_id, dependencies=(ids[index - 1],) if index else ()) for index, step_id in enumerate(ids)]
@@ -344,7 +344,7 @@ class PipelineRunnerTests(unittest.TestCase):
         self.assertTrue(all(row.get("cache_reason") == CacheReason.CACHE_HIT.value for row in terminal))
 
     def test_graph_runtime_preserves_failure_and_downstream_skip(self) -> None:
-        from video_study.execution.graph_runtime import GraphRuntime
+        from zhiying.execution.graph_runtime import GraphRuntime
 
         first = make_step("first")
         failed = make_step("failed", StepStatus.FAILED, dependencies=("first",))

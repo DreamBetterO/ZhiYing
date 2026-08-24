@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "product": "ZhiYing",
+  "product_version": "1.0.0",
+  "platform": "windows-x64",
+  "profiles": {
+    "cpu": ["tools-windows-x64", "faster-whisper-small"],
+    "nvidia": ["tools-windows-x64", "runtime-cuda12-windows-x64", "qwen3-asr-0.6b-hf", "qwen3-vl-2b-instruct"]
+  },
+  "components": [
+    {
+      "id": "tools-windows-x64",
+      "display_name": "Windows 媒体与文档工具",
+      "category": "tools",
+      "version": "ffmpeg-release / node-24.19.0 / yt-dlp-2026.07.04",
+      "install_path": "tools",
+      "source_url": "https://ffmpeg.org/download.html",
+      "downloads": {
+        "ffmpeg": "https://ffmpeg.org/download.html",
+        "node": "https://nodejs.org/dist/v24.19.0/node-v24.19.0-win-x64.zip",
+        "yt-dlp": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.07.04/yt-dlp.exe"
+      },
+      "license": "mixed; see upstream projects",
+      "size_bytes": 794080543,
+      "required_files": ["ffmpeg/ffmpeg.exe", "ffmpeg/ffprobe.exe", "node/node.exe", "yt-dlp/yt-dlp.exe"]
+    },
+    {
+      "id": "runtime-cuda12-windows-x64",
+      "display_name": "CUDA 12.8 推理运行时",
+      "category": "runtime",
+      "version": "torch-2.7.1+cu128 / transformers-4.57.6",
+      "install_path": "models/qwen3-asr-runtime",
+      "source_url": "https://download.pytorch.org/whl/cu128",
+      "project_url": "https://github.com/QwenLM/Qwen3-ASR",
+      "license": "mixed; see upstream packages",
+      "size_bytes": 6849723979,
+      "required_files": ["python.exe", "torch/lib", "qwen_asr", "runtime-packages.json"]
+    },
+    {
+      "id": "faster-whisper-small",
+      "display_name": "faster-whisper small",
+      "category": "model",
+      "version": "536b0662742c02347bc0e980a01041f333bce120",
+      "install_path": "models/faster-whisper-small",
+      "source_url": "https://huggingface.co/Systran/faster-whisper-small/tree/536b0662742c02347bc0e980a01041f333bce120",
+      "license": "MIT",
+      "size_bytes": 486215847,
+      "reference_sha256": {"model.bin": "3e305921506d8872816023e4c273e75d2419fb89b24da97b4fe7bce14170d671"},
+      "required_files": ["model.bin", "config.json", "tokenizer.json", "vocabulary.txt"]
+    },
+    {
+      "id": "qwen3-asr-0.6b-hf",
+      "display_name": "Qwen3-ASR 0.6B HF",
+      "category": "model",
+      "version": "6aa69c382e2b426eee1f5870d4c95859a74b6445",
+      "install_path": "models/qwen3-asr-0.6b-hf",
+      "source_url": "https://huggingface.co/Qwen/Qwen3-ASR-0.6B-hf/tree/6aa69c382e2b426eee1f5870d4c95859a74b6445",
+      "license": "Apache-2.0",
+      "size_bytes": 1576379208,
+      "reference_sha256": {"model.safetensors": "d3f212dd20abecd315d830bc54ae3865e56ebfc3276484e57b771288ba27fd35"},
+      "required_files": ["model.safetensors", "config.json", "processor_config.json", "tokenizer.json"]
+    },
+    {
+      "id": "qwen3-vl-2b-instruct",
+      "display_name": "Qwen3-VL 2B Instruct",
+      "category": "model",
+      "version": "89644892e4d85e24eaac8bacfd4f463576704203",
+      "install_path": "models/qwen3-vl-2b-instruct",
+      "source_url": "https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct/tree/89644892e4d85e24eaac8bacfd4f463576704203",
+      "license": "Apache-2.0",
+      "size_bytes": 4266648961,
+      "reference_sha256": {"model.safetensors": "7de1838c87a5349b016c26a1c3f7d2bc400a3d485f95ef39a7059ffd734977a0"},
+      "required_files": ["model.safetensors", "config.json", "preprocessor_config.json", "tokenizer.json"]
+    }
+  ]
+}

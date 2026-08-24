@@ -41,7 +41,7 @@ class V61ContractTests(unittest.TestCase):
             "cp61_4_completed", "cp61_5_completed", "cp61_6_completed",
             "cp61_1_in_progress", "cp61_5_in_progress", "cp61_6_in_progress", "cp61_7_in_progress",
         })
-        self.assertEqual(self.state["target"]["implementation_version"], "1.0.0rc2")
+        self.assertEqual(self.state["target"]["implementation_version"], "1.0.0")
 
     def test_versioning_fields_match_approved_contract(self) -> None:
         versioning = self.contract["versioning"]

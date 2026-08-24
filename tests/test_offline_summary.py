@@ -5,11 +5,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from video_study.knowledge.document import _normalize_document, _source_rows_unchanged
-from video_study.knowledge.offline_document import build_offline_document
-from video_study.knowledge.source_blocks import build_cloud_source, build_cloud_source_blocks
-from video_study.transcript import merge_transcript_segments
-from video_study.render import render_markdown
+from zhiying.knowledge.document import _normalize_document, _source_rows_unchanged
+from zhiying.knowledge.offline_document import build_offline_document
+from zhiying.knowledge.source_blocks import build_cloud_source, build_cloud_source_blocks
+from zhiying.media.transcript import merge_transcript_segments
+from zhiying.render import render_markdown
 
 
 class OfflineSummaryTests(unittest.TestCase):

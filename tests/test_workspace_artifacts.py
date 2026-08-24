@@ -7,7 +7,7 @@ from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from video_study.execution.artifacts import (
+from zhiying.execution.artifacts import (
     ArtifactId,
     ArtifactRef,
     DOCUMENT_V2,
@@ -20,14 +20,14 @@ from video_study.execution.artifacts import (
     WorkspaceLayout,
     canonical_json_hash,
 )
-from video_study.execution.context import (
+from zhiying.execution.context import (
     ProcessingContext,
     ProcessingOptions,
     RunPolicy,
     RuntimeServices,
     VideoSource,
 )
-from video_study.execution.contracts import StepOutcome, StepSpec, StepStatus
+from zhiying.execution.contracts import StepOutcome, StepSpec, StepStatus
 
 
 class WorkspaceArtifactContractTests(unittest.TestCase):

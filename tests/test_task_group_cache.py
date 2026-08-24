@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from video_study.execution.task_groups import FileTaskGroupCache
+from zhiying.execution.task_groups import FileTaskGroupCache
 
 
 class FileTaskGroupCacheTests(unittest.TestCase):

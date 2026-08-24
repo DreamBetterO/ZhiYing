@@ -5,15 +5,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from video_study.editorial.document import build_v31_document, make_component
-from video_study.editorial.intent import compile_editorial_policy
-from video_study.editorial.quality import (
+from zhiying.editorial.document import build_v31_document, make_component
+from zhiying.editorial.intent import compile_editorial_policy
+from zhiying.editorial.quality import (
     audit_document_v31,
     audit_render_outputs,
     build_page_audit_report,
 )
-from video_study.knowledge.editorial import brief_from_text
-from video_study.render_v31 import render_markdown_v31
+from zhiying.knowledge.editorial import brief_from_text
+from zhiying.documents.render_v31 import render_markdown_v31
 
 
 def _document(**overrides) -> dict:

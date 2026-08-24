@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from video_study.execution.decision_policy import VisualNeedLevel
-from video_study.execution.graphs.visual_graph import VisualGraph
+from zhiying.execution.decision_policy import VisualNeedLevel
+from zhiying.execution.graphs.visual_graph import VisualGraph
 
 
 class V6VisualGraphTests(unittest.TestCase):

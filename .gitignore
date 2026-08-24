@@ -1,31 +1,35 @@
-# Secrets and machine-local settings
+# Git 上传边界：未命中忽略规则的源码、tests/、docs/、release 文档与清单可以提交。
+# 永不上传：密钥和本机私有设置
 .env
 .env.*
-!.env.example
 
-# User data and resumable pipeline artifacts
-Resource/
-视频/
-models/
-workspace/
-output/
-packing/
-tools/
+# 不上传：根目录用户数据、模型、工具和历史打包产物
+/Resource/
+/视频/
+/models/
+/workspace/
+/output/
+/packing/
+/tools/
 
-# Build and temporary artifacts
-build/
-tmp/
-tmp_*/
+# 提交 release 文档/manifests/checksums；ZIP 不进 Git，审核后上传到同版本 GitHub Release
+/release/output/*
+!/release/output/.gitkeep
+
+# 不上传：构建缓存和临时文件
+/build/
+/tmp/
+/tmp_*/
 *.log
 *.pid
 
-# Tool-local sessions and diagnostics
-.codely-cli/
-mem-log/
+# 不上传：工具本地会话和诊断缓存
+/.codely-cli/
+/mem-log/
 
-# Python environments and caches
-.venv/
-venv/
+# 不上传：Python 环境和缓存
+/.venv/
+/venv/
 *.egg-info/
 *.py[cod]
 __pycache__/
@@ -35,11 +39,11 @@ __pycache__/
 .coverage
 htmlcov/
 
-# Node dependencies and caches
+# 不上传：Node.js 依赖和缓存
 node_modules/
 .npm-cache/
 
-# Editor and operating-system noise
+# 不上传：编辑器和操作系统临时文件
 .idea/
 .vscode/
 .DS_Store

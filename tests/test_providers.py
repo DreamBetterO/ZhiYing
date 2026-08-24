@@ -7,13 +7,13 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from video_study.providers import (
+from zhiying.providers import (
     CloudBudgetExceeded,
     CloudRequestBudget,
     FallbackChatClient,
     test_openai_connection,
 )
-from video_study.utils import TaskCancelled
+from zhiying.utils import TaskCancelled
 
 
 def response(payload: dict) -> SimpleNamespace:
@@ -27,7 +27,7 @@ class ProviderFallbackTests(unittest.TestCase):
     def test_connection_probe_lists_models_without_chat_completion(self) -> None:
         client = Mock()
         client.models.list.return_value = SimpleNamespace(data=[SimpleNamespace(id="model-a")])
-        with patch("video_study.providers.OpenAI", return_value=client):
+        with patch("zhiying.providers.OpenAI", return_value=client):
             result = test_openai_connection(api_key="temporary", base_url="https://example.com/v1")
         client.models.list.assert_called_once_with()
         client.chat.completions.create.assert_not_called()

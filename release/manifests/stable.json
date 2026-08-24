@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "product": "ZhiYing",
+  "display_name": "知影",
+  "version": "1.0.0",
+  "channel": "stable",
+  "platform": "windows-x64",
+  "published": true,
+  "ready_for_local_review": true,
+  "generated_at": "2026-08-24T17:53:38+08:00",
+  "release_page": "https://github.com/DreamBetterO/ZhiYing/releases/tag/v1.0.0",
+  "asset_delivery": "github-release",
+  "assets": {
+    "core": {
+      "name": "ZhiYing-Core-1.0.0-win-x64.zip",
+      "size": 133710154,
+      "sha256": "9d587dc2e4157cf1f509c35e297f3716c372419ed2f660ad2bb76356a18ab86e"
+    }
+  },
+  "external_components": "manifests/components.json"
+}

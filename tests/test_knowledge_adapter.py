@@ -4,12 +4,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from video_study.knowledge.adapter import (
+from zhiying.knowledge.adapter import (
     _reader_open_questions,
     units_to_document,
     v1_to_v2,
 )
-from video_study.knowledge.schema import KnowledgeUnit, VisualBinding, VisualEvidence, LessonPlan, ChapterPlan, UnitPlan
+from zhiying.knowledge.schema import KnowledgeUnit, VisualBinding, VisualEvidence, LessonPlan, ChapterPlan, UnitPlan
 
 
 class AdapterTests(unittest.TestCase):

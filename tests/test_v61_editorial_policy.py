@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import unittest
 
-from video_study.editorial.intent import compile_editorial_policy
-from video_study.editorial.policy import (
+from zhiying.editorial.intent import compile_editorial_policy
+from zhiying.editorial.policy import (
     EditorialConstraint,
     EditorialPolicy,
     constraint_code,
 )
-from video_study.knowledge.editorial import brief_from_text
+from zhiying.knowledge.editorial import brief_from_text
 
 
 def _codes(policy: EditorialPolicy, kind: str) -> set[str]:

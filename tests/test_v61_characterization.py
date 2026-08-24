@@ -17,12 +17,12 @@ from unittest.mock import Mock, patch
 
 import yaml
 
-from video_study.document_v3 import build_document_plan, compile_document_v3, compose_chapters
-from video_study.editorial.document import build_v31_document, make_component
-from video_study.execution.artifacts import ArtifactId, ArtifactRef
-from video_study.execution.contracts import StepOutcome, StepStatus
-from video_study.execution.steps.coarse import RenderVerifyStep
-from video_study.render_v31 import count_word_omml, render_docx_v31
+from zhiying.documents.v3 import build_document_plan, compile_document_v3, compose_chapters
+from zhiying.editorial.document import build_v31_document, make_component
+from zhiying.execution.artifacts import ArtifactId, ArtifactRef
+from zhiying.execution.contracts import StepOutcome, StepStatus
+from zhiying.execution.steps.coarse import RenderVerifyStep
+from zhiying.documents.render_v31 import count_word_omml, render_docx_v31
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = ROOT / "docs" / "迭代升级" / "CP61-0黄金清单.yaml"
@@ -70,7 +70,7 @@ class V61CharacterizationContractTests(unittest.TestCase):
     @unittest.expectedFailure
     def test_v61_renderer_does_not_inject_forbidden_legacy_sections(self) -> None:
         """用户 forbidden 内容导览/学习目标/课程复习后，renderer 不得自动注入。"""
-        from video_study.render import DocumentAdapter
+        from zhiying.render import DocumentAdapter
 
         plan = build_document_plan(_v2_document())
         document = compile_document_v3(plan, compose_chapters(plan))
@@ -84,7 +84,7 @@ class V61CharacterizationContractTests(unittest.TestCase):
     @unittest.expectedFailure
     def test_v61_render_does_not_downgrade_v3_to_v2(self) -> None:
         """生产渲染必须原生消费 v3，不得调用 v3_to_v2。"""
-        from video_study.render import DocumentAdapter
+        from zhiying.render import DocumentAdapter
 
         def _boom(document):
             raise AssertionError("v3_to_v2 在生产渲染中被调用")
@@ -93,7 +93,7 @@ class V61CharacterizationContractTests(unittest.TestCase):
         document = compile_document_v3(plan, compose_chapters(plan))
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "lesson.md"
-            with patch("video_study.document_v3.v3_to_v2", side_effect=_boom):
+            with patch("zhiying.documents.v3.v3_to_v2", side_effect=_boom):
                 DocumentAdapter(Path(directory), include_transcript=False).render_markdown(document, output)
             self.assertTrue(output.is_file())
 
@@ -149,14 +149,14 @@ class V610CharacterizationBehaviorPins(unittest.TestCase):
         self.assertTrue(all(row["layout_hint"] == "full_width" for row in plan["chapters"]))
 
     def test_v610_renderer_downgrades_v3_to_v2(self) -> None:
-        from video_study import document_v3 as _document_v3
-        from video_study.render import DocumentAdapter
+        from zhiying.documents import v3 as _document_v3
+        from zhiying.render import DocumentAdapter
 
         plan = build_document_plan(_v2_document())
         document = compile_document_v3(plan, compose_chapters(plan))
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "lesson.md"
-            with patch("video_study.document_v3.v3_to_v2", wraps=_document_v3.v3_to_v2) as adapter:
+            with patch("zhiying.documents.v3.v3_to_v2", wraps=_document_v3.v3_to_v2) as adapter:
                 DocumentAdapter(Path(directory), include_transcript=False).render_markdown(document, output)
                 adapter.assert_called_once()
             markdown = output.read_text(encoding="utf-8")

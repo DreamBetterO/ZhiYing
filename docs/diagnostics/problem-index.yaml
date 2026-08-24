@@ -1,48 +1,48 @@
 schema_version: 1
 errors:
-  - {prefix: URL_INVALID, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
-  - {prefix: SOURCE_UNSUPPORTED_SITE, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
-  - {prefix: SOURCE_UNAVAILABLE, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
-  - {prefix: SOURCE_NOT_VIDEO, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
-  - {prefix: SOURCE_LOGIN_REQUIRED, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
-  - {prefix: SOURCE_REGION_LOCKED, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
-  - {prefix: SOURCE_DRM, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
-  - {prefix: SOURCE_LIVE_UNSUPPORTED, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
-  - {prefix: DOWNLOAD_TIMEOUT, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
-  - {prefix: DOWNLOAD_TOO_LARGE, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
-  - {prefix: DOWNLOAD_INCOMPLETE, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
-  - {prefix: DOWNLOAD_FAILED, owner: video_study.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
-  - {prefix: SOURCE, owner: video_study.execution.steps.coarse, first_artifact: source.manifest, tests: [tests/test_coarse_pipeline.py], safe_rerun_from: source.probe}
-  - {prefix: AUDIO, owner: video_study.execution.steps.coarse, first_artifact: audio.flac, tests: [tests/test_coarse_pipeline.py], safe_rerun_from: audio.extract}
-  - {prefix: TRANSCRIPT_DECODE, owner: video_study.execution.steps.coarse, first_artifact: transcript.raw, tests: [tests/test_fine_pipeline.py], safe_rerun_from: transcript.decode}
-  - {prefix: TRANSCRIPT_NORMALIZE, owner: video_study.execution.steps.coarse, first_artifact: transcript.normalized, tests: [tests/test_fine_pipeline.py], safe_rerun_from: transcript.normalize}
-  - {prefix: FRAMES_CANDIDATES, owner: video_study.execution.steps.coarse, first_artifact: frames.candidates, tests: [tests/test_fine_pipeline.py], safe_rerun_from: frames.candidates}
-  - {prefix: FRAMES_SELECT, owner: video_study.execution.steps.coarse, first_artifact: frames.selected, tests: [tests/test_fine_pipeline.py], safe_rerun_from: frames.select}
-  - {prefix: KNOWLEDGE_PLAN, owner: video_study.execution.steps.knowledge, first_artifact: knowledge.plan, tests: [tests/test_knowledge_planning.py], safe_rerun_from: knowledge.plan}
-  - {prefix: VISUAL_JOBS, owner: video_study.execution.steps.knowledge, first_artifact: visual.jobs, tests: [tests/test_visual_retrieval.py], safe_rerun_from: visual.jobs}
-  - {prefix: VISUAL_EVIDENCE, owner: video_study.execution.steps.knowledge, first_artifact: visual.evidence, tests: [tests/test_visual_retrieval.py, tests/test_vision_providers.py], safe_rerun_from: visual.evidence}
-  - {prefix: FRAME_SEMANTICS, owner: video_study.execution.steps.knowledge, first_artifact: frames.semantics, tests: [tests/test_visuals.py], safe_rerun_from: frames.semantics}
-  - {prefix: COURSE_IR, owner: video_study.execution.steps.knowledge, first_artifact: knowledge.course_ir, tests: [tests/test_cloud_payload.py], safe_rerun_from: knowledge.course_ir}
-  - {prefix: KNOWLEDGE_UNITS, owner: video_study.execution.steps.knowledge, first_artifact: knowledge.units, tests: [tests/test_knowledge_organizer.py, tests/test_cloud_payload.py], safe_rerun_from: knowledge.units}
-  - {prefix: KNOWLEDGE_SELFCHECK, owner: video_study.execution.steps.knowledge, first_artifact: knowledge.selfcheck, tests: [tests/test_knowledge_selfcheck.py], safe_rerun_from: knowledge.selfcheck}
-  - {prefix: EDITORIAL_POLICY, owner: video_study.execution.steps.editorial_steps, first_artifact: editorial.policy, tests: [tests/test_v61_editorial_policy.py], safe_rerun_from: editorial.policy}
-  - {prefix: EVIDENCE_RECONCILE, owner: video_study.execution.steps.editorial_steps, first_artifact: evidence.corrections, tests: [tests/test_v61_evidence_overlay.py], safe_rerun_from: evidence.reconcile}
-  - {prefix: DOCUMENT_BLUEPRINT, owner: video_study.execution.steps.editorial_steps, first_artifact: document.blueprint, tests: [tests/test_v61_local_editor.py, tests/test_v61_editorial_graph.py], safe_rerun_from: document.blueprint}
-  - {prefix: DOCUMENT_WRITE, owner: video_study.execution.steps.editorial_steps, first_artifact: document.chapter_v31, tests: [tests/test_v61_local_editor.py, tests/test_v61_editorial_graph.py], safe_rerun_from: document.write}
-  - {prefix: DOCUMENT_ASSEMBLE, owner: video_study.execution.steps.editorial_steps, first_artifact: document.v3, tests: [tests/test_v61_local_editor.py], safe_rerun_from: document.assemble}
-  - {prefix: DOCUMENT_VALIDATE, owner: video_study.execution.steps.editorial_steps, first_artifact: document.validation, tests: [tests/test_v61_quality.py, tests/test_v61_local_editor.py], safe_rerun_from: document.validate}
-  - {prefix: TOOL_UNKNOWN, owner: video_study.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
-  - {prefix: TOOL_ARGS_INVALID, owner: video_study.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
-  - {prefix: TOOL_SCOPE_VIOLATION, owner: video_study.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
-  - {prefix: TOOL_RESULT_TOO_LARGE, owner: video_study.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
-  - {prefix: TOOL_MULTIPLE_MUTATIONS, owner: video_study.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
-  - {prefix: TOOL_REVISION_CONFLICT, owner: video_study.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_editorial_graph.py], safe_rerun_from: document.write}
-  - {prefix: TOOL_BUDGET_EXCEEDED, owner: video_study.execution.tool_calling, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
-  - {prefix: TOOL_PROVIDER_UNSUPPORTED, owner: video_study.execution.tool_calling, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
-  - {prefix: TOOL_NO_PROGRESS, owner: video_study.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_editorial_graph.py], safe_rerun_from: document.blueprint}
-  - {prefix: TOOL_CHECKPOINT_SERIALIZATION_FAILED, owner: video_study.execution.checkpointing, first_artifact: state/graph-checkpoints.sqlite3, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
-  - {prefix: RENDER, owner: video_study.execution.steps.coarse, first_artifact: render.markdown.draft, tests: [tests/test_coarse_pipeline.py, tests/test_pdf_conversion.py], safe_rerun_from: render.markdown}
-  - {prefix: RUN_CANCELLED, owner: video_study.execution.graph_runtime, first_artifact: state/pipeline-state.json, tests: [tests/test_pipeline_runner.py], safe_rerun_from: failed_step}
+  - {prefix: URL_INVALID, owner: zhiying.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
+  - {prefix: SOURCE_UNSUPPORTED_SITE, owner: zhiying.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
+  - {prefix: SOURCE_UNAVAILABLE, owner: zhiying.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
+  - {prefix: SOURCE_NOT_VIDEO, owner: zhiying.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
+  - {prefix: SOURCE_LOGIN_REQUIRED, owner: zhiying.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
+  - {prefix: SOURCE_REGION_LOCKED, owner: zhiying.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
+  - {prefix: SOURCE_DRM, owner: zhiying.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
+  - {prefix: SOURCE_LIVE_UNSUPPORTED, owner: zhiying.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
+  - {prefix: DOWNLOAD_TIMEOUT, owner: zhiying.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
+  - {prefix: DOWNLOAD_TOO_LARGE, owner: zhiying.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
+  - {prefix: DOWNLOAD_INCOMPLETE, owner: zhiying.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
+  - {prefix: DOWNLOAD_FAILED, owner: zhiying.source, first_artifact: source.download, tests: [tests/test_source_acquisition.py], safe_rerun_from: failed_step}
+  - {prefix: SOURCE, owner: zhiying.execution.steps.coarse, first_artifact: source.manifest, tests: [tests/test_coarse_pipeline.py], safe_rerun_from: source.probe}
+  - {prefix: AUDIO, owner: zhiying.execution.steps.coarse, first_artifact: audio.flac, tests: [tests/test_coarse_pipeline.py], safe_rerun_from: audio.extract}
+  - {prefix: TRANSCRIPT_DECODE, owner: zhiying.execution.steps.coarse, first_artifact: transcript.raw, tests: [tests/test_fine_pipeline.py], safe_rerun_from: transcript.decode}
+  - {prefix: TRANSCRIPT_NORMALIZE, owner: zhiying.execution.steps.coarse, first_artifact: transcript.normalized, tests: [tests/test_fine_pipeline.py], safe_rerun_from: transcript.normalize}
+  - {prefix: FRAMES_CANDIDATES, owner: zhiying.execution.steps.coarse, first_artifact: frames.candidates, tests: [tests/test_fine_pipeline.py], safe_rerun_from: frames.candidates}
+  - {prefix: FRAMES_SELECT, owner: zhiying.execution.steps.coarse, first_artifact: frames.selected, tests: [tests/test_fine_pipeline.py], safe_rerun_from: frames.select}
+  - {prefix: KNOWLEDGE_PLAN, owner: zhiying.execution.steps.knowledge, first_artifact: knowledge.plan, tests: [tests/test_knowledge_planning.py], safe_rerun_from: knowledge.plan}
+  - {prefix: VISUAL_JOBS, owner: zhiying.execution.steps.knowledge, first_artifact: visual.jobs, tests: [tests/test_visual_retrieval.py], safe_rerun_from: visual.jobs}
+  - {prefix: VISUAL_EVIDENCE, owner: zhiying.execution.steps.knowledge, first_artifact: visual.evidence, tests: [tests/test_visual_retrieval.py, tests/test_vision_providers.py], safe_rerun_from: visual.evidence}
+  - {prefix: FRAME_SEMANTICS, owner: zhiying.execution.steps.knowledge, first_artifact: frames.semantics, tests: [tests/test_visuals.py], safe_rerun_from: frames.semantics}
+  - {prefix: COURSE_IR, owner: zhiying.execution.steps.knowledge, first_artifact: knowledge.course_ir, tests: [tests/test_cloud_payload.py], safe_rerun_from: knowledge.course_ir}
+  - {prefix: KNOWLEDGE_UNITS, owner: zhiying.execution.steps.knowledge, first_artifact: knowledge.units, tests: [tests/test_knowledge_organizer.py, tests/test_cloud_payload.py], safe_rerun_from: knowledge.units}
+  - {prefix: KNOWLEDGE_SELFCHECK, owner: zhiying.execution.steps.knowledge, first_artifact: knowledge.selfcheck, tests: [tests/test_knowledge_selfcheck.py], safe_rerun_from: knowledge.selfcheck}
+  - {prefix: EDITORIAL_POLICY, owner: zhiying.execution.steps.editorial_steps, first_artifact: editorial.policy, tests: [tests/test_v61_editorial_policy.py], safe_rerun_from: editorial.policy}
+  - {prefix: EVIDENCE_RECONCILE, owner: zhiying.execution.steps.editorial_steps, first_artifact: evidence.corrections, tests: [tests/test_v61_evidence_overlay.py], safe_rerun_from: evidence.reconcile}
+  - {prefix: DOCUMENT_BLUEPRINT, owner: zhiying.execution.steps.editorial_steps, first_artifact: document.blueprint, tests: [tests/test_v61_local_editor.py, tests/test_v61_editorial_graph.py], safe_rerun_from: document.blueprint}
+  - {prefix: DOCUMENT_WRITE, owner: zhiying.execution.steps.editorial_steps, first_artifact: document.chapter_v31, tests: [tests/test_v61_local_editor.py, tests/test_v61_editorial_graph.py], safe_rerun_from: document.write}
+  - {prefix: DOCUMENT_ASSEMBLE, owner: zhiying.execution.steps.editorial_steps, first_artifact: document.v3, tests: [tests/test_v61_local_editor.py], safe_rerun_from: document.assemble}
+  - {prefix: DOCUMENT_VALIDATE, owner: zhiying.execution.steps.editorial_steps, first_artifact: document.validation, tests: [tests/test_v61_quality.py, tests/test_v61_local_editor.py], safe_rerun_from: document.validate}
+  - {prefix: TOOL_UNKNOWN, owner: zhiying.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
+  - {prefix: TOOL_ARGS_INVALID, owner: zhiying.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
+  - {prefix: TOOL_SCOPE_VIOLATION, owner: zhiying.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
+  - {prefix: TOOL_RESULT_TOO_LARGE, owner: zhiying.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
+  - {prefix: TOOL_MULTIPLE_MUTATIONS, owner: zhiying.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
+  - {prefix: TOOL_REVISION_CONFLICT, owner: zhiying.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_editorial_graph.py], safe_rerun_from: document.write}
+  - {prefix: TOOL_BUDGET_EXCEEDED, owner: zhiying.execution.tool_calling, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
+  - {prefix: TOOL_PROVIDER_UNSUPPORTED, owner: zhiying.execution.tool_calling, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
+  - {prefix: TOOL_NO_PROGRESS, owner: zhiying.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_editorial_graph.py], safe_rerun_from: document.blueprint}
+  - {prefix: TOOL_CHECKPOINT_SERIALIZATION_FAILED, owner: zhiying.execution.checkpointing, first_artifact: state/graph-checkpoints.sqlite3, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
+  - {prefix: RENDER, owner: zhiying.execution.steps.coarse, first_artifact: render.markdown.draft, tests: [tests/test_coarse_pipeline.py, tests/test_pdf_conversion.py], safe_rerun_from: render.markdown}
+  - {prefix: RUN_CANCELLED, owner: zhiying.execution.graph_runtime, first_artifact: state/pipeline-state.json, tests: [tests/test_pipeline_runner.py], safe_rerun_from: failed_step}
 cache_reasons:
   CACHE_HIT: "产物及指纹有效，无需重跑"
   LEGACY_ADOPTED: "旧 Workspace 已单向认领，无需模型初始化"

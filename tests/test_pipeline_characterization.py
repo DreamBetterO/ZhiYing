@@ -9,10 +9,10 @@ from unittest.mock import patch
 
 from PIL import Image
 
-from video_study import pipeline
-from video_study.config import AppConfig
-from video_study.knowledge.visual_retrieval import is_vlm_failure_source
-from video_study.utils import TaskCancelled
+from zhiying.application import pipeline
+from zhiying.config import AppConfig
+from zhiying.knowledge.visual_retrieval import is_vlm_failure_source
+from zhiying.utils import TaskCancelled
 
 
 class PipelineCharacterizationTests(unittest.TestCase):
@@ -133,13 +133,13 @@ class PipelineCharacterizationTests(unittest.TestCase):
                 output.write_text(json.dumps(transcript_fixture), encoding="utf-8")
                 return transcript_fixture
 
-            with patch("video_study.media.MediaAdapter.probe", return_value={"format": {"duration": "12.0"}}), \
-                    patch("video_study.media.MediaAdapter.extract_audio", side_effect=fake_audio), \
-                    patch("video_study.asr.SpeechAdapter.decode", side_effect=fake_decode) as decode, \
-                    patch("video_study.media.MediaAdapter.extract_frame_candidates", side_effect=fake_frames), \
-                    patch("video_study.render.DocumentAdapter.render_markdown", side_effect=fake_render), \
-                    patch("video_study.render.DocumentAdapter.render_word", side_effect=fake_render), \
-                    patch("video_study.render.DocumentAdapter.render_pdf", side_effect=fake_pdf):
+            with patch("zhiying.media.processing.MediaAdapter.probe", return_value={"format": {"duration": "12.0"}}), \
+                    patch("zhiying.media.processing.MediaAdapter.extract_audio", side_effect=fake_audio), \
+                    patch("zhiying.media.speech.SpeechAdapter.decode", side_effect=fake_decode) as decode, \
+                    patch("zhiying.media.processing.MediaAdapter.extract_frame_candidates", side_effect=fake_frames), \
+                    patch("zhiying.render.DocumentAdapter.render_markdown", side_effect=fake_render), \
+                    patch("zhiying.render.DocumentAdapter.render_word", side_effect=fake_render), \
+                    patch("zhiying.render.DocumentAdapter.render_pdf", side_effect=fake_pdf):
                 result = pipeline.process_video(
                     config,
                     video,
@@ -169,7 +169,7 @@ class PipelineCharacterizationTests(unittest.TestCase):
             self.assertEqual(progress[-1], ("completed", "处理完成", 100))
             saved = json.loads(Path(result["manifest"]).parent.joinpath("knowledge", "document-v3.json").read_text(encoding="utf-8"))
             self.assertEqual(saved["schema_version"], 3)
-            from video_study.document_v3 import v3_to_v2
+            from zhiying.documents.v3 import v3_to_v2
             rendered_view = v3_to_v2(saved)
             self.assertEqual(
                 rendered_view["sections"][0]["knowledge_points"][0]["source_refs"]["url"],
@@ -177,7 +177,7 @@ class PipelineCharacterizationTests(unittest.TestCase):
             )
 
     def test_cancellation_stops_before_workspace_or_middleware_initialization(self) -> None:
-        with TemporaryDirectory() as directory, patch("video_study.media.MediaAdapter.probe") as probe:
+        with TemporaryDirectory() as directory, patch("zhiying.media.processing.MediaAdapter.probe") as probe:
             root = Path(directory)
             video = root / "lesson.mp4"
             video.write_bytes(b"video")

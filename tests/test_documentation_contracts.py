@@ -8,8 +8,8 @@ from pathlib import Path
 
 import yaml
 
-from video_study.execution.artifacts import DOCUMENT_V2, STANDARD_ARTIFACTS
-from video_study.execution.steps.coarse import build_coarse_steps
+from zhiying.execution.artifacts import DOCUMENT_V2, STANDARD_ARTIFACTS
+from zhiying.execution.steps.coarse import build_coarse_steps
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,7 +22,7 @@ class DocumentationContractTests(unittest.TestCase):
         launcher = launcher_path.read_text(encoding="ascii").lower()
 
         self.assertIn("conda activate imaget10", launcher)
-        self.assertIn("python -m video_study desktop", launcher)
+        self.assertIn("python -m zhiying desktop", launcher)
         self.assertIn("import langgraph", launcher)
         self.assertNotIn(".venv\\scripts", launcher)
 
@@ -71,7 +71,7 @@ class DocumentationContractTests(unittest.TestCase):
                 self.assertTrue((ROOT / test).is_file(), test)
 
     def test_workspace_diagnosis_is_read_only_and_reports_failure(self) -> None:
-        from scripts.diagnose_workspace import diagnose
+        from scripts.diagnostics.diagnose_workspace import diagnose
 
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / "video"
@@ -98,7 +98,7 @@ class DocumentationContractTests(unittest.TestCase):
         self.assertEqual(before, after)
 
     def test_workspace_diagnosis_scans_full_run_for_recent_asr_events(self) -> None:
-        from scripts.diagnose_workspace import diagnose
+        from scripts.diagnostics.diagnose_workspace import diagnose
 
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / "video"
@@ -131,7 +131,7 @@ class DocumentationContractTests(unittest.TestCase):
         self.assertEqual(report["recent_asr_events"][0]["message"], "missing nagisa")
 
     def test_workspace_diagnosis_uses_transcript_cache_run_for_asr_events(self) -> None:
-        from scripts.diagnose_workspace import diagnose
+        from scripts.diagnostics.diagnose_workspace import diagnose
 
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / "video"
@@ -164,7 +164,7 @@ class DocumentationContractTests(unittest.TestCase):
         self.assertEqual(report["recent_asr_events"][0]["engine"], "qwen3-asr-0.6b")
 
     def test_workspace_diagnosis_marks_historical_v2_as_read_only_not_missing_v3_corruption(self) -> None:
-        from scripts.diagnose_workspace import diagnose
+        from scripts.diagnostics.diagnose_workspace import diagnose
 
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / "video"
@@ -182,7 +182,7 @@ class DocumentationContractTests(unittest.TestCase):
         self.assertEqual(v3["status"], "legacy_not_applicable")
 
     def test_workspace_diagnosis_marks_pre_v31_document_as_legacy_v3_read_only(self) -> None:
-        from scripts.diagnose_workspace import diagnose
+        from scripts.diagnostics.diagnose_workspace import diagnose
 
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / "video"

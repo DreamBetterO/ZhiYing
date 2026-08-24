@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from video_study.knowledge.editorial import (
+from zhiying.knowledge.editorial import (
     BRIEF_FILENAME,
     DEFAULT_BRIEF_TEXT,
     MAX_BRIEF_CHARS,

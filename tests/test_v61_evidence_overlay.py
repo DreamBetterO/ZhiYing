@@ -5,7 +5,7 @@ import json
 import unittest
 from pathlib import Path
 
-from video_study.editorial.evidence import (
+from zhiying.editorial.evidence import (
     EvidenceCorrection,
     EvidenceCorrectionOverlay,
     detect_local_corrections,

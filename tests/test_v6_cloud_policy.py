@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from video_study.providers import (
+from zhiying.providers import (
     CloudCircuitOpen, CloudRequestBudget, ModelAttempt,
 )
 

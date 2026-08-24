@@ -15,7 +15,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from video_study.source import (
+from zhiying.source import (
     DOWNLOAD_FAILED,
     DOWNLOAD_INCOMPLETE,
     DOWNLOAD_TIMEOUT,
@@ -257,7 +257,7 @@ class PreflightTests(unittest.TestCase):
     def test_check_tools_reports_presence(self) -> None:
         runner = FakeYtDlpRunner()
         adapter = self._adapter(runner)
-        with patch("video_study.source.find_tool", return_value="yt-dlp"), \
+        with patch("zhiying.source.find_tool", return_value="yt-dlp"), \
                 patch("subprocess.run") as sub_run:
             sub_run.return_value = SimpleNamespace(stdout="2026.07.04\n", returncode=0)
             result = adapter.check_tools()

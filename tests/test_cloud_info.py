@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from video_study.knowledge.cloud_info import merge_cloud_info
-from video_study.providers import CloudRequestBudget, ModelAttempt
+from zhiying.knowledge.cloud_info import merge_cloud_info
+from zhiying.providers import CloudRequestBudget, ModelAttempt
 
 
 class CloudInfoTests(unittest.TestCase):

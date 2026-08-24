@@ -14,7 +14,7 @@ asr:
   qwen_runtime_python: D:/Anaconda/envs/envs/ImageT10/python.exe
   qwen_runtime_dir: models/qwen3-asr-runtime
   qwen_model_dir: models/qwen3-asr-0.6b-hf
-  qwen_runner: scripts/qwen_asr_runner.py
+  qwen_runner: scripts/workers/qwen_asr_runner.py
   qwen_chunk_seconds: 60
   qwen_max_rtf: 0.75
   hotwords:
@@ -57,7 +57,7 @@ visual_evidence:
   local_vlm_runtime_python: D:/Anaconda/envs/envs/ImageT10/python.exe
   local_vlm_runtime_dir: models/qwen3-asr-runtime
   local_vlm_model_dir: models/qwen3-vl-2b-instruct
-  local_vlm_runner: scripts/qwen_vl_runner.py
+  local_vlm_runner: scripts/workers/qwen_vl_runner.py
   local_vlm_model: Qwen/Qwen3-VL-2B-Instruct
 render:
   source_link_base: video-study://play

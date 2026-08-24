@@ -9,14 +9,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from video_study.application.requests import AggregateRequest, CloudAuthorization, ProcessingHandle, ProcessingResult
-from video_study.asr import asr_runtime_limit_seconds
-from video_study.desktop.controller import DesktopController
-from video_study.desktop.models import DesktopState, UiEvent
-from video_study.desktop.view import PRIMARY_UI_ACTIONS, drain_ui_events
-from video_study.execution.artifacts import WorkspaceLayout
-from video_study.execution.events import RunEventJournal
-from video_study.providers import FallbackChatClient
+from zhiying.application.requests import AggregateRequest, CloudAuthorization, ProcessingHandle, ProcessingResult
+from zhiying.media.speech import asr_runtime_limit_seconds
+from zhiying.desktop.controller import DesktopController
+from zhiying.desktop.models import DesktopState, UiEvent
+from zhiying.desktop.view import PRIMARY_UI_ACTIONS, drain_ui_events
+from zhiying.execution.artifacts import WorkspaceLayout
+from zhiying.execution.events import RunEventJournal
+from zhiying.providers import FallbackChatClient
 
 
 def _result(root: Path) -> ProcessingResult:
@@ -155,7 +155,7 @@ class RuntimeResilienceTests(unittest.TestCase):
             def close(self):
                 blocker.set()
 
-        with patch("video_study.providers.OpenAI", _Client):
+        with patch("zhiying.providers.OpenAI", _Client):
             client = FallbackChatClient(
                 api_key="test", base_url="https://example.com/v1", models=["model"], timeout=0.05,
             )

@@ -5,9 +5,9 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from video_study.execution.artifacts import ArtifactId, ArtifactRef, DOCUMENT_V3
-from video_study.execution.contracts import StepOutcome, StepStatus
-from video_study.execution.steps.coarse import RenderVerifyStep, build_coarse_steps
+from zhiying.execution.artifacts import ArtifactId, ArtifactRef, DOCUMENT_V3
+from zhiying.execution.contracts import StepOutcome, StepStatus
+from zhiying.execution.steps.coarse import RenderVerifyStep, build_coarse_steps
 
 
 class _Ports:
@@ -44,7 +44,7 @@ class _ToolPort:
         self.calls = 0
 
     def invoke_turn(self, **_kwargs):
-        from video_study.execution.tool_calling import ToolCallRecord, ToolTurn
+        from zhiying.execution.tool_calling import ToolCallRecord, ToolTurn
         self.calls += 1
         return ToolTurn(tool_calls=(ToolCallRecord(
             name="submit_blueprint", args={"blueprint": self.blueprint},
@@ -79,10 +79,10 @@ class _WriterFailJsonPort(_JsonPort):
 class V61ProductionIntegrationTests(unittest.TestCase):
     @staticmethod
     def _editorial_inputs():
-        from video_study.editorial.intent import compile_editorial_policy
-        from video_study.editorial.local import build_local_blueprint
-        from video_study.knowledge.editorial import brief_from_text
-        from video_study.knowledge.schema import ChapterPlan, LessonPlan, UnitPlan
+        from zhiying.editorial.intent import compile_editorial_policy
+        from zhiying.editorial.local import build_local_blueprint
+        from zhiying.knowledge.editorial import brief_from_text
+        from zhiying.knowledge.schema import ChapterPlan, LessonPlan, UnitPlan
 
         plan = LessonPlan(chapters=[ChapterPlan(
             chapter_id="chapter_001", title="定义",
@@ -105,7 +105,7 @@ class V61ProductionIntegrationTests(unittest.TestCase):
         }
 
     def test_production_editorial_session_offline_constructs_no_cloud_port(self) -> None:
-        from video_study.execution.steps.editorial_steps import run_editorial_session
+        from zhiying.execution.steps.editorial_steps import run_editorial_session
 
         data = self._editorial_inputs()
         ports = _Ports({})
@@ -120,7 +120,7 @@ class V61ProductionIntegrationTests(unittest.TestCase):
         self.assertEqual(ports.calls, [])
 
     def test_production_editorial_session_structured_uses_json_port_only(self) -> None:
-        from video_study.execution.steps.editorial_steps import run_editorial_session
+        from zhiying.execution.steps.editorial_steps import run_editorial_session
 
         data = self._editorial_inputs()
         json_port = _JsonPort(data["blueprint"])
@@ -137,7 +137,7 @@ class V61ProductionIntegrationTests(unittest.TestCase):
         self.assertEqual(json_port.calls, 2)
 
     def test_production_editorial_session_tool_native_uses_restricted_tool_port(self) -> None:
-        from video_study.execution.steps.editorial_steps import run_editorial_session
+        from zhiying.execution.steps.editorial_steps import run_editorial_session
 
         data = self._editorial_inputs()
         tool_port = _ToolPort(data["blueprint"])
@@ -157,7 +157,7 @@ class V61ProductionIntegrationTests(unittest.TestCase):
         self.assertEqual(ports.calls, ["cloud_tool", "cloud"])
 
     def test_production_editorial_session_cloud_failure_records_local_degradation(self) -> None:
-        from video_study.execution.steps.editorial_steps import run_editorial_session
+        from zhiying.execution.steps.editorial_steps import run_editorial_session
 
         data = self._editorial_inputs()
         json_port = _FailJsonPort()
@@ -175,7 +175,7 @@ class V61ProductionIntegrationTests(unittest.TestCase):
         self.assertTrue(result["degradation_reasons"])
 
     def test_tool_native_failure_falls_back_without_unbounded_retry(self) -> None:
-        from video_study.execution.steps.editorial_steps import run_editorial_session
+        from zhiying.execution.steps.editorial_steps import run_editorial_session
 
         data = self._editorial_inputs()
         tool_port = _FailToolPort()
@@ -193,7 +193,7 @@ class V61ProductionIntegrationTests(unittest.TestCase):
         self.assertIn("TOOL_PROVIDER_UNSUPPORTED", result["error_codes"])
 
     def test_structured_writer_timeout_is_explicit_local_chapter_degradation(self) -> None:
-        from video_study.execution.steps.editorial_steps import run_editorial_session
+        from zhiying.execution.steps.editorial_steps import run_editorial_session
 
         data = self._editorial_inputs()
         json_port = _WriterFailJsonPort(data["blueprint"])
@@ -210,7 +210,7 @@ class V61ProductionIntegrationTests(unittest.TestCase):
         self.assertEqual(set(result["provenance"]["chapter_writing"].values()), {"local_deterministic"})
 
     def test_terminal_status_preserves_degraded_outcome(self) -> None:
-        from video_study.execution.bootstrap import summarize_terminal_status
+        from zhiying.execution.bootstrap import summarize_terminal_status
 
         self.assertEqual(summarize_terminal_status(["succeeded", "cached"]), "succeeded")
         self.assertEqual(summarize_terminal_status(["succeeded", "degraded"]), "degraded")

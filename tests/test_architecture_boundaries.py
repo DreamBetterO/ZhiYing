@@ -8,7 +8,7 @@ import yaml
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SOURCE_ROOT = PROJECT_ROOT / "src" / "video_study"
+SOURCE_ROOT = PROJECT_ROOT / "src" / "zhiying"
 
 
 class ArchitectureBoundaryTests(unittest.TestCase):
@@ -51,10 +51,10 @@ class ArchitectureBoundaryTests(unittest.TestCase):
 
     def test_execution_contract_has_no_concrete_middleware_dependency(self) -> None:
         forbidden_roots = {"tkinter", "openai", "subprocess"}
-        forbidden_video_study = {
-            "video_study.asr", "video_study.frames", "video_study.media",
-            "video_study.providers", "video_study.render", "video_study.summarize",
-            "video_study.execution.adapters.vision",
+        forbidden_zhiying = {
+            "zhiying.media.speech", "zhiying.media.frames", "zhiying.media",
+            "zhiying.providers", "zhiying.render", "zhiying.summarize",
+            "zhiying.execution.adapters.vision",
         }
         violations: list[str] = []
         for path in (SOURCE_ROOT / "execution").glob("*.py"):
@@ -67,14 +67,14 @@ class ArchitectureBoundaryTests(unittest.TestCase):
                 else:
                     continue
                 for name in names:
-                    if name.split(".", 1)[0] in forbidden_roots or name in forbidden_video_study:
+                    if name.split(".", 1)[0] in forbidden_roots or name in forbidden_zhiying:
                         violations.append(f"{path.name}: {name}")
         self.assertEqual(violations, [])
 
     def test_knowledge_and_desktop_do_not_cross_forbidden_boundaries(self) -> None:
         rules = {
-            "knowledge": {"video_study.summarize", "video_study.pipeline", "video_study.desktop", "tkinter", "openai", "subprocess"},
-            "desktop": {"video_study.knowledge", "video_study.providers", "video_study.execution.graph_runtime", "openai", "subprocess"},
+            "knowledge": {"zhiying.summarize", "zhiying.application.pipeline", "zhiying.desktop", "tkinter", "openai", "subprocess"},
+            "desktop": {"zhiying.knowledge", "zhiying.providers", "zhiying.execution.graph_runtime", "openai", "subprocess"},
         }
         violations: list[str] = []
         for package, forbidden in rules.items():
@@ -86,7 +86,7 @@ class ArchitectureBoundaryTests(unittest.TestCase):
                     elif isinstance(node, ast.ImportFrom):
                         module = node.module or ""
                         if node.level:
-                            prefix = "video_study." + (package + "." if node.level == 1 else "")
+                            prefix = "zhiying." + (package + "." if node.level == 1 else "")
                             names = [prefix + module]
                         else:
                             names = [module]
@@ -97,8 +97,8 @@ class ArchitectureBoundaryTests(unittest.TestCase):
                             violations.append(f"{path.relative_to(PROJECT_ROOT)}: {name}")
         self.assertEqual(violations, [])
 
-    def test_pipeline_is_a_thin_compatibility_facade(self) -> None:
-        path = SOURCE_ROOT / "pipeline.py"
+    def test_application_pipeline_is_a_thin_orchestration_facade(self) -> None:
+        path = SOURCE_ROOT / "application" / "pipeline.py"
         source = path.read_text(encoding="utf-8")
         tree = ast.parse(source, filename=str(path))
         forbidden_calls = {
@@ -118,11 +118,17 @@ class ArchitectureBoundaryTests(unittest.TestCase):
             elif isinstance(node, ast.ImportFrom):
                 imports.add(node.module or "")
         self.assertEqual(called & forbidden_calls, set())
-        self.assertFalse(any(name.startswith("video_study.execution.steps") for name in imports))
+        self.assertFalse(any(name.startswith("zhiying.execution.steps") for name in imports))
         self.assertNotIn("use_new_runner", source)
 
     def test_workspace_consumers_do_not_hardcode_manifest_or_document_paths(self) -> None:
-        for relative in ("desktop/view.py", "desktop/controller.py", "application/processing.py", "localplay.py", "aggregate.py"):
+        for relative in (
+            "desktop/view.py",
+            "desktop/controller.py",
+            "application/processing.py",
+            "infrastructure/playback.py",
+            "application/aggregation.py",
+        ):
             source = (SOURCE_ROOT / relative).read_text(encoding="utf-8")
             with self.subTest(module=relative):
                 self.assertNotIn("*/manifest.json", source)
@@ -133,7 +139,7 @@ class ArchitectureBoundaryTests(unittest.TestCase):
         controller = (SOURCE_ROOT / "desktop" / "controller.py").read_text(encoding="utf-8")
         for forbidden in (
             "DefaultProcessingService", "WorkspaceCatalog", "aggregate_documents", "run_all",
-            "video_study.knowledge", "video_study.providers", "subprocess",
+            "zhiying.knowledge", "zhiying.providers", "subprocess",
         ):
             self.assertNotIn(forbidden, view)
         for forbidden in ("tkinter", "messagebox", "filedialog", "startfile", "openai"):
@@ -141,7 +147,8 @@ class ArchitectureBoundaryTests(unittest.TestCase):
 
     def test_third_party_and_process_imports_stay_in_infrastructure_adapters(self) -> None:
         subprocess_allowed = {
-            "asr.py", "localplay.py", "media.py", "render.py", "source.py", "utils.py",
+            "media/speech.py", "infrastructure/playback.py", "media/processing.py",
+            "render.py", "source.py", "utils.py",
             "execution/adapters/vision.py",
         }
         openai_allowed = {"providers.py"}

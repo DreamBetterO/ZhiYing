@@ -5,8 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from video_study.execution.artifacts import WorkspaceLayout
-from video_study.execution.events import RunEventJournal
+from zhiying.execution.artifacts import WorkspaceLayout
+from zhiying.execution.events import RunEventJournal
 
 
 class RunEventJournalTests(unittest.TestCase):

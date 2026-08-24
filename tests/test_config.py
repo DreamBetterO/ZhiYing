@@ -6,17 +6,17 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from video_study.config import AppConfig, load_config
+from zhiying.config import AppConfig, load_config
 
 
 class ConfigIncludeTests(unittest.TestCase):
     def test_path_expands_windows_environment_variables(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir, patch.dict(
-            os.environ, {"VIDEO_STUDY_TEST_DATA": temp_dir}
+            os.environ, {"ZHIYING_TEST_DATA": temp_dir}
         ):
             config = AppConfig(
                 Path(temp_dir),
-                {"paths": {"output_dir": "%VIDEO_STUDY_TEST_DATA%/output"}},
+                {"paths": {"output_dir": "%ZHIYING_TEST_DATA%/output"}},
             )
             self.assertEqual(
                 config.path("paths", "output_dir"),

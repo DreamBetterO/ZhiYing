@@ -3,11 +3,25 @@ requires = ["setuptools>=75", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "video-study"
-version = "1.0.0rc1"
-description = "Traceable desktop teaching-video to study-document workspace"
+name = "zhiying"
+version = "1.0.0"
+description = "知影：可溯源的桌面端视频学习文档工作台"
 readme = "README.md"
+authors = [{ name = "DreamBetterO" }]
+license = { file = "LICENSE" }
+keywords = ["video", "education", "summarization", "desktop", "markdown", "docx", "pdf"]
 requires-python = ">=3.11"
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Win32 (MS Windows)",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: Microsoft :: Windows :: Windows 10",
+  "Operating System :: Microsoft :: Windows :: Windows 11",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Education",
+  "Topic :: Multimedia :: Video",
+]
 dependencies = [
   "faster-whisper>=1.1.1,<2",
   "huggingface-hub[cli]>=0.27,<2",
@@ -24,7 +38,14 @@ dependencies = [
 ]
 
 [project.scripts]
-video-study = "video_study.cli:main"
+zhiying = "zhiying.cli:main"
+video-study = "zhiying.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/DreamBetterO/ZhiYing"
+Documentation = "https://github.com/DreamBetterO/ZhiYing/tree/main/docs"
+Issues = "https://github.com/DreamBetterO/ZhiYing/issues"
+Releases = "https://github.com/DreamBetterO/ZhiYing/releases"
 
 [tool.setuptools.packages.find]
 where = ["src"]

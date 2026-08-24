@@ -5,8 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from video_study.asr import _initial_prompt, apply_terminology_corrections
-from video_study.transcript import normalize_transcript, write_srt
+from zhiying.media.speech import _initial_prompt, apply_terminology_corrections
+from zhiying.media.transcript import normalize_transcript, write_srt
 
 
 def sample_transcript(text: str = "心房才动伴随房才") -> dict:

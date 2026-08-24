@@ -1,6 +1,55 @@
 purpose: "供执行 Agent 按需检索；不是用户版本时间线"
 schema_version: 1
 
+zhiying_ui_copy_and_v1_0_0_2026_08_24:
+  written_at: "2026-08-24 14:02 Asia/Shanghai"
+  status: completed
+  delivered:
+    - "用户可见品牌由 ZhiYing 调整为知影；工程命名空间 zhiying、兼容 CLI 和 video-study:// 协议保持不变"
+    - "首页、空状态、处理操作、文档合并、设置、云端授权、缓存与输出入口统一为面向用户的成熟表述"
+    - "产品版本由 1.0.0rc1 提升为 1.0.0；源码、项目元数据、当前状态文档、使用文档和便携构建版本引用已同步"
+  validation:
+    focused_ui_and_contracts: "69 tests OK"
+    unittest: "609 tests OK；skipped=1（外部冻结 Workspace 不完整）；expected failures=5；30.361s"
+    portable_entrypoint_tests: "3 tests OK；未构建发行包"
+    compileall: passed
+    pip_check: "No broken requirements found；既有 ~ransformers invalid distribution warning"
+    git_diff_check: passed
+  remaining:
+    - "CP61-7 两份高数审阅成品仍待用户确认；正式版本号不替代该质量门"
+  boundaries:
+    cloud_requests: 0
+    model_or_dependency_changes: 0
+    long_video_reruns: 0
+    portable_builds: 0
+
+zhiying_namespace_and_layout_2026_08_24:
+  written_at: "2026-08-24 12:44 Asia/Shanghai"
+  status: completed
+  delivered:
+    - "产品标识统一为 ZhiYing（知影）；Python 导入包与发行包统一为 zhiying"
+    - "src/video_study 全量迁移至 src/zhiying；代码、测试、Mock、架构合同、诊断 owner、启动器与当前文档引用已同步"
+    - "主 CLI 为 zhiying；video-study 仅保留兼容入口；video-study:// 本地回看协议保持不变"
+    - "便携构建源码同步为 zhiying/ZhiYing 命名，但未执行便携构建"
+  removed:
+    - "src/video_study_demo.egg-info（生成型包元数据，可由安装/构建重新生成）"
+    - ".env.example（未使用模板）；.env 本身未读取、未修改"
+  compatibility:
+    - "旧 VIDEO_STUDY_CUDA_DLL_DIRS 与 VIDEO_STUDY_VLM_DEBUG_RAW 仅作为只读环境变量回退"
+    - "历史执行事实与用户版本时间线未改写"
+  validation:
+    unittest: "608 tests OK；skipped=1（外部冻结 Workspace 不完整）；expected failures=5；41.669s"
+    portable_entrypoint_tests: "3 tests OK；未构建发行包"
+    compileall: passed
+    pip_check: "No broken requirements found；既有 ~ransformers invalid distribution warning"
+    cli_help: passed
+    git_diff_check: "passed；仅 LF/CRLF warning"
+  boundaries:
+    cloud_requests: 0
+    model_or_dependency_changes: 0
+    long_video_reruns: 0
+    portable_builds: 0
+
 v6_1_glm_capability_and_test_isolation_2026_08_21:
   written_at: "2026-08-21 16:02 Asia/Shanghai"
   status: completed

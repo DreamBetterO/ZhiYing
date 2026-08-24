@@ -11,10 +11,10 @@ from typing import TypedDict
 
 import yaml
 
-from video_study.execution.artifacts import DOCUMENT_V2, STANDARD_ARTIFACTS
-from video_study.execution.artifacts import ArtifactId
-from video_study.execution.contracts import ErrorInfo, StepOutcome, StepStatus
-from video_study.execution.steps.coarse import build_coarse_steps
+from zhiying.execution.artifacts import DOCUMENT_V2, STANDARD_ARTIFACTS
+from zhiying.execution.artifacts import ArtifactId
+from zhiying.execution.contracts import ErrorInfo, StepOutcome, StepStatus
+from zhiying.execution.steps.coarse import build_coarse_steps
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,23 +47,26 @@ class V6P0ContractTests(unittest.TestCase):
         for fixture in (cache, cancellation, failure, sources, aggregates):
             self.assertEqual(fixture.get("cloud_requests", 0), 0)
 
-    def test_v6_target_contract_and_active_release_candidate_are_consistent(self) -> None:
+    def test_v6_target_contract_and_current_v61_runtime_are_consistent(self) -> None:
         target = yaml.safe_load((ROOT / "docs/迭代升级/V6.0 LangGraph全链路目标合同.yaml").read_text(encoding="utf-8"))
         current = yaml.safe_load((ROOT / "docs/迭代升级/当前架构升级状态.yaml").read_text(encoding="utf-8"))
         self.assertEqual(target["status"], "implemented_release_candidate")
         self.assertEqual(target["baseline"]["orchestrator"], "PipelineRunner")
-        self.assertEqual(current["baseline"]["active_architecture"], "V6 LangGraph 23-node full-pipeline runtime with DocumentPlan/Document v3")
+        self.assertEqual(
+            current["baseline"]["active_architecture"],
+            "V6.1 LangGraph 23-node full-pipeline runtime with EditorialAgentSubgraph and Document v3.1",
+        )
         self.assertIn("CP0", target["phases"])
 
     def test_graph_runtime_is_the_production_orchestration_boundary_after_cp3(self) -> None:
-        from video_study.execution.graph_runtime import GraphRuntime
+        from zhiying.execution.graph_runtime import GraphRuntime
 
         self.assertTrue(GraphRuntime.production_enabled())
 
     def test_p3_graphs_cover_source_job_and_aggregate_boundaries(self) -> None:
-        from video_study.execution.graphs.aggregate_graph import AggregateGraph
-        from video_study.execution.graphs.job_graph import JobGraph
-        from video_study.execution.graphs.source_graph import SourceGraph
+        from zhiying.execution.graphs.aggregate_graph import AggregateGraph
+        from zhiying.execution.graphs.job_graph import JobGraph
+        from zhiying.execution.graphs.source_graph import SourceGraph
 
         self.assertEqual(SourceGraph.node_ids(), (
             "source.local.resolve", "source.url.preflight", "source.url.acquire", "source.verify",
@@ -77,7 +80,7 @@ class V6P0ContractTests(unittest.TestCase):
         ))
 
     def test_graph_runtime_topology_matches_the_current_twenty_three_steps(self) -> None:
-        from video_study.execution.graph_runtime import GraphRuntime
+        from zhiying.execution.graph_runtime import GraphRuntime
 
         render = ArtifactId("render.bundle", ("lesson.md", "lesson.docx", "lesson.pdf"), "output")
         specs = [step.spec for step in build_coarse_steps(render)]
@@ -86,7 +89,7 @@ class V6P0ContractTests(unittest.TestCase):
         self.assertEqual(len(runtime.topology(specs)), 23)
 
     def test_graph_state_projection_is_bounded_and_excludes_secrets(self) -> None:
-        from video_study.execution.graph_state import outcome_projection
+        from zhiying.execution.graph_state import outcome_projection
 
         outcome = StepOutcome("fixture.step", "run", StepStatus.FAILED, error=ErrorInfo("FIXTURE", "x" * 800), diagnostics={"api_key": "forbidden", "safe": "ok"})
         value = outcome_projection(outcome)
@@ -94,7 +97,7 @@ class V6P0ContractTests(unittest.TestCase):
         self.assertEqual(value["diagnostics"], {"safe": "ok"})
 
     def test_checkpoint_adapter_rejects_cross_graph_version_resume(self) -> None:
-        from video_study.execution.checkpointing import SqliteCheckpointAdapter
+        from zhiying.execution.checkpointing import SqliteCheckpointAdapter
 
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "checkpoints.sqlite3"
