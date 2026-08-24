@@ -22,6 +22,8 @@
 /tmp_*/
 *.log
 *.pid
+AGENTS.local.md
+CODELY.md
 
 # 不上传：工具本地会话和诊断缓存
 /.codely-cli/
