@@ -22,8 +22,7 @@
 /tmp_*/
 *.log
 *.pid
-AGENTS.local.md
-CODELY.md
+
 
 # 不上传：工具本地会话和诊断缓存
 /.codely-cli/
@@ -52,3 +51,7 @@ node_modules/
 Thumbs.db
 Desktop.ini
 ~$*
+
+# 不上传：其他不必要的文件
+AGENTS.local.md
+CODELY.md
