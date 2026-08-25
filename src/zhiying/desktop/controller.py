@@ -30,6 +30,7 @@ class DesktopController:
             if path not in existing:
                 item = QueueItem(path)
                 self.items.append(item)
+                self._restore_history(item)
                 existing.add(path)
         self._emit("queue")
 
@@ -69,6 +70,7 @@ class DesktopController:
                 item.detail_title = str(acquired.get("title") or item.source_url)
                 item.detail = ""
                 item.status, item.stage, item.progress = "已就绪", "ready", 100
+                self._restore_history(item)
                 download_cached = bool(acquired.get("cached"))
                 message = (
                     "已复用本地缓存，无需重新下载；勾选后点击“生成本地文档”即可开始"
@@ -90,6 +92,37 @@ class DesktopController:
         self._require_idle("移除视频")
         self.items = [item for item in self.items if not item.checked]
         self._emit("queue")
+
+    def _restore_history(self, item: QueueItem) -> None:
+        if item.path is None or not hasattr(self.service, "history_snapshot"):
+            return
+        snapshot = self.service.history_snapshot(item.path)
+        if not snapshot:
+            return
+        status = str(snapshot.get("status") or "succeeded")
+        labels = {
+            "succeeded": "历史：已完成",
+            "degraded": "历史：已完成（降级）",
+            "failed": "历史：失败",
+            "cancelled": "历史：已取消",
+            "running": "历史：未正常结束",
+        }
+        item.history = dict(snapshot)
+        item.result = dict(snapshot.get("result") or {})
+        item.result["cloud_usage"] = dict(snapshot.get("cloud_usage") or {})
+        item.stage = "history"
+        item.status = labels.get(status, f"历史：{status}")
+        item.progress = 100 if status in {"succeeded", "degraded"} else 0
+        item.elapsed = max(0.0, float(snapshot.get("elapsed_seconds") or 0.0))
+        finished = str(snapshot.get("finished_at") or "未知时间")
+        usage = item.result["cloud_usage"]
+        item.detail = (
+            f"检测到历史运行：{finished}；状态：{item.status.removeprefix('历史：')}；"
+            f"记录用量：{int(usage.get('prompt_tokens', 0)):,} / "
+            f"{int(usage.get('completion_tokens', 0)):,} / {int(usage.get('total_tokens', 0)):,} tokens"
+        )
+        item.message = "该视频以前处理过，已恢复最近一次运行记录"
+        self._emit("history_restored", item, item.message, item.detail, payload=item.history)
 
     def reorder(self, source_index: int, target_index: int) -> bool:
         """确定性重排：将 source_index 处的行移动到 target_index 位置。"""
@@ -277,6 +310,7 @@ class DesktopController:
             if item.path is not None:
                 self.service.delete_video_workspace(item.path)
             item.result = {}
+            item.history = {}
             item.stage, item.status, item.progress = "queued", "等待中", 0
             item.message, item.started_at, item.elapsed, item.eta, item.estimating = "", None, 0.0, None, False
         self.aggregate_result = {}
@@ -287,6 +321,7 @@ class DesktopController:
         removed = self.service.clear_workspace()
         for item in self.items:
             item.result = {}
+            item.history = {}
             item.stage, item.status, item.progress = "queued", "等待中", 0
             item.message, item.started_at, item.elapsed, item.eta, item.estimating = "", None, 0.0, None, False
         self.aggregate_result = {}
@@ -338,6 +373,26 @@ class DesktopController:
         item.stage, item.status, item.progress = "completed", ("已完成（降级）" if degraded else "已完成"), 100
         item.result = result.to_legacy()
         item.finish_timing()
+        events = [event for event in result.diagnostics.get("runtime_events", ()) if isinstance(event, dict)]
+        started = next((
+            event for event in events
+            if event.get("code") == "run_started" or event.get("type") == "run_started"
+        ), {})
+        finished = next((
+            event for event in reversed(events)
+            if (
+                str(event.get("code", "")).startswith("run_")
+                and event.get("code") != "run_started"
+            ) or event.get("type") == "run_finished"
+        ), {})
+        item.history = {
+            "run_id": str(finished.get("run_id") or started.get("run_id") or ""),
+            "status": "degraded" if degraded else str(result.diagnostics.get("status") or "succeeded"),
+            "started_at": str(started.get("timestamp") or ""),
+            "finished_at": str(finished.get("timestamp") or ""),
+            "elapsed_seconds": float(finished.get("elapsed_seconds") or item.elapsed),
+            "cloud_usage": dict(result.cloud_usage),
+        }
         item.detail = "；".join(result.diagnostics.get("degradation_summary", ())) if degraded else "已完成"
         self._emit("progress", item, "处理完成（存在降级）" if degraded else "处理完成", item.status)
 

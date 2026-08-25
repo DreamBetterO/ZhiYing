@@ -685,13 +685,14 @@ def plan_cloud(
 
     level_labels = {"精简": "复习提纲", "推荐": "标准课程笔记", "丰富": "完整课程讲义"}
     level_label = level_labels.get(content_level, "标准课程笔记")
+    from ..providers import cloud_output_limit
     budget = settings.get("budget", {})
     max_chars = int(budget.get("max_input_chars", 60000))
     if len(source) > max_chars:
         raise RuntimeError(f"规划输入共 {len(source)} 字符，超过云端上限 {max_chars}；未发送请求")
     max_tokens = min(
-        int(budget.get("max_output_tokens", 5000)),
-        int(budget.get("planning_max_output_tokens", 3200)),
+        cloud_output_limit(settings),
+        cloud_output_limit(settings, "planning_max_output_tokens", 3200),
     )
 
     prompt = render_planning(

@@ -111,7 +111,10 @@ class V61OfflineAcceptanceTests(unittest.TestCase):
                     )
                     document = result["document_candidate"]
                     self.assertEqual(document["contract_version"], "document-v3.1")
-                    self.assertEqual(result["quality_report"]["status"], "valid")
+                    self.assertEqual(
+                        result["quality_report"]["status"], "valid",
+                        result["quality_report"],
+                    )
                     body = json.dumps(document["components"], ensure_ascii=False)
                     for raw in forbidden_raw:
                         self.assertNotIn(raw, body)

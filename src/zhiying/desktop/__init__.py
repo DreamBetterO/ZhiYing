@@ -32,6 +32,7 @@ STAGE_LABELS = {
     "document.validate": "19/23 文档校验", "render.markdown": "20/23 Markdown",
     "render.word": "21/23 Word", "render.pdf": "22/23 PDF",
     "render.verify": "23/23 输出检查", "completed": "已完成",
+    "history": "历史记录",
     "cancelling": "正在取消", "cancelled": "已取消", "failed": "失败",
 }
 
@@ -49,13 +50,14 @@ def format_eta(seconds: float | None, estimating: bool = False) -> str:
 
 
 def cloud_authorization_message(qwen: dict, *, aggregate: bool) -> str:
+    from ..utils import cloud_output_limit, cloud_request_limit
     budget = qwen.get("budget", {})
     models = " → ".join(qwen.get("_runtime_models", []))
     endpoint = str(qwen.get("_runtime_base_url") or qwen.get("default_base_url") or "未配置")
-    calls = max(0, int(budget.get("max_calls_per_video", 1)))
+    calls = cloud_request_limit(qwen)
     chars = int(budget.get("max_input_chars", 60000))
-    output = int(budget.get("max_output_tokens", 5000))
-    planning = min(output, int(budget.get("planning_max_output_tokens", 3200)))
+    output = cloud_output_limit(qwen)
+    planning = min(output, cloud_output_limit(qwen, "planning_max_output_tokens", 3200))
     if aggregate:
         return (
             f"上传内容：所选视频的缓存知识文本与来源 ID（不含视频、截图、密钥）\n"

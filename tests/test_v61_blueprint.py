@@ -3,6 +3,12 @@ from __future__ import annotations
 
 import unittest
 
+from zhiying.editorial.agent import (
+    _blueprint_request_payload,
+    _restore_immutable_source_refs,
+    _writer_request_payload,
+)
+
 from zhiying.editorial.blueprint import (
     BlueprintChapter,
     DocumentBlueprint,
@@ -41,6 +47,39 @@ def _sample_blueprint(**overrides) -> DocumentBlueprint:
 
 
 class BlueprintTests(unittest.TestCase):
+    def test_structured_editorial_prompts_use_compact_immutable_projections(self) -> None:
+        plan = {
+            "domain": "高等数学",
+            "core_thread": "积分",
+            "chapters": [{
+                "chapter_id": "chapter_001",
+                "title": "积分",
+                "source_segment_ids": [f"seg_{index:05d}" for index in range(4000)],
+                "unit_plans": [{
+                    "plan_id": "plan_001", "title": "定义", "role": "core",
+                    "knowledge_types": ["concept"], "detail_level": "standard",
+                    "source_segment_ids": [f"seg_{index:05d}" for index in range(4000)],
+                }],
+            }],
+        }
+        blueprint_payload = _blueprint_request_payload({}, plan)
+        self.assertNotIn("source_segment_ids", blueprint_payload["messages"][1]["content"])
+        self.assertLess(len(blueprint_payload["messages"][1]["content"]), 5000)
+
+        chapters = [{
+            "type": "container", "component_id": "chapter_001", "semantic_role": "chapter",
+            "source_refs": [{"segment_ids": [f"seg_{index:05d}" for index in range(4000)]}],
+            "children": [{
+                "type": "paragraph", "component_id": "p_001", "text": "正文",
+                "source_refs": [{"segment_ids": ["seg_00001"]}],
+            }],
+        }]
+        writer_payload = _writer_request_payload({}, {}, chapters)
+        self.assertNotIn("source_refs", writer_payload["messages"][1]["content"])
+        restored = _restore_immutable_source_refs(writer_payload["draft_chapters"], chapters)
+        self.assertEqual(restored[0]["source_refs"], chapters[0]["source_refs"])
+        self.assertEqual(restored[0]["children"][0]["source_refs"], chapters[0]["children"][0]["source_refs"])
+
     def test_valid_blueprint_passes_validation(self) -> None:
         blueprint = _sample_blueprint()
         validate_blueprint(blueprint, known_unit_ids={"plan_001"})

@@ -88,13 +88,14 @@ class CompositionRootTests(unittest.TestCase):
             budget = CloudRequestBudget(3)
             services = build_runtime_services(
                 project_root=root, model_dir=root / "models",
-                options=ProcessingOptions(knowledge={"max_output_tokens": 1234}),
+                options=ProcessingOptions(knowledge={"max_output_tokens": 1234, "timeout_seconds": 240}),
                 policy=policy, credentials=credentials, cloud_budget=budget,
             )
             with patch("zhiying.providers.FallbackChatClient") as client:
                 cloud = services.port("cloud")
                 client.assert_not_called()
             self.assertIs(cloud.budget, budget)
+            self.assertEqual(cloud.timeout, 240.0)
             self.assertNotIn("secret-key", repr(cloud))
             self.assertNotIn("secret-key", repr(services))
 
@@ -147,6 +148,28 @@ class CompositionRootTests(unittest.TestCase):
 
 
 class ConcreteAdapterTests(unittest.TestCase):
+    def test_cloud_adapter_rebuilds_client_after_runtime_timeout(self) -> None:
+        first = Mock()
+        first.create_json.side_effect = TimeoutError("fixture timeout")
+        second = Mock()
+        second.create_json.return_value = ({"ok": True}, "model-a", [], {})
+        with patch("zhiying.providers.FallbackChatClient", side_effect=[first, second]) as constructor:
+            adapter = OpenAICloudJsonAdapter(
+                api_key="top-secret", base_url="https://example.invalid/v1",
+                models=["model-a"], budget=CloudRequestBudget(3), timeout=240,
+            )
+            with self.assertRaises(TimeoutError):
+                adapter.request_json(
+                    {"messages": [{"role": "user", "content": "first"}]},
+                    validator=lambda value: None, stage="organizing", cancel_check=lambda: False,
+                )
+            result = adapter.request_json(
+                {"messages": [{"role": "user", "content": "second"}]},
+                validator=lambda value: None, stage="blueprint", cancel_check=lambda: False,
+            )
+        self.assertTrue(result["ok"])
+        self.assertEqual(constructor.call_count, 2)
+
     def test_cloud_adapter_is_lazy_redacted_and_uses_injected_budget(self) -> None:
         budget = CloudRequestBudget(2)
         fake_client = Mock()

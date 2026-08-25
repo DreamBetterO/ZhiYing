@@ -371,7 +371,7 @@ class CourseIRStep:
 @dataclass
 class KnowledgeUnitsStep:
     spec = StepSpec(
-        "knowledge.units", 3,
+        "knowledge.units", 4,
         dependencies=("knowledge.plan", "knowledge.course_ir", "frames.semantics", "visual.evidence", "transcript.normalize"),
         inputs=(KNOWLEDGE_PLAN, KNOWLEDGE_COURSE_IR, FRAMES_SEMANTICS, VISUAL_EVIDENCE, TRANSCRIPT_NORMALIZED),
         outputs=(KNOWLEDGE_UNITS,), config_keys=("knowledge.units",), remote_cost=RemoteCost.CLOUD,

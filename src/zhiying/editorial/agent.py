@@ -255,7 +255,7 @@ def build_editorial_agent(
                 }
             except Exception as exc:
                 reasons = list(state.get("degradation_reasons", []))
-                reasons.append(f"blueprint_structured:{type(exc).__name__}")
+                reasons.append(_safe_failure_reason("blueprint_structured", exc))
                 fallback = True
         else:
             fallback = False
@@ -270,10 +270,20 @@ def build_editorial_agent(
 
     def blueprint_commit(state: EditorialState) -> dict[str, Any]:
         effective = state.get("effective_capability", state["capability"])
+        accepted = dict(state.get("blueprint_candidate") or {})
+        target_chars = sum(
+            max(0, int(chapter.get("target_chars", 0) or 0))
+            for chapter in accepted.get("chapters", []) if isinstance(chapter, Mapping)
+        )
+        available_content_chars = _available_content_chars(state.get("plan_units", []))
         return {
-            "accepted_blueprint": dict(state.get("blueprint_candidate") or {}),
+            "accepted_blueprint": accepted,
             "phase": "blueprint_commit",
-            "provenance": {**state.get("provenance", {}), "blueprint": effective},
+            "provenance": {
+                **state.get("provenance", {}), "blueprint": effective,
+                "target_chars": target_chars,
+                "available_content_chars": available_content_chars,
+            },
         }
 
     def chapter_write(state: EditorialState) -> dict[str, Any]:
@@ -296,16 +306,18 @@ def build_editorial_agent(
                     _writer_request_payload(
                         state["editorial_policy"], state["accepted_blueprint"], chapters,
                     ),
-                    validator=_validate_chapters_payload,
+                    validator=lambda value: _validate_chapters_payload(
+                        value, expected_component_ids=_component_ids(chapters),
+                    ),
                     stage="writer",
                     cancel_check=cancel_check,
                 )
-                chapters = list(payload["chapters"])
+                chapters = _restore_immutable_source_refs(list(payload["chapters"]), chapters)
                 chapter_capability = CAPABILITY_STRUCTURED_ONLY
                 model_chain = list(dict.fromkeys([*state.get("model_chain", []), *([str(info.get("model", ""))] if info.get("model") else [])]))
                 usage = _merge_usage(state.get("usage", {}), info.get("usage", {}))
             except Exception as exc:
-                reasons.append(f"writer_structured:{type(exc).__name__}")
+                reasons.append(_safe_failure_reason("writer_structured", exc))
                 model_chain = list(state.get("model_chain", []))
                 usage = dict(state.get("usage", {}))
         else:
@@ -457,7 +469,12 @@ def build_editorial_agent(
     graph.add_edge("chapter_write", "document_assemble")
     graph.add_edge("document_assemble", "preview_render")
     graph.add_edge("preview_render", "quality_audit")
-    graph.add_conditional_edges("quality_audit", lambda state: _route_quality(state, max_revision_cycles))
+    graph.add_conditional_edges(
+        "quality_audit",
+        lambda state: _route_quality(
+            state, max_revision_cycles, allow_revision=tool_port is not None,
+        ),
+    )
     graph.add_conditional_edges("revision_agent_turn", lambda state: _route_revision(state, max_tool_turns))
     graph.add_conditional_edges("revision_tools_carrier", lambda state: _route_revision_after_tools(state, tools_ctx))
     graph.add_conditional_edges(
@@ -504,11 +521,13 @@ def _route_validate(state: EditorialState) -> str:
     return "blueprint_structured"
 
 
-def _route_quality(state: EditorialState, max_revision_cycles: int) -> str:
+def _route_quality(
+    state: EditorialState, max_revision_cycles: int, *, allow_revision: bool = True,
+) -> str:
     report = state.get("quality_report") or {}
     if report.get("status") == "valid":
         return "editorial_finalize"
-    if state["revision_cycles_used"] < max_revision_cycles:
+    if allow_revision and state["revision_cycles_used"] < max_revision_cycles:
         return "revision_agent_turn"
     return "editorial_finalize"
 
@@ -537,12 +556,17 @@ def _validate_blueprint_payload(value: Any, known_unit_ids: set[str]) -> Any:
     return value
 
 
-def _validate_chapters_payload(value: Any) -> dict[str, Any]:
+def _validate_chapters_payload(
+    value: Any,
+    expected_component_ids: set[str] | None = None,
+) -> dict[str, Any]:
     if not isinstance(value, Mapping) or not isinstance(value.get("chapters"), list) or not value["chapters"]:
         raise ValueError("Writer 结果必须包含非空 chapters")
     for chapter in value["chapters"]:
         if not isinstance(chapter, Mapping) or chapter.get("type") != "container" or chapter.get("semantic_role") != "chapter":
             raise ValueError("Writer chapter 必须是 chapter container")
+    if expected_component_ids is not None and _component_ids(value["chapters"]) != expected_component_ids:
+        raise ValueError("Writer 不得增删或改写既有 component_id")
     return {"chapters": [dict(chapter) for chapter in value["chapters"]]}
 
 
@@ -557,24 +581,58 @@ def _merge_usage(current: Mapping[str, Any], added: Mapping[str, Any]) -> dict[s
     return {key: int(current.get(key, 0) or 0) + int(added.get(key, 0) or 0) for key in keys}
 
 
+def _available_content_chars(units: Any) -> int:
+    total = 0
+    for unit in units if isinstance(units, list) else []:
+        if not isinstance(unit, Mapping):
+            continue
+        blocks = unit.get("content_blocks", [])
+        if isinstance(blocks, list) and blocks:
+            for block in blocks:
+                if not isinstance(block, Mapping):
+                    continue
+                total += len(str(block.get("text", "")))
+                total += sum(len(str(item)) for item in block.get("items", []) if item is not None)
+        else:
+            total += len(str(unit.get("definition_or_conclusion", "")))
+            for field in ("rules", "procedure", "pitfalls"):
+                total += sum(len(str(item)) for item in unit.get(field, []) if item is not None)
+    return total
+
+
+def _safe_failure_reason(stage: str, exc: Exception) -> str:
+    """Persist bounded provider diagnostics without leaking credentials or headers."""
+    import re
+    detail = " ".join(str(exc).split())
+    detail = re.sub(
+        r"(?i)(api[_ -]?key|authorization|bearer|password|secret)\s*[:=]\s*\S+",
+        r"\1=<redacted>", detail,
+    )[:480]
+    suffix = f":{detail}" if detail else ""
+    return f"{stage}:{type(exc).__name__}{suffix}"
+
+
 def _blueprint_request_payload(policy: Mapping[str, Any], plan: Mapping[str, Any]) -> dict[str, Any]:
     import json
-    compact = {"editorial_policy": dict(policy), "lesson_plan": dict(plan)}
+    compact_plan = _compact_plan_for_blueprint(plan)
+    compact = {"editorial_policy": dict(policy), "lesson_plan": compact_plan}
     return {
         "messages": [
             {"role": "system", "content": "你是受控课程文档规划器。只返回符合 DocumentBlueprint v2 的 JSON，不引用不存在的 unit_id，不输出旧 source_section。"},
             {"role": "user", "content": json.dumps(compact, ensure_ascii=False, separators=(",", ":"))},
         ],
         "editorial_policy": dict(policy),
-        "plan": dict(plan),
+        "plan": compact_plan,
     }
 
 
 def _writer_request_payload(policy: Mapping[str, Any], blueprint: Mapping[str, Any], chapters: list[dict[str, Any]]) -> dict[str, Any]:
     import json
+    compact_blueprint = _strip_immutable_source_refs(dict(blueprint))
+    compact_chapters = _strip_immutable_source_refs(chapters)
     compact = {
-        "editorial_policy": dict(policy), "blueprint": dict(blueprint),
-        "draft_chapters": chapters,
+        "editorial_policy": dict(policy), "blueprint": compact_blueprint,
+        "draft_chapters": compact_chapters,
     }
     return {
         "messages": [
@@ -583,6 +641,98 @@ def _writer_request_payload(policy: Mapping[str, Any], blueprint: Mapping[str, A
         ],
         **compact,
     }
+
+
+def _compact_plan_for_blueprint(plan: Mapping[str, Any]) -> dict[str, Any]:
+    result = {
+        key: plan[key]
+        for key in ("domain", "course_form", "core_thread", "terminology", "editorial_decision")
+        if key in plan
+    }
+    chapters: list[dict[str, Any]] = []
+    for raw_chapter in plan.get("chapters", []) if isinstance(plan.get("chapters"), list) else []:
+        if not isinstance(raw_chapter, Mapping):
+            continue
+        chapter = {
+            key: raw_chapter[key]
+            for key in ("chapter_id", "title", "summary")
+            if key in raw_chapter
+        }
+        chapter["unit_plans"] = [
+            {
+                key: unit[key]
+                for key in (
+                    "plan_id", "title", "role", "knowledge_types", "detail_level",
+                    "detail_reason", "required_facets", "target_chars",
+                )
+                if key in unit
+            }
+            for unit in raw_chapter.get("unit_plans", [])
+            if isinstance(unit, Mapping)
+        ]
+        chapters.append(chapter)
+    result["chapters"] = chapters
+    return result
+
+
+def _strip_immutable_source_refs(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _strip_immutable_source_refs(item)
+            for key, item in value.items()
+            if key not in {"source_refs", "source_segment_ids"}
+        }
+    if isinstance(value, list):
+        return [_strip_immutable_source_refs(item) for item in value]
+    return value
+
+
+def _component_ids(value: Any) -> set[str]:
+    result: set[str] = set()
+    if isinstance(value, Mapping):
+        component_id = str(value.get("component_id", "") or "")
+        if component_id:
+            result.add(component_id)
+        for item in value.values():
+            result.update(_component_ids(item))
+    elif isinstance(value, list):
+        for item in value:
+            result.update(_component_ids(item))
+    return result
+
+
+def _restore_immutable_source_refs(
+    candidate_chapters: list[dict[str, Any]],
+    original_chapters: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    from copy import deepcopy
+
+    refs_by_component: dict[str, Any] = {}
+
+    def collect(value: Any) -> None:
+        if isinstance(value, Mapping):
+            component_id = str(value.get("component_id", "") or "")
+            if component_id and "source_refs" in value:
+                refs_by_component[component_id] = deepcopy(value["source_refs"])
+            for item in value.values():
+                collect(item)
+        elif isinstance(value, list):
+            for item in value:
+                collect(item)
+
+    def restore(value: Any) -> Any:
+        if isinstance(value, Mapping):
+            restored = {str(key): restore(item) for key, item in value.items() if key != "source_refs"}
+            component_id = str(value.get("component_id", "") or "")
+            if component_id in refs_by_component:
+                restored["source_refs"] = deepcopy(refs_by_component[component_id])
+            return restored
+        if isinstance(value, list):
+            return [restore(item) for item in value]
+        return value
+
+    collect(original_chapters)
+    return [restore(chapter) for chapter in candidate_chapters]
 
 
 def _to_dict_message(message: Any) -> dict[str, Any]:

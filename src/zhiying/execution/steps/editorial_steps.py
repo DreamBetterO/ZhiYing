@@ -279,7 +279,7 @@ class DocumentBlueprintStep:
     """
 
     spec = StepSpec(
-        "document.blueprint", 2,
+        "document.blueprint", 4,
         dependencies=(
             "knowledge.plan", "knowledge.selfcheck", "knowledge.units", "visual.evidence",
             "editorial.policy", "evidence.reconcile", "transcript.normalize", "source.probe",
@@ -297,7 +297,7 @@ class DocumentBlueprintStep:
 
     def fingerprint(self, context, inputs):
         brief = _brief(context)
-        return _material(inputs, content_level=context.policy.content_level, brief_sha256=brief.sha256, implementation=2)
+        return _material(inputs, content_level=context.policy.content_level, brief_sha256=brief.sha256, implementation=4)
 
     def execute(self, context, inputs, staging):
         from ...editorial.blueprint import validate_blueprint
@@ -355,7 +355,7 @@ class DocumentWriteStep:
     """chapter.write：按 Blueprint 强制结构化写作（分批 + 章指纹缓存）。"""
 
     spec = StepSpec(
-        "document.write", 2,
+        "document.write", 3,
         dependencies=("document.blueprint", "knowledge.plan", "knowledge.units", "evidence.reconcile", "visual.evidence"),
         inputs=(DOCUMENT_BLUEPRINT, EDITORIAL_SESSION, KNOWLEDGE_PLAN, KNOWLEDGE_UNITS, EVIDENCE_CORRECTIONS, VISUAL_EVIDENCE),
         outputs=(CHAPTER_V31,),
@@ -366,7 +366,7 @@ class DocumentWriteStep:
     )
 
     def fingerprint(self, context, inputs):
-        return _material(inputs, implementation=1)
+        return _material(inputs, implementation=2)
 
     def execute(self, context, inputs, staging):
         from ...editorial.blueprint import DocumentBlueprint
@@ -503,7 +503,7 @@ class DocumentValidateStep:
     """document.validate（v3.1）：合同校验 + QualityReport v2（含意图门）。"""
 
     spec = StepSpec(
-        "document.validate", 2,
+        "document.validate", 3,
         dependencies=("document.assemble", "editorial.policy"),
         inputs=(DOCUMENT_V3, EDITORIAL_POLICY),
         outputs=(DOCUMENT_VALIDATION,),
@@ -513,7 +513,7 @@ class DocumentValidateStep:
     )
 
     def fingerprint(self, _context, inputs):
-        return _material(inputs, implementation=2)
+        return _material(inputs, implementation=3)
 
     def execute(self, context, inputs, staging):
         from ...editorial.document import validate_document_v31

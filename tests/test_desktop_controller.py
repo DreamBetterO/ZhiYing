@@ -15,11 +15,15 @@ def result(path: Path) -> ProcessingResult:
 
 
 class FakeService:
-    def __init__(self, cached=False, fail=False, hold=False, download=None, hold_on_call=None) -> None:
+    def __init__(self, cached=False, fail=False, hold=False, download=None, hold_on_call=None, history=None) -> None:
         self.cached = cached; self.fail = fail; self.hold = hold; self.deleted = []; self.cleared = 0
         self.download = download
         self.hold_on_call = hold_on_call  # 第 N 次 process 调用时挂起（用于观察 RUNNING 状态）
         self.process_calls = 0
+        self.history = history
+
+    def history_snapshot(self, video):
+        return self.history
 
     def cached_result(self, video):
         return result(video.parent) if self.cached else None
@@ -81,6 +85,32 @@ class DesktopControllerTests(unittest.TestCase):
             self.wait_state(controller, DesktopState.COMPLETED)
             self.assertEqual(controller.items[0].stage, "completed")
 
+    def test_readding_removed_video_restores_and_announces_last_run(self) -> None:
+        prior = result(Path("."))
+        snapshot = {
+            "run_id": "run-old",
+            "status": "degraded",
+            "started_at": "2026-08-25T10:00:00+08:00",
+            "finished_at": "2026-08-25T10:02:30+08:00",
+            "elapsed_seconds": 150.0,
+            "cloud_usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
+            "result": prior.to_legacy(),
+        }
+        controller = DesktopController(FakeService(history=snapshot))
+        video = Path("lesson.mp4")
+        controller.add([video])
+        controller.remove_selected()
+        controller.add([video])
+
+        item = controller.items[0]
+        self.assertEqual(item.stage, "history")
+        self.assertEqual(item.status, "历史：已完成（降级）")
+        self.assertEqual(item.elapsed, 150.0)
+        self.assertEqual(item.result["cloud_usage"]["total_tokens"], 150)
+        self.assertEqual(item.history["run_id"], "run-old")
+        events = list(controller.events.queue)
+        self.assertGreaterEqual(sum(event.kind == "history_restored" for event in events), 2)
+
     def test_degraded_completion_keeps_outputs_and_exposes_reason(self) -> None:
         degraded = ProcessingResult(
             "id", Path("m.json"), Path("a.md"), Path("a.docx"), Path("a.pdf"),
@@ -99,6 +129,28 @@ class DesktopControllerTests(unittest.TestCase):
         self.assertEqual(item.result["docx"], Path("a.docx"))
         self.assertEqual(item.result["pdf"], Path("a.pdf"))
 
+    def test_completion_refreshes_last_run_metadata(self) -> None:
+        completed = ProcessingResult(
+            "id", Path("m.json"), Path("a.md"), Path("a.docx"), Path("a.pdf"),
+            cloud_usage={"prompt_tokens": 120, "completion_tokens": 30, "total_tokens": 150},
+            diagnostics={
+                "status": "succeeded",
+                "runtime_events": [
+                    {"type": "run_started", "run_id": "run-new", "timestamp": "2026-08-25T11:00:00+08:00"},
+                    {"type": "run_finished", "run_id": "run-new", "timestamp": "2026-08-25T11:03:00+08:00"},
+                ],
+            },
+        )
+        controller = DesktopController(FakeService())
+        controller.add([Path("lesson.mp4")])
+        item = controller.items[0]
+        controller._complete_item(item, completed)
+
+        self.assertEqual(item.history["run_id"], "run-new")
+        self.assertEqual(item.history["finished_at"], "2026-08-25T11:03:00+08:00")
+        self.assertEqual(item.history["cloud_usage"]["total_tokens"], 150)
+
+
     def test_failure_cancel_and_repeated_cancel(self) -> None:
         failed = DesktopController(FakeService(fail=True)); failed.add([Path("bad.mp4")])
         failed.start(make_request); self.wait_state(failed, DesktopState.FAILED)
@@ -110,9 +162,13 @@ class DesktopControllerTests(unittest.TestCase):
         self.assertEqual(held.state, DesktopState.CANCELLING)
 
     def test_cleanup_commands(self) -> None:
-        service = FakeService(); controller = DesktopController(service); controller.add([Path("a.mp4")])
+        service = FakeService(history={"run_id": "old", "result": {}})
+        controller = DesktopController(service); controller.add([Path("a.mp4")])
         controller.clear_selected_cache(); self.assertEqual(len(service.deleted), 1)
+        self.assertEqual(controller.items[0].history, {})
+        controller.items[0].history = {"run_id": "another"}
         self.assertEqual(controller.clear_workspace(), 2)
+        self.assertEqual(controller.items[0].history, {})
 
     def test_toggle_all_is_controller_command(self) -> None:
         controller = DesktopController(FakeService()); controller.add([Path("a.mp4"), Path("b.mp4")])

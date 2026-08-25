@@ -227,6 +227,49 @@ def _compose_unit_children(
         text=str(unit.get("title", "")), source_refs=source_refs,
     ))
 
+    content_blocks = [
+        dict(block) for block in unit.get("content_blocks", [])
+        if isinstance(block, Mapping)
+    ]
+    if content_blocks:
+        for index, block in enumerate(content_blocks, start=1):
+            block_id = str(block.get("block_id") or f"block_{index:03d}")
+            component_base = f"{chapter_id}.{unit_id}.{block_id}"
+            block_type = str(block.get("type") or "paragraph")
+            text = _strip_fillers(overlay.apply_to(str(block.get("text", ""))))
+            items = [
+                _strip_fillers(overlay.apply_to(str(item)))
+                for item in block.get("items", []) if str(item).strip()
+            ]
+            if text and _contains_known_asr_error(text):
+                children.append(make_component(
+                    "callout", component_id=f"{component_base}.unresolved",
+                    semantic_role="unresolved", title="待核对来源",
+                    text="该内容块存在转写疑点，请对照原视频核对。",
+                    source_refs=source_refs, confidence=0.3,
+                ))
+                continue
+            if text:
+                if block_type in {"example", "pitfall"}:
+                    children.append(make_component(
+                        "callout", component_id=f"{component_base}.body",
+                        semantic_role=block_type,
+                        title="例题" if block_type == "example" else "易错点",
+                        text=text, source_refs=source_refs,
+                    ))
+                else:
+                    children.append(make_component(
+                        "paragraph", component_id=f"{component_base}.body",
+                        semantic_role=block_type, text=text, source_refs=source_refs,
+                    ))
+            clean_items = [item for item in items if item and not _contains_known_asr_error(item)]
+            if clean_items:
+                children.append(make_component(
+                    "list", component_id=f"{component_base}.items",
+                    semantic_role=block_type, items=clean_items, source_refs=source_refs,
+                ))
+        return children
+
     raw = str(unit.get("definition_or_conclusion", "")).strip()
     effective = overlay.apply_to(raw)
     if _contains_known_asr_error(effective):
@@ -342,6 +385,13 @@ def compose_local_document(
         "chapter_writing": chapter_writing,
         "page_audit": "local_rules",
         "final_repair": "local_deterministic",
+        "target_chars": sum(chapter.target_chars for chapter in blueprint.chapters),
+        "available_content_chars": sum(
+            len(str(block.get("text", "")))
+            + sum(len(str(item)) for item in block.get("items", []) if item is not None)
+            for unit in units if isinstance(unit, Mapping)
+            for block in unit.get("content_blocks", []) if isinstance(block, Mapping)
+        ),
     }
     return build_v31_document(
         metadata=dict(metadata or {}),

@@ -21,7 +21,7 @@ from zhiying.desktop import (
     blended_hex,
     watermark_options,
 )
-from zhiying.desktop.view import PRIMARY_UI_ACTIONS, PRODUCT_DISPLAY_NAME, UI_COPY
+from zhiying.desktop.view import PRIMARY_UI_ACTIONS, PRODUCT_DISPLAY_NAME, QUEUE_COLUMNS, UI_COPY
 
 
 class DesktopLogicTests(unittest.TestCase):
@@ -139,6 +139,10 @@ class DesktopLogicTests(unittest.TestCase):
         self.assertEqual(STAGE_LABELS[item.stage], "等待中")
         self.assertEqual(item.result, {})
 
+    def test_history_queue_display_is_chinese_without_last_run_column(self) -> None:
+        self.assertEqual(STAGE_LABELS["history"], "历史记录")
+        self.assertNotIn("last_run", QUEUE_COLUMNS)
+
     def test_setting_validation_rejects_bad_url_and_unknown_speech_model(self) -> None:
         with self.assertRaises(ValueError):
             validate_desktop_settings("not-a-url", "qwen", "faster-whisper")
@@ -165,7 +169,12 @@ class DesktopLogicTests(unittest.TestCase):
             "asr": {"engine": "faster-whisper"},
             "frames": {"max_keyframes": 8},
             "render": {"offline_section_seconds": 300, "offline_points_per_section": 2},
-            "qwen": {"budget": {"max_output_tokens": 5000, "rich_max_output_tokens": 6000}},
+            "qwen": {"budget": {
+                "compact_max_output_tokens": 8000,
+                "max_output_tokens": 12000,
+                "rich_max_output_tokens": 16000,
+            }, "timeout_seconds": 240, "compact_timeout_seconds": 180,
+                "rich_timeout_seconds": 360},
         }
         config = AppConfig(Path("."), raw)
         compact = config_with_content_level(config, "精简")
@@ -176,11 +185,12 @@ class DesktopLogicTests(unittest.TestCase):
         self.assertEqual(rich.raw["frames"]["max_keyframes"], 8)
         self.assertEqual(compact.raw["qwen"]["content_level"], "精简")
         self.assertEqual(rich.raw["qwen"]["content_level"], "丰富")
-        self.assertEqual(compact.raw["qwen"]["budget"]["max_output_tokens"], 3500)
-        self.assertEqual(rich.raw["qwen"]["budget"]["max_output_tokens"], 6000)
-        self.assertEqual(recommended.raw["qwen"]["budget"]["max_output_tokens"], 5000)
-        self.assertEqual(compact.raw["qwen"]["timeout_seconds"], 90)
-        self.assertEqual(rich.raw["qwen"]["timeout_seconds"], 240)
+        self.assertEqual(compact.raw["qwen"]["budget"]["max_output_tokens"], 8000)
+        self.assertEqual(rich.raw["qwen"]["budget"]["max_output_tokens"], 16000)
+        self.assertEqual(recommended.raw["qwen"]["budget"]["max_output_tokens"], 12000)
+        self.assertEqual(compact.raw["qwen"]["timeout_seconds"], 180)
+        self.assertEqual(recommended.raw["qwen"]["timeout_seconds"], 240)
+        self.assertEqual(rich.raw["qwen"]["timeout_seconds"], 360)
         self.assertEqual(raw["frames"]["max_keyframes"], 8)
 
     def test_visual_teaching_level_is_independent(self) -> None:
@@ -246,3 +256,47 @@ class DesktopLogicTests(unittest.TestCase):
             self.assertTrue(Path(result.docx).is_file())
             self.assertTrue(Path(result.pdf).is_file())
             self.assertEqual(result.cloud_usage.get("total_tokens"), 100)
+
+    def test_history_snapshot_restores_latest_run_status_time_and_all_stage_usage(self) -> None:
+        from zhiying.application.processing import DefaultProcessingService
+        from pathlib import Path
+        with TemporaryDirectory() as directory:
+            root = Path(directory); video = root / "lesson.mp4"; video.write_bytes(b"video")
+            work = root / "workspace" / "lesson-id"; output = root / "output" / "lesson-id"
+            (work / "knowledge").mkdir(parents=True); (work / "state" / "runs").mkdir(parents=True)
+            output.mkdir(parents=True)
+            for suffix in ("md", "docx", "pdf"):
+                (output / f"lesson.{suffix}").write_bytes(b"x")
+            manifest = {"video_id": "lesson-id", "source_path": str(video), "stages": {"render": {"markdown": str(output / "lesson.md")}}}
+            (work / "manifest.json").write_text(__import__("json").dumps(manifest), encoding="utf-8")
+            (work / "knowledge" / "document.json").write_text('{"mode":"cloud_summary"}', encoding="utf-8")
+            (work / "knowledge" / "lesson-plan.json").write_text('{"cloud_info":{"usage":{"prompt_tokens":100,"completion_tokens":20,"total_tokens":120}}}', encoding="utf-8")
+            (work / "knowledge" / "knowledge-units.json").write_text('{"cloud_info":{"usage":{"prompt_tokens":200,"completion_tokens":30,"total_tokens":230}}}', encoding="utf-8")
+            (work / "knowledge" / "editorial-session.json").write_text('{"usage":{"prompt_tokens":300,"completion_tokens":40,"total_tokens":340}}', encoding="utf-8")
+            summary = {
+                "run_id": "run-latest", "status": "degraded",
+                "started_at": "2026-08-25T10:00:00+08:00",
+                "finished_at": "2026-08-25T10:02:30+08:00",
+            }
+            (work / "state" / "runs" / "run-latest.summary.json").write_text(__import__("json").dumps(summary), encoding="utf-8")
+            config = AppConfig(root, {"paths": {"workspace_dir": "workspace", "output_dir": "output"}})
+
+            snapshot = DefaultProcessingService(config).history_snapshot(video)
+
+            self.assertEqual(snapshot["run_id"], "run-latest")
+            self.assertEqual(snapshot["status"], "degraded")
+            self.assertEqual(snapshot["elapsed_seconds"], 150.0)
+            self.assertEqual(snapshot["cloud_usage"], {
+                "prompt_tokens": 600, "completion_tokens": 90, "total_tokens": 690,
+            })
+
+            summary["outputs"] = {
+                "cloud_usage": {"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10},
+            }
+            (work / "state" / "runs" / "run-latest.summary.json").write_text(
+                __import__("json").dumps(summary), encoding="utf-8",
+            )
+            exact_snapshot = DefaultProcessingService(config).history_snapshot(video)
+            self.assertEqual(exact_snapshot["cloud_usage"], {
+                "prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10,
+            })

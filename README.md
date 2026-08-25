@@ -1,101 +1,154 @@
-# 知影
+<div align="center">
 
-> 本地优先的 Windows 视频知识工作台：把教学视频整理为可回看来源的 Markdown、Word 和 PDF 学习文档。
+# 知影 · ZhiYing
 
-**当前产品版本：1.0.0（V6.1） · 平台：Windows 10/11 x64 · 形态：原生桌面应用 · 最新离线测试：622 项通过**
+**本地优先的 Windows 视频知识工作台**
+
+把教学视频整理为**可回看来源**的 Markdown、Word 和 PDF 学习文档。
+
+[![Version](https://img.shields.io/badge/version-1.0.0-crimson)](https://github.com/DreamBetterO/ZhiYing/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-blue)](#运行要求)
+[![Python](https://img.shields.io/badge/python-3.10%2B-3776AB)](#开发者快速开始)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Tests](https://img.shields.io/badge/offline_tests-623%20passed-brightgreen)](#)
+
+![知影主界面](docs/screenshot/首页.png)
+
 ---
 
-## 项目概览
+## 它是什么
 
-知影面向学生、自学者、课程制作者和需要整理长视频资料的用户。它把视频中的声音、画面、时间位置和知识结构串成一条可追踪链路，最终生成适合阅读、复习和二次编辑的文档。
+知影把教学视频里的**声音、画面、时间位置**和**知识结构**串成一条可追踪的链路，最终生成适合阅读、复习和二次编辑的学习文档。
 
-完整界面、操作示例和输出效果见[软件使用说明](docs/项目文档/软件介绍.md)。
+- **多模态证据**：转写、关键画面、视觉事实绑定到对应知识点；
+- **多视频聚合**：同一主题的多个视频合并为综合文档，保留各自来源；
+- **三种输出**：Markdown、Word（原生 OMML 公式）、PDF 共享同一份内容；
+- **回看来源**：文档时间链接一键调起本地播放器，定位到原视频对应位置；
+- **本地 + 云端双路径**：本地确定性链可独立完成；云端优化默认关闭，受逐次授权与预算控制。
+- [软件介绍](docs/项目文档/软件介绍.md)：本软件的使用细节更多细节请移步此处。
 
 ---
+
+## 快速开始
+
+### 普通用户
+
+1. 前往 [Releases](https://github.com/DreamBetterO/ZhiYing/releases/tag/v1.0.0) 下载 `ZhiYing-Core-1.0.0-win-x64.zip` 与 `SHA256SUMS.txt`；
+2. 解压后按 [快速开始](release/QUICK_START.md) 补齐组件；
+3. 双击 `ZhiYing.exe` 启动，按 [软件介绍](docs/项目文档/软件介绍.md) 操作。
+
+> 组件、GPU 与故障排查见 [release/README.md](release/README.md)。
+
+### 开发者
+
+```bash
+# 1. 克隆
+git clone https://github.com/DreamBetterO/ZhiYing.git
+cd ZhiYing
+
+# 2. 创建并激活 conda 环境
+conda create -n ImageT10 python=3.10 -y
+conda activate ImageT10
+
+# 3. 安装依赖
+pip install -r requirements.txt
+
+# 4. 启动桌面端
+zhiying desktop --config config.yaml
+# 或双击根目录的 启动桌面版.cmd
+```
+
+阅读 [开发文档](docs/项目文档/开发文档.md) 与 [架构详解](docs/项目文档/架构详解.md) 了解代码与设计。
+
+---
+
 ## 核心能力
 
 | 能力 | 说明 |
 |---|---|
-| 本地视频整理 | 读取本地视频，完成媒体探测、语音识别、关键帧抽取和知识整理 |
-| 视频链接输入 | 对受支持的公开视频链接执行预检、下载和一致性校验 |
-| 本地与云端双路径 | 本地确定性链可完整产出；云端优化默认关闭并受逐次授权与预算控制 |
-| 多模态证据 | 将转写、关键画面和视觉事实绑定到对应知识点 |
-| 多视频聚合 | 将同一主题下的多个视频整理为聚合文档 |
-| 三格式输出 | 同时生成 Markdown、Word 和 PDF |
-| 数学内容 | Word 数学公式使用原生 OMML 渲染 |
-| 来源回看 | 文档中的时间链接可调用本地播放器定位原视频 |
-| 缓存与恢复 | 复用已完成的中间结果，支持取消、恢复和安全清理 |
-| 质量与降级 | 模型或云能力不可用时按确定性路径降级，并保留原因与实际能力链 |
+| **本地视频整理** | 读取 MP4，自动完成媒体探测、语音识别、关键帧抽取和知识整理 |
+| **视频链接输入** | 支持页面链接、直链、HLS 流与 B 站 BV/av 号；预检 → 下载 → 时长校验一条龙 |
+| **多模态证据** | 转写、关键画面、视觉事实绑定到对应知识点 |
+| **多视频聚合** | 同一主题多个视频合并为综合文档，保留各自来源 |
+| **三格式输出** | Markdown / Word（原生 OMML 公式）/ PDF 共享同一份内容 |
+| **来源回看** | 文档时间链接 `video-study://` 协议调起本地播放器定位 |
+| **缓存与恢复** | 复用已校验的中间产物，支持取消、清理、安全恢复 |
+| **本地 + 云端双路径** | 本地确定性链可独立完成；云端优化受逐次授权与预算控制 |
+| **质量降级** | 模型或云能力不可用时按确定性路径降级，保留真实能力链与失败原因 |
 
 ---
-## 输出与可溯源性
 
-每个任务在独立 Workspace 中保存结构化 Artifact，再从 Canonical Document v3.1 原生渲染三种格式：
+## 文档导航
 
-- Markdown：便于版本比较、知识库导入和二次处理；
-- Word：适合编辑、打印，支持原生公式；
-- PDF：适合阅读、分享和归档。
+| 我想了解什么 | 建议阅读 |
+|---|---|
+| 第一次使用、怎么操作 | [软件介绍](docs/项目文档/软件介绍.md) |
+| 产品定位与边界 | [业务文档](docs/项目文档/业务文档.md) |
+| 定位代码、调试、提交 | [开发文档](docs/项目文档/开发文档.md) |
+| 系统设计、数据流 | [架构详解](docs/项目文档/架构详解.md) |
+| 下载、组件、GPU、故障 | [发行说明](release/README.md) · [快速开始](release/QUICK_START.md) |
+| 当前执行状态 | [项目索引](docs/项目索引.md) · [AI 执行入口](docs/AI执行入口.md) |
+| 机器合同与故障定位 | [architecture](docs/architecture) · [problem-index](docs/diagnostics/problem-index.yaml) |
+
 ---
-## 技术架构
 
-生产链使用 LangGraph 作为唯一编排器：
+## 架构一览
+
+生产链以 **LangGraph** 为唯一编排器：
 
 ```text
 Desktop UI
-   ↓
+  ↓
 Application 用例层
-   ↓
+  ↓
 Source / Job / Video / Aggregate Graph
-   ↓
+  ↓
 NodeExecutor → ArtifactStore / WorkspaceCache
-   ↓
+  ↓
 Media + Knowledge + Editorial + Documents
 ```
-稳定合同包括：一视频一个 VLM 会话、Course IR、紧凑 CloudPayload、Document v3.1、受控 Function Calling、任务进度和 Application/Desktop 分层。详细内容见[技术架构详解](docs/项目文档/架构详解.md)。
+
+**稳定合同**：单视频单 VLM 会话 · Course IR · 紧凑 CloudPayload · Document v3.1 · 受控 Function Calling · 任务进度 · Application/Desktop 分层。
 
 ---
-## 文档导航
 
-| 读者 | 文档 |
-|---|---|
-| 第一次了解项目 | [软件介绍](docs/项目文档/软件介绍.md) |
-| 下载和配置组件 | [发行说明](release/README.md) · [快速开始](release/QUICK_START.md) · [组件下载](release/DOWNLOADS.md) |
-| NVIDIA 用户 | [GPU 指南](release/GPU_GUIDE.md) |
-| 遇到运行问题 | [故障排查](release/TROUBLESHOOTING.md) |
-| 开发者 | [开发文档](docs/项目文档/开发文档.md) · [架构详解](docs/项目文档/架构详解.md) |
-| 维护者 | [项目索引](docs/项目索引.md) · [发行流程](scripts/release/PUBLISHING.md) |
-
----
-## 下载与发行
-
-项目的 [GitHub Releases](https://github.com/DreamBetterO/ZhiYing/releases) 下载：
-
-1. `ZhiYing-Core-<版本>-win-x64.zip`；
-2. 同版本 `SHA256SUMS.txt`；
-3. 按[模型与工具下载说明](release/DOWNLOADS.md)获取所需外部组件。
-解压核心 ZIP 后，包内会直接提供快速开始、组件下载、GPU、隐私和故障排查文档。日常启动 `ZhiYing.exe`；`doctor.cmd` 和 `ZhiYing-Console.exe` 只用于诊断。
----
 ## 运行要求
 
-- Windows 10/11 64 位；
-- 推荐 NVIDIA GPU，8 GB 或更多显存；
-- 较新的 NVIDIA 驱动；
-- 足够容纳模型、运行时、源视频和中间产物的磁盘空间；
-- 视频链接功能需要网络，本地视频整理可在组件就绪后离线运行。
+- **操作系统**：Windows 10/11 64 位；
+- **GPU**：推荐 NVIDIA GPU，8 GB 或更多显存（仅本地模型推理需要）；
+- **驱动**：较新的 NVIDIA 驱动；
+- **磁盘**：足够容纳模型、运行时、源视频和中间产物；
+- **网络**：视频链接功能需要网络；本地视频整理可在组件就绪后离线运行。
 
-组件版本、安装目录和完整文件要求见 [`release/manifests/components.json`](release/manifests/components.json)。
+组件版本与完整文件清单见 [`release/manifests/components.json`](release/manifests/components.json)。
 
 ---
+
 ## 参与贡献
-欢迎通过 Issue 反馈可复现的问题或提出改进建议。完整约定见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。提交代码前请：
 
-1. 阅读[开发文档](docs/项目文档/开发文档.md)和现行架构合同；
-2. 不提交 `.env`、模型、工具、视频、Workspace 或生成产物；
+欢迎通过 Issue 反馈可复现的问题或提出改进建议。完整约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。提交代码前请：
+
+1. 阅读 [开发文档](docs/项目文档/开发文档.md) 和现行架构合同；
+2. **不要**提交 `.env`、模型、工具、视频、Workspace 或生成产物；
 3. 为行为变化添加回归测试；
-4. 运行完整离线验收并说明真实失败、跳过项和外部依赖；
+4. 运行 `unittest discover -s tests` 并如实说明真实失败、跳过项与外部依赖；
 5. 保持 JSON → Markdown → Word → PDF 数据流和时间戳可追溯性。
-   安全漏洞请按 [`SECURITY.md`](SECURITY.md) 使用私密渠道报告，不要在公开 Issue 中披露敏感信息。
 
-有任何疑问和技术交流欢迎联系：fangxiang202009@yeah.net
+```bash
+# 完整离线验收
+conda activate ImageT10
+unittest discover -s tests
+compileall -q src tests
+pip check
+git diff --check
+```
 
+安全漏洞请按 [SECURITY.md](SECURITY.md) 使用私密渠道报告，不要在公开 Issue 中披露敏感信息。
 
+---
+
+## 许可
+
+本项目基于 [MIT License](LICENSE) 开放源码。
+
+技术交流：fangxiang202009@yeah.net

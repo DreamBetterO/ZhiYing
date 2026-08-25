@@ -19,11 +19,14 @@ errors:
   - {prefix: FRAMES_CANDIDATES, owner: zhiying.execution.steps.coarse, first_artifact: frames.candidates, tests: [tests/test_fine_pipeline.py], safe_rerun_from: frames.candidates}
   - {prefix: FRAMES_SELECT, owner: zhiying.execution.steps.coarse, first_artifact: frames.selected, tests: [tests/test_fine_pipeline.py], safe_rerun_from: frames.select}
   - {prefix: KNOWLEDGE_PLAN, owner: zhiying.execution.steps.knowledge, first_artifact: knowledge.plan, tests: [tests/test_knowledge_planning.py], safe_rerun_from: knowledge.plan}
+  - {prefix: CLOUD_OUTPUT_TRUNCATED, owner: zhiying.providers, first_artifact: knowledge.plan, tests: [tests/test_providers.py, tests/test_knowledge_planning.py], safe_rerun_from: knowledge.plan}
+  - {prefix: CLOUD_TIMEOUT, owner: zhiying.providers, first_artifact: knowledge.units, tests: [tests/test_providers.py, tests/test_execution_ports.py, tests/test_cloud_payload.py], safe_rerun_from: knowledge.units}
   - {prefix: VISUAL_JOBS, owner: zhiying.execution.steps.knowledge, first_artifact: visual.jobs, tests: [tests/test_visual_retrieval.py], safe_rerun_from: visual.jobs}
   - {prefix: VISUAL_EVIDENCE, owner: zhiying.execution.steps.knowledge, first_artifact: visual.evidence, tests: [tests/test_visual_retrieval.py, tests/test_vision_providers.py], safe_rerun_from: visual.evidence}
   - {prefix: FRAME_SEMANTICS, owner: zhiying.execution.steps.knowledge, first_artifact: frames.semantics, tests: [tests/test_visuals.py], safe_rerun_from: frames.semantics}
   - {prefix: COURSE_IR, owner: zhiying.execution.steps.knowledge, first_artifact: knowledge.course_ir, tests: [tests/test_cloud_payload.py], safe_rerun_from: knowledge.course_ir}
   - {prefix: KNOWLEDGE_UNITS, owner: zhiying.execution.steps.knowledge, first_artifact: knowledge.units, tests: [tests/test_knowledge_organizer.py, tests/test_cloud_payload.py], safe_rerun_from: knowledge.units}
+  - {prefix: CLOUD_BUDGET_EXCEEDED, owner: zhiying.providers, first_artifact: knowledge.units, tests: [tests/test_providers.py, tests/test_cloud_payload.py], safe_rerun_from: knowledge.units}
   - {prefix: KNOWLEDGE_SELFCHECK, owner: zhiying.execution.steps.knowledge, first_artifact: knowledge.selfcheck, tests: [tests/test_knowledge_selfcheck.py], safe_rerun_from: knowledge.selfcheck}
   - {prefix: EDITORIAL_POLICY, owner: zhiying.execution.steps.editorial_steps, first_artifact: editorial.policy, tests: [tests/test_v61_editorial_policy.py], safe_rerun_from: editorial.policy}
   - {prefix: EVIDENCE_RECONCILE, owner: zhiying.execution.steps.editorial_steps, first_artifact: evidence.corrections, tests: [tests/test_v61_evidence_overlay.py], safe_rerun_from: evidence.reconcile}
@@ -31,6 +34,7 @@ errors:
   - {prefix: DOCUMENT_WRITE, owner: zhiying.execution.steps.editorial_steps, first_artifact: document.chapter_v31, tests: [tests/test_v61_local_editor.py, tests/test_v61_editorial_graph.py], safe_rerun_from: document.write}
   - {prefix: DOCUMENT_ASSEMBLE, owner: zhiying.execution.steps.editorial_steps, first_artifact: document.v3, tests: [tests/test_v61_local_editor.py], safe_rerun_from: document.assemble}
   - {prefix: DOCUMENT_VALIDATE, owner: zhiying.execution.steps.editorial_steps, first_artifact: document.validation, tests: [tests/test_v61_quality.py, tests/test_v61_local_editor.py], safe_rerun_from: document.validate}
+  - {prefix: CONTENT_UNDER_TARGET, owner: zhiying.editorial.quality, first_artifact: document.validation, tests: [tests/test_v61_quality.py, tests/test_v61_offline_acceptance.py], safe_rerun_from: document.blueprint}
   - {prefix: TOOL_UNKNOWN, owner: zhiying.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
   - {prefix: TOOL_ARGS_INVALID, owner: zhiying.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}
   - {prefix: TOOL_SCOPE_VIOLATION, owner: zhiying.editorial.tools, first_artifact: editorial.session, tests: [tests/test_v61_tool_protocol.py], safe_rerun_from: document.blueprint}

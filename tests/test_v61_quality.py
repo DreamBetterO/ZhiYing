@@ -61,6 +61,13 @@ class QualityReportTests(unittest.TestCase):
         self.assertEqual(report["status"], "invalid")
         self.assertTrue(any(row["code"] == "VISUAL_FIELD_MISSING" for row in report["issues"]))
 
+    def test_content_far_below_blueprint_target_is_invalid(self) -> None:
+        document = _document(provenance={"target_chars": 1000, "available_content_chars": 1000})
+        report = audit_document_v31(document)
+        self.assertEqual(report["status"], "invalid")
+        self.assertTrue(any(row["code"] == "CONTENT_UNDER_TARGET" for row in report["issues"]))
+        self.assertLess(report["content"]["actual_chars"], report["content"]["minimum_chars"])
+
     def test_render_audit_detects_omml_mismatch_and_path_leak(self) -> None:
         document = _document()
         with tempfile.TemporaryDirectory() as directory:

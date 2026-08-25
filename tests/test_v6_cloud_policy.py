@@ -29,6 +29,13 @@ class V6CloudPolicyTests(unittest.TestCase):
         self.assertEqual(budget.consecutive_failures, 0)
         self.assertFalse(budget.circuit_open)
 
+    def test_open_circuit_reports_recent_safe_attempt_reasons(self) -> None:
+        budget = CloudRequestBudget(10, failure_limit=2)
+        budget.record(stage="blueprint", attempt=ModelAttempt("a", False, "timeout"), usage={})
+        budget.record(stage="blueprint", attempt=ModelAttempt("b", False, "HTTP 503"), usage={})
+        with self.assertRaisesRegex(CloudCircuitOpen, "a: timeout.*b: HTTP 503"):
+            budget.claim(stage="blueprint", model="c")
+
 
 if __name__ == "__main__":
     unittest.main()

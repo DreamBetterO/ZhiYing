@@ -38,10 +38,13 @@ def audit_document_v31(
     """内容级质量审计 → QualityReport v2（不渲染）。"""
     issues: list[dict[str, Any]] = []
     stats: dict[str, int] = {}
+    actual_chars = 0
     for component in walk_components(document.get("components", [])):
         ctype = str(component.get("type", ""))
         stats[ctype] = stats.get(ctype, 0) + 1
         component_id = str(component.get("component_id", "")) or ctype
+        actual_chars += len(str(component.get("text", "") or component.get("latex", "")))
+        actual_chars += sum(len(str(item)) for item in component.get("items", []) if item is not None)
 
         if ctype in _factual_types() and not component.get("source_refs"):
             issues.append({
@@ -60,6 +63,19 @@ def audit_document_v31(
                         "code": "VISUAL_FIELD_MISSING", "severity": "error",
                         "owner_component": component_id, "detail": f"image 缺少 {field}",
                     })
+
+    target_chars = max(0, int(document.get("provenance", {}).get("target_chars", 0) or 0))
+    available_chars = max(0, int(document.get("provenance", {}).get("available_content_chars", 0) or 0))
+    expected_chars = min(target_chars, available_chars) if target_chars and available_chars else 0
+    # 小型单元/夹具不做产量门；课程级材料达到 500 字后才判断显著欠产。
+    minimum_chars = int(expected_chars * 0.55) if expected_chars >= 500 else 0
+    if minimum_chars and actual_chars < minimum_chars:
+        issues.append({
+            "code": "CONTENT_UNDER_TARGET", "severity": "error",
+            "owner_component": "document", "detail": (
+                f"正文产量 {actual_chars} 字，低于可用材料基线 {expected_chars} 字的 55% 下限"
+            ),
+        })
 
     intent: dict[str, Any] = {"forbidden_hits": [], "required_missing": []}
     if policy is not None:
@@ -91,6 +107,13 @@ def audit_document_v31(
         },
         "evidence": {
             "source_reference_components": stats.get("source_reference", 0),
+        },
+        "content": {
+            "actual_chars": actual_chars,
+            "target_chars": target_chars,
+            "available_content_chars": available_chars,
+            "expected_chars": expected_chars,
+            "minimum_chars": minimum_chars,
         },
         "statistics": stats,
     }

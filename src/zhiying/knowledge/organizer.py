@@ -26,7 +26,7 @@ from .schema import (
 )
 from .prompts import compose_course_ir_prompt
 
-_ORGANIZER_VERSION = 8
+_ORGANIZER_VERSION = 9
 
 
 def _has_plan_coverage(lesson_plan: LessonPlan, units: list[KnowledgeUnit]) -> bool:
@@ -71,6 +71,14 @@ def _validate_organizer_payload(
         content_blocks = point.get("content_blocks")
         if not isinstance(content_blocks, list) or not content_blocks:
             raise ValueError(f"云端整理 {plan_id} 缺少 content_blocks")
+        if any(not isinstance(block, dict) for block in content_blocks):
+            raise ValueError(f"云端整理 {plan_id} 的 content_blocks 必须全部为对象")
+        visual_bindings = point.get("visual_bindings", [])
+        if not isinstance(visual_bindings, list) or any(not isinstance(item, dict) for item in visual_bindings):
+            raise ValueError(f"云端整理 {plan_id} 的 visual_bindings 必须为对象列表")
+        facet_status = point.get("facet_status", {})
+        if not isinstance(facet_status, dict):
+            raise ValueError(f"云端整理 {plan_id} 的 facet_status 必须为对象")
         if not any(
             isinstance(block, dict)
             and (
@@ -237,11 +245,12 @@ def _request_course_ir_organizing(
 
     course_ir = build_course_ir(lesson_plan, transcript, visual_evidence)
     payload = build_cloud_payload(course_ir)
+    from ..providers import cloud_output_limit
     budget = settings.get("budget", {})
     max_chars = int(budget.get("max_input_chars", 60000))
-    max_tokens = int(budget.get("max_output_tokens", 5000))
+    max_tokens = cloud_output_limit(settings)
     if content_level == "丰富":
-        max_tokens = int(budget.get("rich_max_output_tokens", max_tokens))
+        max_tokens = cloud_output_limit(settings, "rich_max_output_tokens", max_tokens)
     # Reserve room for the stable instruction/schema wrapper before batching.
     payload_char_budget = max(1000, max_chars - 7000)
     batches = plan_payload_batches(payload, payload_char_budget, max_tokens)

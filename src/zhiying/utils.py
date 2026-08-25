@@ -14,6 +14,52 @@ from pathlib import Path
 from typing import Any
 
 
+def cloud_request_limit(settings: dict[str, Any]) -> int:
+    """Resolve the configured per-video cloud call budget and optional env override."""
+    budget = settings.get("budget", {}) if isinstance(settings, dict) else {}
+    configured = budget.get("max_calls_per_video", 1)
+    env_name = str(settings.get("max_calls_env", "") or "") if isinstance(settings, dict) else ""
+    env_value = os.getenv(env_name) if env_name else None
+    raw = env_value if env_value and env_value.isdigit() else configured
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 1
+
+
+def cloud_output_limit(
+    settings: dict[str, Any],
+    key: str = "max_output_tokens",
+    default: int = 5000,
+) -> int:
+    """Resolve a positive, stage-specific output limit and optional env override."""
+    budget = settings.get("budget", {}) if isinstance(settings, dict) else {}
+    configured = budget.get(key, default)
+    env_name = str(settings.get(f"{key}_env", "") or "") if isinstance(settings, dict) else ""
+    env_value = os.getenv(env_name) if env_name else None
+    raw = env_value if env_value and env_value.isdigit() else configured
+    try:
+        return max(1, int(raw))
+    except (TypeError, ValueError):
+        return max(1, int(default))
+
+
+def cloud_timeout_limit(
+    settings: dict[str, Any],
+    key: str = "timeout_seconds",
+    default: float = 240.0,
+) -> float:
+    """Resolve a positive cloud runtime limit and optional environment override."""
+    configured = settings.get(key, default) if isinstance(settings, dict) else default
+    env_name = str(settings.get(f"{key}_env", "") or "") if isinstance(settings, dict) else ""
+    env_value = os.getenv(env_name) if env_name else None
+    raw = env_value if env_value else configured
+    try:
+        return max(1.0, float(raw))
+    except (TypeError, ValueError):
+        return max(1.0, float(default))
+
+
 def background_process_kwargs() -> dict[str, int]:
     """Return platform flags that keep tool/model subprocesses behind the GUI."""
     if os.name != "nt":

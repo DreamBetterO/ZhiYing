@@ -126,6 +126,35 @@ class LocalEditorTests(unittest.TestCase):
         self.assertIn("∫", equations[0].get("latex", ""))
         self.assertNotIn("长数", json.dumps(document["components"], ensure_ascii=False))
 
+    def test_local_fallback_renders_rich_content_blocks_instead_of_dropping_them(self) -> None:
+        fixture = _load_fixture("math_example.json")
+        plan = _plan_from_fixture(fixture)
+        overlay = EvidenceCorrectionOverlay(
+            version=1, transcript_digest=transcript_digest(fixture["transcript"]), corrections=[],
+        )
+        units = [{
+            "unit_id": "unit_0001", "plan_id": "plan_001", "title": "积分例题",
+            "definition_or_conclusion": "简短摘要", "source_refs": {"segment_ids": ["seg_00001"]},
+            "content_blocks": [
+                {"block_id": "b1", "type": "paragraph", "text": "这是必须保留的完整概念讲解。", "items": []},
+                {"block_id": "b2", "type": "example", "text": "例题完整解法：先换元，再分部积分。", "items": []},
+                {"block_id": "b3", "type": "pitfall", "text": "易错点：定积分换元后必须同步换限。", "items": []},
+                {"block_id": "b4", "type": "steps", "text": "", "items": ["第一步整理被积式", "第二步完成换元"]},
+            ],
+        }]
+        blueprint = build_local_blueprint(plan, compile_editorial_policy(brief_from_text("例题加思路")))
+        document = compose_local_document(
+            blueprint=blueprint, units=units, overlay=overlay, plan=plan,
+            visual_evidence=[], metadata={"video_id": "rich-fallback"},
+        )
+        text = json.dumps(document["components"], ensure_ascii=False)
+        self.assertIn("完整概念讲解", text)
+        self.assertIn("例题完整解法", text)
+        self.assertIn("定积分换元后必须同步换限", text)
+        self.assertIn("第二步完成换元", text)
+        self.assertGreaterEqual(len(_collect(document["components"], "callout")), 2)
+        self.assertGreaterEqual(len(_collect(document["components"], "list")), 1)
+
     def test_image_component_from_selected_visual_evidence(self) -> None:
         fixture = _load_fixture("strong_visual.json")
         plan = _plan_from_fixture(fixture)

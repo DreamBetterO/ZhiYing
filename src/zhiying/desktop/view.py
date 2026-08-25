@@ -30,6 +30,10 @@ PRIMARY_UI_ACTIONS = (
     "open_markdown", "open_docx", "open_pdf", "open_aggregate", "settings",
 )
 
+QUEUE_COLUMNS = (
+    "order", "check", "source", "name", "status", "stage", "progress", "elapsed", "tokens",
+)
+
 PRODUCT_DISPLAY_NAME = "知影"
 UI_COPY = {
     "tagline": "将教学视频整理为可溯源的学习文档",
@@ -212,13 +216,13 @@ class DesktopView:
 
         card = ttk.Frame(outer, style="Card.TFrame", padding=1)
         card.pack(fill="both", expand=True)
-        columns = ("order", "check", "source", "name", "status", "stage", "progress", "elapsed", "tokens")
+        columns = QUEUE_COLUMNS
         self.tree = ttk.Treeview(card, columns=columns, show="headings", selectmode="browse", height=9)
         headings = {
             "order": "顺序", "check": "选择", "source": "来源", "name": "视频文件", "status": "状态", "stage": "当前步骤",
             "progress": "进度", "elapsed": "用时", "tokens": "云端用量（输入 / 输出 / 合计）",
         }
-        widths = {"order": 46, "check": 46, "source": 46, "name": 170, "status": 80, "stage": 115, "progress": 50, "elapsed": 60, "tokens": 225}
+        widths = {"order": 46, "check": 46, "source": 46, "name": 170, "status": 125, "stage": 115, "progress": 50, "elapsed": 60, "tokens": 225}
         for column in columns:
             self.tree.heading(column, text=headings[column])
             self.tree.column(column, width=widths[column], minwidth=50, anchor="w" if column == "name" else "center", stretch=column == "name")
@@ -725,6 +729,7 @@ class DesktopView:
         changed = False
         latest_message = ""
         latest_detail = ""
+        history_notices: list[str] = []
         for event in drain_ui_events(self.controller.events):
             if event.kind == "aggregate" and event.payload:
                 self.aggregate_result = dict(event.payload)
@@ -732,10 +737,18 @@ class DesktopView:
                 latest_message = event.message
                 latest_detail = event.detail
                 self.status.set(event.message)
+            if event.kind == "history_restored":
+                history_notices.append(f"{event.message}\n{event.detail}")
             changed = True
         if changed:
             self._append_log(latest_message, latest_detail)
             self._refresh()
+        if history_notices:
+            messagebox.showinfo(
+                "发现历史运行记录",
+                "\n\n".join(history_notices)
+                + "\n\n可以直接查看历史产物；若确实需要重新开始，请先使用“清除所选缓存”，确认后再生成。",
+            )
         delay = 1 if not self.controller.events.empty() else 80
         self._drain_after_id = self.root.after(delay, self._drain_events)
 

@@ -90,15 +90,21 @@ def config_with_content_level(config: AppConfig, level: str) -> AppConfig:
     raw.setdefault("render", {})["content_level"] = level
     budget = raw.setdefault("qwen", {}).setdefault("budget", {})
     raw["qwen"]["content_level"] = level
-    raw["qwen"]["timeout_seconds"] = 120
+    raw["qwen"]["timeout_seconds"] = float(raw["qwen"].get("timeout_seconds", 240))
     if level == "精简":
         raw["render"].update(offline_section_seconds=480, offline_points_per_section=1)
-        budget["max_output_tokens"] = min(int(budget.get("max_output_tokens", 5000)), 3500)
-        raw["qwen"]["timeout_seconds"] = 90
+        budget["max_output_tokens"] = int(
+            budget.get("compact_max_output_tokens", budget.get("max_output_tokens", 5000))
+        )
+        raw["qwen"]["timeout_seconds"] = float(
+            raw["qwen"].get("compact_timeout_seconds", raw["qwen"]["timeout_seconds"])
+        )
     elif level == "丰富":
         raw["render"].update(offline_section_seconds=180, offline_points_per_section=4)
         budget["max_output_tokens"] = int(budget.get("rich_max_output_tokens", 6000))
-        raw["qwen"]["timeout_seconds"] = 240
+        raw["qwen"]["timeout_seconds"] = float(
+            raw["qwen"].get("rich_timeout_seconds", raw["qwen"]["timeout_seconds"])
+        )
     return AppConfig(config.root, raw)
 
 

@@ -51,6 +51,11 @@ class FakeJsonPort:
         return validator(self._payload)
 
 
+class FailingJsonPort:
+    def request_json(self, payload, *, validator, stage, cancel_check):
+        raise RuntimeError("safe structured failure")
+
+
 def _fixture_state(capability: str, **overrides) -> dict:
     fixture = json.loads((FIXTURES / "math_concept.json").read_text(encoding="utf-8"))
     plan = LessonPlan(chapters=[ChapterPlan(
@@ -201,6 +206,14 @@ class EditorialGraphTests(unittest.TestCase):
         self.assertEqual(result["quality_report"]["status"], "valid")
         self.assertEqual(result["revision_cycles_used"], 0)
         self.assertEqual(result["terminal_status"], "succeeded")
+
+    def test_structured_failure_reason_is_persisted_safely(self) -> None:
+        result, _ctx = self._run("structured_only", json_port=FailingJsonPort())
+        self.assertEqual(result["terminal_status"], "degraded")
+        self.assertTrue(any(
+            "RuntimeError:safe structured failure" in reason
+            for reason in result["degradation_reasons"]
+        ))
 
     def _poisoned_setup(self) -> tuple[dict, dict, ToolTurn, ToolTurn]:
         """返回 (state, poisoned_blueprint, submit_turn, patch_turn)。

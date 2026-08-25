@@ -34,6 +34,7 @@ class QueueItem:
     eta: float | None = None
     estimating: bool = False
     result: dict[str, Any] = field(default_factory=dict)
+    history: dict[str, Any] = field(default_factory=dict)
 
     @property
     def resolved_path(self) -> Path:

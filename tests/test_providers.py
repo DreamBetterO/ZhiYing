@@ -4,13 +4,20 @@ import json
 import threading
 import time
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import yaml
+
 from zhiying.providers import (
+    AllModelsFailed,
     CloudBudgetExceeded,
     CloudRequestBudget,
     FallbackChatClient,
+    cloud_output_limit,
+    cloud_request_limit,
+    cloud_timeout_limit,
     test_openai_connection,
 )
 from zhiying.utils import TaskCancelled
@@ -24,6 +31,37 @@ def response(payload: dict) -> SimpleNamespace:
 
 
 class ProviderFallbackTests(unittest.TestCase):
+    def test_output_and_request_limits_are_configurable_by_stage_environment(self) -> None:
+        settings = {
+            "budget": {
+                "max_calls_per_video": 7,
+                "max_output_tokens": 9000,
+                "planning_max_output_tokens": 11000,
+            },
+            "max_calls_env": "TEST_CLOUD_MAX_CALLS",
+            "max_output_tokens_env": "TEST_CLOUD_MAX_OUTPUT",
+            "planning_max_output_tokens_env": "TEST_CLOUD_PLANNING_OUTPUT",
+            "timeout_seconds": 180,
+            "timeout_seconds_env": "TEST_CLOUD_TIMEOUT",
+        }
+        with patch.dict("os.environ", {
+            "TEST_CLOUD_MAX_CALLS": "12",
+            "TEST_CLOUD_MAX_OUTPUT": "14000",
+            "TEST_CLOUD_PLANNING_OUTPUT": "16000",
+            "TEST_CLOUD_TIMEOUT": "240",
+        }):
+            self.assertEqual(cloud_request_limit(settings), 12)
+            self.assertEqual(cloud_output_limit(settings), 14000)
+            self.assertEqual(cloud_output_limit(settings, "planning_max_output_tokens"), 16000)
+            self.assertEqual(cloud_timeout_limit(settings), 240.0)
+
+    def test_release_config_has_long_course_cloud_headroom(self) -> None:
+        api = yaml.safe_load((Path(__file__).resolve().parents[1] / "api.yaml").read_text(encoding="utf-8"))
+        qwen = api["qwen"]
+        self.assertGreaterEqual(qwen["budget"]["max_calls_per_video"], 10)
+        self.assertGreaterEqual(qwen["budget"]["planning_max_output_tokens"], 10000)
+        self.assertGreaterEqual(qwen["budget"]["max_output_tokens"], 10000)
+
     def test_connection_probe_lists_models_without_chat_completion(self) -> None:
         client = Mock()
         client.models.list.return_value = SimpleNamespace(data=[SimpleNamespace(id="model-a")])
@@ -56,6 +94,27 @@ class ProviderFallbackTests(unittest.TestCase):
         self.assertEqual(usage["total_tokens"], 30)
         self.assertEqual(create.call_count, 2)
         self.assertEqual([item.model for item in observed], ["first", "second"])
+
+    def test_semantic_rejections_do_not_open_provider_circuit(self) -> None:
+        client = FallbackChatClient(
+            api_key="test-key", base_url="https://example.invalid/v1",
+            models=["one", "two", "three", "four"],
+        )
+        create = Mock(side_effect=[response({"quality": "bad"}) for _ in range(4)])
+        client.client.chat.completions.create = create
+        budget = CloudRequestBudget(max_requests=8, failure_limit=2)
+
+        with self.assertRaises(AllModelsFailed):
+            client.create_json(
+                messages=[{"role": "user", "content": "test"}],
+                validator=lambda _value: (_ for _ in ()).throw(ValueError("schema mismatch")),
+                request_budget=budget,
+                stage="blueprint",
+            )
+
+        self.assertEqual(create.call_count, 4)
+        self.assertFalse(budget.circuit_open)
+        self.assertEqual(budget.consecutive_failures, 0)
 
     def test_request_budget_is_shared_across_stages_and_records_usage(self) -> None:
         client = FallbackChatClient(

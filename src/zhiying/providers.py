@@ -10,7 +10,13 @@ from typing import Any, Callable
 
 from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI
 
-from .utils import TaskCancelled, ensure_not_cancelled
+from .utils import (
+    TaskCancelled,
+    cloud_output_limit,
+    cloud_request_limit,
+    cloud_timeout_limit,
+    ensure_not_cancelled,
+)
 
 # 稳定错误码
 CLOUD_OUTPUT_TRUNCATED = "CLOUD_OUTPUT_TRUNCATED"
@@ -92,18 +98,27 @@ class CloudRequestBudget:
 
     def claim(self, *, stage: str, model: str) -> None:
         if self.circuit_open:
-            raise CloudCircuitOpen("云端连续失败熔断已打开，未继续发送请求")
+            recent = self.attempts[-max(1, int(self.failure_limit)):]
+            detail = "; ".join(
+                f"{item.get('model', 'unknown')}: {item.get('error', 'unknown')}"
+                for item in recent if not item.get("ok")
+            )
+            suffix = f"；最近失败：{detail}" if detail else ""
+            raise CloudCircuitOpen(f"云端连续服务失败熔断已打开，未继续发送请求{suffix}")
         if self.requests_used >= self.max_requests:
             raise CloudBudgetExceeded(
                 f"云端请求预算已用尽（{self.requests_used}/{self.max_requests}），未继续发送请求"
             )
         self.requests_used += 1
 
-    def record(self, *, stage: str, attempt: ModelAttempt, usage: dict[str, int]) -> None:
-        self.attempts.append({"stage": stage, **attempt.__dict__})
-        if attempt.ok:
+    def record(
+        self, *, stage: str, attempt: ModelAttempt, usage: dict[str, int],
+        provider_failure: bool = True,
+    ) -> None:
+        self.attempts.append({"stage": stage, **attempt.__dict__, "provider_failure": provider_failure})
+        if attempt.ok or not provider_failure:
             self.consecutive_failures = 0
-        else:
+        elif provider_failure:
             self.consecutive_failures += 1
             if self.consecutive_failures >= max(1, int(self.failure_limit)):
                 self.circuit_open = True
@@ -120,19 +135,6 @@ class CloudRequestBudget:
             "consecutive_failures": self.consecutive_failures,
             "circuit_open": self.circuit_open,
         }
-
-
-def cloud_request_limit(settings: dict[str, Any]) -> int:
-    """Resolve the user-configured global request cap without treating model count as a cap."""
-    budget = settings.get("budget", {}) if isinstance(settings, dict) else {}
-    configured = budget.get("max_calls_per_video", 1)
-    env_name = str(settings.get("max_calls_env", "") or "") if isinstance(settings, dict) else ""
-    env_value = os.getenv(env_name) if env_name else None
-    raw = env_value if env_value and env_value.isdigit() else configured
-    try:
-        return max(0, int(raw))
-    except (TypeError, ValueError):
-        return 1
 
 
 def ensure_cloud_request_budget(settings: dict[str, Any]) -> CloudRequestBudget:
@@ -246,7 +248,10 @@ class FallbackChatClient:
                     )
                     attempts.append(ModelAttempt(model=model, ok=False, error=CLOUD_OUTPUT_TRUNCATED))
                     if request_budget is not None:
-                        request_budget.record(stage=stage, attempt=attempts[-1], usage=response_usage)
+                        request_budget.record(
+                            stage=stage, attempt=attempts[-1], usage=response_usage,
+                            provider_failure=False,
+                        )
                     if on_attempt:
                         on_attempt(attempts[-1])
                     raise truncated_error
@@ -266,7 +271,10 @@ class FallbackChatClient:
                 detail = _safe_error(exc)
                 attempts.append(ModelAttempt(model=model, ok=False, error=detail))
                 if request_budget is not None:
-                    request_budget.record(stage=stage, attempt=attempts[-1], usage=response_usage)
+                    request_budget.record(
+                        stage=stage, attempt=attempts[-1], usage=response_usage,
+                        provider_failure=isinstance(exc, (APIConnectionError, APITimeoutError, APIStatusError)),
+                    )
                 if on_attempt:
                     on_attempt(attempts[-1])
         raise AllModelsFailed(attempts)
@@ -375,15 +383,21 @@ class OpenAICloudJsonAdapter:
         messages = payload.get("messages")
         if not isinstance(messages, list):
             messages = [{"role": "user", "content": json.dumps(payload, ensure_ascii=False)}]
-        result, model, attempts, usage = self._get_client().create_json(
-            messages=messages,
-            temperature=float(payload.get("temperature", 0.1)),
-            max_tokens=int(payload.get("max_tokens", self.max_tokens)),
-            validator=validator,
-            request_budget=self.budget,
-            stage=stage,
-            cancel_check=cancel_check,
-        )
+        try:
+            result, model, attempts, usage = self._get_client().create_json(
+                messages=messages,
+                temperature=float(payload.get("temperature", 0.1)),
+                max_tokens=int(payload.get("max_tokens", self.max_tokens)),
+                validator=validator,
+                request_budget=self.budget,
+                stage=stage,
+                cancel_check=cancel_check,
+            )
+        except TimeoutError:
+            # FallbackChatClient closes its HTTP client to stop the timed-out worker.
+            # Never reuse that poisoned client in later cloud stages.
+            self._client = None
+            raise
         return result, {
             "model": model,
             "attempts": [attempt.__dict__ for attempt in attempts],

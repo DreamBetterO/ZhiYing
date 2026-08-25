@@ -19,6 +19,19 @@ def summarize_terminal_status(statuses) -> str:
     return "succeeded"
 
 
+def _run_cloud_usage(cloud_budget: Any, editorial_session: Mapping[str, Any]) -> dict[str, int]:
+    """Return the complete per-video ledger, falling back to editorial-only usage offline."""
+    if cloud_budget is not None:
+        snapshot = cloud_budget.snapshot()
+        usage = snapshot.get("usage", {}) if isinstance(snapshot, Mapping) else {}
+    else:
+        usage = editorial_session.get("usage", {})
+    return {
+        key: int(usage.get(key, 0) or 0)
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+    }
+
+
 @dataclass(frozen=True)
 class ExecutionKernel:
     context: ProcessingContext
@@ -84,14 +97,14 @@ def build_runtime_services(
             raise ValueError("已授权云端请求，但缺少单视频 CloudRequestBudget")
 
         def cloud_factory():
-            from ..providers import OpenAICloudJsonAdapter
+            from ..providers import OpenAICloudJsonAdapter, cloud_output_limit, cloud_timeout_limit
             return OpenAICloudJsonAdapter(
                 api_key=credentials.api_key,
                 base_url=credentials.base_url,
                 models=list(credentials.models),
                 budget=cloud_budget,
-                timeout=float(options.knowledge.get("timeout_seconds", 90.0)),
-                max_tokens=int(options.knowledge.get("max_output_tokens", 5000)),
+                timeout=cloud_timeout_limit(dict(options.knowledge)),
+                max_tokens=cloud_output_limit(dict(options.knowledge)),
             )
 
         factories["cloud"] = cloud_factory
@@ -102,7 +115,7 @@ def build_runtime_services(
                 api_key=credentials.api_key,
                 base_url=credentials.base_url,
                 model=credentials.models[0],
-                timeout=float(options.knowledge.get("timeout_seconds", 90.0)),
+                timeout=cloud_timeout_limit(dict(options.knowledge)),
                 max_tokens=int(options.knowledge.get("tool_max_output_tokens", 2000)),
             )
 
@@ -471,7 +484,7 @@ def run_compatible_pipeline(
             "mode": result_mode,
             "model": " + ".join(model_chain),
             "model_attempts": [],
-            "cloud_usage": dict(editorial_session.get("usage", {})),
+            "cloud_usage": _run_cloud_usage(cloud_budget, editorial_session),
             "status": terminal_status,
             "editorial_mode": editorial_mode,
             "degradation_summary": [
@@ -483,7 +496,10 @@ def run_compatible_pipeline(
             "compute_summary": f"{asr_compute} · {visual_compute}",
         }
         journal.finish(terminal_status, outputs={
-            key: result[key] for key in ("video_id", "manifest", "markdown", "docx", "pdf", "pdf_mode", "mode")
+            key: result[key] for key in (
+                "video_id", "manifest", "markdown", "docx", "pdf", "pdf_mode", "mode",
+                "status", "model", "cloud_usage",
+            )
         })
         result["runtime_events"] = list(journal.events)
         result["degradations"] = [

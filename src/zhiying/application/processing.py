@@ -5,13 +5,20 @@ import os
 import threading
 from dataclasses import asdict
 from copy import deepcopy
+from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 from urllib.parse import urlparse
 
 from .aggregation import aggregate_documents, local_aggregate_documents
 from ..config import AppConfig
-from ..execution.artifacts import WorkspaceCatalog, read_document_v2
+from ..execution.artifacts import (
+    EDITORIAL_SESSION,
+    KNOWLEDGE_PLAN,
+    KNOWLEDGE_UNITS,
+    WorkspaceCatalog,
+    read_document_v2,
+)
 from ..progress import EtaEstimator, ProgressEvent
 from .requests import (
     AggregateRequest, JobHandle, JobRequest, JobResult,
@@ -47,14 +54,16 @@ def resolve_cloud_authorization(
     ) if item.strip()))
     if not chain:
         raise ValueError("没有可用的大语言模型")
+    from ..providers import cloud_request_limit
     return CloudAuthorization(
         True, key, endpoint, chain,
-        max_calls=int(qwen.get("budget", {}).get("max_calls_per_video", len(chain))),
+        max_calls=cloud_request_limit(qwen),
         editorial_brief=editorial_brief,
     )
 
 
 class ProcessingService(Protocol):
+    def history_snapshot(self, video: Path) -> dict | None: ...
     def process(self, request: ProcessingRequest) -> ProcessingHandle: ...
     def process_job(self, request: JobRequest) -> JobHandle: ...
     def download_url(self, url: str, *, progress=None, cancel_check=None) -> dict: ...
@@ -109,6 +118,75 @@ class DefaultProcessingService:
             str(document.get("mode", "")), str(document.get("model", "")),
             dict(document.get("cloud_usage", {})),
         )
+
+    def history_snapshot(self, video: Path) -> dict | None:
+        """Return the latest persisted run summary and recorded cloud usage for queue restoration."""
+        entry = self.catalog.find_by_source(video)
+        if not entry:
+            return None
+        summaries: list[dict] = []
+        for path in (entry.layout.state_dir / "runs").glob("*.summary.json"):
+            try:
+                value = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, json.JSONDecodeError):
+                continue
+            if isinstance(value, dict):
+                summaries.append(value)
+        latest = max(
+            summaries,
+            key=lambda row: str(row.get("finished_at") or row.get("started_at") or ""),
+            default={},
+        )
+        result = self.history_result(video)
+        if not latest and result is None:
+            return None
+
+        usage_keys = ("prompt_tokens", "completion_tokens", "total_tokens")
+        latest_outputs = latest.get("outputs") or {}
+        recorded_usage = latest_outputs.get("cloud_usage") if isinstance(latest_outputs, dict) else None
+        if isinstance(recorded_usage, dict):
+            usage = {key: int(recorded_usage.get(key, 0) or 0) for key in usage_keys}
+        else:
+            usage = {key: 0 for key in usage_keys}
+            usage_found = False
+            sources = (
+                (KNOWLEDGE_PLAN, ("cloud_info", "usage")),
+                (KNOWLEDGE_UNITS, ("cloud_info", "usage")),
+                (EDITORIAL_SESSION, ("usage",)),
+            )
+            for artifact_id, keys in sources:
+                path = entry.layout.artifact_paths(artifact_id)[0]
+                try:
+                    value = json.loads(path.read_text(encoding="utf-8"))
+                    for key in keys:
+                        value = value.get(key, {}) if isinstance(value, dict) else {}
+                except (OSError, ValueError, json.JSONDecodeError):
+                    continue
+                if not isinstance(value, dict):
+                    continue
+                for key in usage:
+                    amount = int(value.get(key, 0) or 0)
+                    usage[key] += amount
+                    usage_found = usage_found or amount > 0
+            if not usage_found and result is not None:
+                usage = {key: int(result.cloud_usage.get(key, 0) or 0) for key in usage}
+
+        started_at = str(latest.get("started_at") or "")
+        finished_at = str(latest.get("finished_at") or "")
+        elapsed = 0.0
+        try:
+            elapsed = max(0.0, (datetime.fromisoformat(finished_at) - datetime.fromisoformat(started_at)).total_seconds())
+        except (TypeError, ValueError):
+            pass
+        return {
+            "run_id": str(latest.get("run_id") or ""),
+            "status": str(latest.get("status") or "succeeded"),
+            "started_at": started_at,
+            "finished_at": finished_at,
+            "elapsed_seconds": elapsed,
+            "cloud_usage": usage,
+            "result": result.to_legacy() if result is not None else {},
+        }
 
     def process(self, request: ProcessingRequest) -> ProcessingHandle:
         handle = ProcessingHandle()

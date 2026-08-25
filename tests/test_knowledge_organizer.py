@@ -169,6 +169,19 @@ class OrganizerTests(unittest.TestCase):
                 {"block_0001": ["seg_00001"]},
             )
 
+    def test_cloud_organizer_validator_rejects_non_object_visual_bindings_cleanly(self) -> None:
+        point = {
+            "plan_id": "plan_001",
+            "statement": "规则",
+            "explanation": "规则的来源内解释",
+            "source_block_ids": ["block_0001"],
+            "content_blocks": [{"block_id": "content_001", "type": "paragraph", "text": "正文"}],
+            "visual_bindings": ["not-an-object"],
+        }
+        payload = {"sections": [{"title": "章节", "knowledge_points": [point]}]}
+        with self.assertRaisesRegex(ValueError, "visual_bindings"):
+            _validate_organizer_payload(payload, {"plan_001"}, {"block_0001": ["seg_00001"]})
+
 
 if __name__ == "__main__":
     unittest.main()
