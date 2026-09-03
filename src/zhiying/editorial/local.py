@@ -54,8 +54,8 @@ def _strip_fillers(text: str) -> str:
 
 
 def _contains_known_asr_error(text: str) -> bool:
-    for raw, _candidate, _confidence, _context in _TERMINOLOGY_RULES:
-        if raw in text:
+    for raw, _candidate, _confidence, context in _TERMINOLOGY_RULES:
+        if raw in text and (context is None or re.search(context, text)):
             return True
     return False
 
@@ -241,6 +241,12 @@ def _compose_unit_children(
                 _strip_fillers(overlay.apply_to(str(item)))
                 for item in block.get("items", []) if str(item).strip()
             ]
+            if text:
+                normalized_text = re.sub(r"\s+", "", text).strip("，。；;：:、")
+                items = [
+                    item for item in items
+                    if re.sub(r"\s+", "", item).strip("，。；;：:、") != normalized_text
+                ]
             if text and _contains_known_asr_error(text):
                 children.append(make_component(
                     "callout", component_id=f"{component_base}.unresolved",

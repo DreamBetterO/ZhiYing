@@ -131,7 +131,7 @@ def _cancel(exc: BaseException) -> None:
 @dataclass
 class KnowledgePlanStep:
     spec = StepSpec(
-        "knowledge.plan", 3, dependencies=("transcript.normalize",),
+        "knowledge.plan", 4, dependencies=("transcript.normalize",),
         inputs=(TRANSCRIPT_NORMALIZED,), outputs=(KNOWLEDGE_PLAN,),
         config_keys=("knowledge.content_level", "policy.cloud"), remote_cost=RemoteCost.CLOUD,
         capabilities=("offline", "cloud"), degradation_policy="offline",
@@ -371,7 +371,7 @@ class CourseIRStep:
 @dataclass
 class KnowledgeUnitsStep:
     spec = StepSpec(
-        "knowledge.units", 4,
+        "knowledge.units", 12,
         dependencies=("knowledge.plan", "knowledge.course_ir", "frames.semantics", "visual.evidence", "transcript.normalize"),
         inputs=(KNOWLEDGE_PLAN, KNOWLEDGE_COURSE_IR, FRAMES_SEMANTICS, VISUAL_EVIDENCE, TRANSCRIPT_NORMALIZED),
         outputs=(KNOWLEDGE_UNITS,), config_keys=("knowledge.units",), remote_cost=RemoteCost.CLOUD,

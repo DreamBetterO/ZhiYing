@@ -103,7 +103,12 @@ def launch_desktop(config: AppConfig) -> None:
             ctypes.windll.shcore.SetProcessDpiAwareness(2)
         except (AttributeError, OSError):
             pass
-    register_protocol(config.root / "config.yaml")
+    try:
+        register_protocol(config.root / "config.yaml")
+    except OSError:
+        # Protocol registration is a convenience feature. Restricted Windows
+        # profiles must still be able to open and use the desktop application.
+        pass
     root = tk.Tk()
     DesktopView(
         root, config, DesktopController(DefaultProcessingService(config)),

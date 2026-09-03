@@ -5,7 +5,10 @@ import unittest
 
 from zhiying.editorial.agent import (
     _blueprint_request_payload,
+    _component_ids,
     _restore_immutable_source_refs,
+    _validate_blueprint_payload,
+    _validate_chapters_payload,
     _writer_request_payload,
 )
 
@@ -72,17 +75,195 @@ class BlueprintTests(unittest.TestCase):
             "children": [{
                 "type": "paragraph", "component_id": "p_001", "text": "正文",
                 "source_refs": [{"segment_ids": ["seg_00001"]}],
+                "links": [{"label": "00:01", "url": "video-study://play/sample?t=1"}],
             }],
         }]
         writer_payload = _writer_request_payload({}, {}, chapters)
         self.assertNotIn("source_refs", writer_payload["messages"][1]["content"])
+        self.assertNotIn("video-study://", writer_payload["messages"][1]["content"])
+        self.assertNotIn('"links"', writer_payload["messages"][1]["content"])
+        self.assertTrue(writer_payload["omit_max_tokens"])
+        self.assertTrue(writer_payload["omit_response_format"])
+        self.assertNotIn("max_tokens", writer_payload)
         restored = _restore_immutable_source_refs(writer_payload["draft_chapters"], chapters)
         self.assertEqual(restored[0]["source_refs"], chapters[0]["source_refs"])
         self.assertEqual(restored[0]["children"][0]["source_refs"], chapters[0]["children"][0]["source_refs"])
+        self.assertEqual(restored[0]["children"][0]["links"], chapters[0]["children"][0]["links"])
 
     def test_valid_blueprint_passes_validation(self) -> None:
         blueprint = _sample_blueprint()
         validate_blueprint(blueprint, known_unit_ids={"plan_001"})
+
+    def test_writer_accepts_direct_chapter_and_repairs_container_markers(self) -> None:
+        original = [{
+            "type": "container", "component_id": "chapter_001", "semantic_role": "chapter",
+            "children": [{"type": "paragraph", "component_id": "p_001", "text": "原文"}],
+        }]
+        returned = {
+            "component_id": "chapter_001",
+            "type": "chapter",
+            "semantic_role": "section",
+            "children": [{"type": "paragraph", "component_id": "p_001", "text": "改写"}],
+        }
+
+        result = _validate_chapters_payload(
+            returned,
+            expected_component_ids={"chapter_001", "p_001"},
+            original_chapters=original,
+        )
+
+        self.assertEqual(result["chapters"][0]["type"], "container")
+        self.assertEqual(result["chapters"][0]["semantic_role"], "chapter")
+        self.assertEqual(result["chapters"][0]["children"][0]["text"], "改写")
+
+    def test_writer_repairs_omitted_outer_chapter_when_child_ids_are_unchanged(self) -> None:
+        original = [{
+            "type": "container", "component_id": "chapter_001", "semantic_role": "chapter",
+            "title": "第一章",
+            "children": [
+                {"type": "paragraph", "component_id": "p_001", "text": "原文"},
+                {"type": "equation", "component_id": "eq_001", "latex": "x"},
+            ],
+        }]
+        returned = {"chapters": [
+            {"type": "paragraph", "component_id": "p_001", "text": "改写"},
+            {"type": "equation", "component_id": "eq_001", "latex": "x+1"},
+        ]}
+
+        result = _validate_chapters_payload(
+            returned,
+            expected_component_ids={"chapter_001", "p_001", "eq_001"},
+            original_chapters=original,
+        )
+
+        self.assertEqual(result["chapters"][0]["component_id"], "chapter_001")
+        self.assertEqual([item["component_id"] for item in result["chapters"][0]["children"]], ["p_001", "eq_001"])
+
+    def test_writer_restores_original_component_tree_topology(self) -> None:
+        original = [{
+            "type": "container", "component_id": "chapter_001", "semantic_role": "chapter",
+            "children": [{"type": "paragraph", "component_id": "p_001", "semantic_role": "paragraph", "text": "原文"}],
+        }]
+        returned = {"chapters": [{
+            "type": "container", "component_id": "chapter_001", "semantic_role": "chapter",
+            "children": [{"chapter_id": "chapter_001", "content": "错误位置"}],
+            "components": [{"type": "paragraph", "component_id": "p_001", "semantic_role": "paragraph", "text": "改写"}],
+        }]}
+
+        result = _validate_chapters_payload(
+            returned,
+            expected_component_ids={"chapter_001", "p_001"},
+            original_chapters=original,
+        )
+
+        chapter = result["chapters"][0]
+        self.assertNotIn("components", chapter)
+        self.assertEqual(chapter["children"], [{
+            "type": "paragraph", "component_id": "p_001", "semantic_role": "paragraph", "text": "改写",
+        }])
+
+    def test_writer_restores_ids_when_model_renames_an_equivalent_tree(self) -> None:
+        original = [{
+            "type": "container", "component_id": "chapter_001", "semantic_role": "chapter",
+            "children": [{
+                "type": "container", "component_id": "chapter_001.unit_0001",
+                "semantic_role": "knowledge_point", "children": [
+                    {"type": "heading", "component_id": "chapter_001.unit_0001.h", "semantic_role": "heading", "text": "原题"},
+                    {"type": "paragraph", "component_id": "chapter_001.unit_0001.body", "semantic_role": "paragraph", "text": "原文"},
+                ],
+            }],
+        }]
+        returned = {"chapters": [{
+            "type": "container", "component_id": "chapter-renamed", "semantic_role": "chapter",
+            "children": [{
+                "type": "container", "component_id": "section-renamed",
+                "semantic_role": "knowledge_point", "children": [
+                    {"type": "heading", "component_id": "heading-renamed", "semantic_role": "heading", "text": "新题"},
+                    {"type": "paragraph", "component_id": "body-renamed", "semantic_role": "paragraph", "text": "云端改写"},
+                ],
+            }],
+        }]}
+
+        result = _validate_chapters_payload(
+            returned,
+            expected_component_ids=_component_ids(original),
+            original_chapters=original,
+        )
+
+        chapter = result["chapters"][0]
+        self.assertEqual(chapter["component_id"], "chapter_001")
+        self.assertEqual(chapter["children"][0]["component_id"], "chapter_001.unit_0001")
+        self.assertEqual(chapter["children"][0]["children"][1]["component_id"], "chapter_001.unit_0001.body")
+        self.assertEqual(chapter["children"][0]["children"][1]["text"], "云端改写")
+
+    def test_writer_discards_added_components_when_all_original_ids_remain(self) -> None:
+        original = [{
+            "type": "container", "component_id": "chapter_001", "semantic_role": "chapter",
+            "children": [
+                {"type": "paragraph", "component_id": "p_001", "semantic_role": "paragraph", "text": "原文"},
+            ],
+        }]
+        returned = {"chapters": [{
+            "type": "container", "component_id": "chapter_001", "semantic_role": "chapter",
+            "children": [
+                {"type": "paragraph", "component_id": "p_001", "semantic_role": "paragraph", "text": "云端改写"},
+                {"type": "callout", "component_id": "invented_001", "semantic_role": "callout", "text": "模型新增"},
+            ],
+        }]}
+
+        result = _validate_chapters_payload(
+            returned,
+            expected_component_ids={"chapter_001", "p_001"},
+            original_chapters=original,
+        )
+
+        self.assertEqual(_component_ids(result), {"chapter_001", "p_001"})
+        self.assertEqual(result["chapters"][0]["children"][0]["text"], "云端改写")
+
+    def test_writer_preserves_local_content_for_omitted_component(self) -> None:
+        original = [{
+            "type": "container", "component_id": "chapter_001", "semantic_role": "chapter",
+            "children": [
+                {"type": "paragraph", "component_id": "p_001", "semantic_role": "paragraph", "text": "原文一"},
+                {"type": "paragraph", "component_id": "p_002", "semantic_role": "paragraph", "text": "原文二"},
+            ],
+        }]
+        returned = {"chapters": [{
+            "type": "container", "component_id": "chapter_001", "semantic_role": "chapter",
+            "children": [
+                {"type": "paragraph", "component_id": "p_001", "semantic_role": "paragraph", "text": "云端改写"},
+            ],
+        }]}
+
+        result = _validate_chapters_payload(
+            returned,
+            expected_component_ids={"chapter_001", "p_001", "p_002"},
+            original_chapters=original,
+        )
+
+        children = result["chapters"][0]["children"]
+        self.assertEqual(children[0]["text"], "云端改写")
+        self.assertEqual(children[1]["text"], "原文二")
+
+    def test_cloud_blueprint_missing_id_gets_stable_generated_id(self) -> None:
+        payload = _sample_blueprint().to_dict()
+        payload.pop("blueprint_id")
+        first = _validate_blueprint_payload(payload, {"plan_001"})
+        second = _validate_blueprint_payload(dict(payload, blueprint_id=""), {"plan_001"})
+        self.assertRegex(first["blueprint_id"], r"^bp_cloud_[0-9a-f]{12}$")
+        self.assertEqual(first["blueprint_id"], second["blueprint_id"])
+
+    def test_cloud_blueprint_missing_chapter_id_reuses_lesson_plan_identity(self) -> None:
+        payload = _sample_blueprint().to_dict()
+        payload["chapters"][0].pop("chapter_id")
+
+        result = _validate_blueprint_payload(
+            payload,
+            {"plan_001"},
+            chapter_ids_by_unit={"plan_001": "chapter_001"},
+        )
+
+        self.assertEqual(result["chapters"][0]["chapter_id"], "chapter_001")
 
     def test_legacy_source_section_is_forbidden(self) -> None:
         blueprint = _sample_blueprint()

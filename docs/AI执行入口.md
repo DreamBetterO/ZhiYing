@@ -17,20 +17,19 @@
 - [主架构方案](迭代升级/V6.0%20LangGraph全链路架构升级方案.md)定义目标和不可违反合同；[执行计划](迭代升级/V6.0%20LangGraph全链路升级执行计划.md)是唯一阶段/恢复点来源；[目标合同 YAML](迭代升级/V6.0%20LangGraph全链路目标合同.yaml)供 Agent/测试机器核对。
 - V6 目标是 LangGraph 接管 Source、单/多视频、知识、文档、Markdown/Word/PDF、聚合和 Job 终态，成为唯一生产编排器；先等价接管，后升级模型、视觉和 Document v3。
 - 当前代码版本为 `1.0.0`；用户已于 2026-08-24 明确确认正式版本号。active `docs/architecture/*.yaml` 已切换到 Graph/Document v3.1。
-- 用户已于 2026-08-21 批准 [V6.1 主方案](迭代升级/V6.1%20Function%20Calling编辑Harness升级方案.md)、[执行计划](迭代升级/V6.1%20Function%20Calling编辑Harness执行计划.md)和[目标合同](迭代升级/V6.1%20Function%20Calling编辑Harness目标合同.yaml)；CP61-0～CP61-6 已完成，CP61-7 最新自动化 Gate 已通过 602 项离线测试（5 项预期失败），图片生产插入链路已补齐，当前等待用户确认两份高数审阅成品方向。
+- 用户已于 2026-08-21 批准 [V6.1 主方案](迭代升级/V6.1%20Function%20Calling编辑Harness升级方案.md)、[执行计划](迭代升级/V6.1%20Function%20Calling编辑Harness执行计划.md)和[目标合同](迭代升级/V6.1%20Function%20Calling编辑Harness目标合同.yaml)，并于 2026-09-03 确认 V6.1 实施与真实云验收完成；CP61-0～CP61-8 均已关闭。
 - V6.1 已以 `1.0.0` 作为当前产品版本：保留确定性主图，在 `EditorialAgentSubgraph` 内以阶段限定 Function Calling 赋予 LLM 主动观察和局部编辑权；原生渲染 Document v3.1，并以 `tool_native → structured_only → local_deterministic` 完成可审计降级。
 
 ## 待执行
 
-1. 当前先由用户确认 `output/pdf/cp61-7-review/` 两份审阅 PDF 的内容方向；未确认前 CP61-7 保持 in_progress。
-2. 两次逐次授权探针已确认：`deepseek-v4-flash-0731` 被端点拒绝；`glm-5.2` 成功返回原生 `get_renderer_capabilities` 工具调用（597 tokens）。默认模型首位与能力注册已切到 `glm-5.2/tool_native`；下一次真实课程请求仍须重新披露并逐次确认。
-3. CP61-8 只有在单独获批后才能运行真实云模型和指定 UI 等价链路；产品版本号已由用户确认为 `1.0.0`，但该确认不替代剩余质量门。
-4. ZhiYing 1.0.0 发行采用“同版本、双通道”：源码/README/release 清单进入 `main` 与 `v1.0.0` 标签，核心 ZIP + SHA-256 进入同版本 GitHub Release 附件；ZIP 不进 Git 历史。`release/` 用户文档与随包 README 已改为普通使用者视角，新核心附件为 133710154 bytes、SHA-256 `9d587dc2e4157cf1f509c35e297f3716c372419ed2f660ad2bb76356a18ab86e`；`stable.json.ready_for_local_review=true / published=true`。下一次便携重建和远程发布仍需重新授权。
-5. B 站锚点（BV1cmTu6mEL3）再次在线验证前先跑 `scripts/diagnostics/check_test_links.py` 健康检查。
+1. V6.1 当前无待完成检查点；后续只处理新的独立需求、回归问题和 3 项既有发行基线测试失败。
+2. 当前保存模型 `qwen3.7-flash-2026-07-15` 已通过真实 structured_only 课程链路；`glm-5.2` 曾通过原生工具探针。下一次真实课程请求仍须重新披露并逐次确认。
+3. ZhiYing 1.0.0 发行采用“同版本、双通道”；下一次便携重建和远程发布仍需重新授权。
+4. B 站锚点再次在线验证前先运行链接健康检查。
 
 ## 直接行动
 
-1. 若执行 V6.1，先读取 V6.1 主方案、执行计划和目标合同，检查 `当前架构升级状态.yaml` 的最新 CP，只做该阶段任务；当前入口为 CP61-7 黄金与 UI 等价链路离线验收。
+1. V6.1 已完成；若处理回归，先读取 V6.1 主方案、执行计划、目标合同与 `当前架构升级状态.yaml` 的完成基线，只修改责任节点及其下游。
 2. 若诊断现有故障 Workspace，先运行 `.venv\Scripts\python.exe scripts\diagnostics\diagnose_workspace.py workspace\<video_id>`。
 3. 按 `step_id/error_code` 查 [故障索引](diagnostics/problem-index.yaml)。
 4. 只读 [模块边界](architecture/module-boundaries.yaml) 指定的 owner、Artifact 与测试；先补失败回归测试，再修改最小责任模块。

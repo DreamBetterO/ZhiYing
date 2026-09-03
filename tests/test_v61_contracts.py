@@ -1,7 +1,7 @@
 """CP61-0 V6.1 机器合同测试与测试追溯矩阵。
 
-这些测试只读校验已批准的 V6.1 目标合同 YAML（机器可读合同），
-不校验生产实现（实施前 contract 不是 runtime 事实）。
+这些测试只读校验已实施并验收的 V6.1 机器合同 YAML，
+确保完成状态、版本和稳定边界不会退回实施前基线。
 """
 from __future__ import annotations
 
@@ -33,14 +33,10 @@ class V61ContractTests(unittest.TestCase):
 
     def test_contract_and_active_state_are_consistent(self) -> None:
         self.assertEqual(self.contract["contract_id"], "v6-1-function-calling-editorial-harness")
-        self.assertEqual(self.contract["status"], "approved_target_not_implemented")
+        self.assertEqual(self.contract["status"], "implemented_and_validated")
         self.assertEqual(self.state["change_id"], "v6-1-function-calling-editorial-harness")
-        self.assertTrue(self.state["phase"].startswith("cp61_"), self.state["phase"])
-        self.assertIn(self.state["status"], {
-            "cp61_0_completed", "cp61_1_completed", "cp61_2_completed", "cp61_3_completed",
-            "cp61_4_completed", "cp61_5_completed", "cp61_6_completed",
-            "cp61_1_in_progress", "cp61_5_in_progress", "cp61_6_in_progress", "cp61_7_in_progress",
-        })
+        self.assertEqual(self.state["phase"], "completed")
+        self.assertEqual(self.state["status"], "implemented_and_validated")
         self.assertEqual(self.state["target"]["implementation_version"], "1.0.0")
 
     def test_versioning_fields_match_approved_contract(self) -> None:
@@ -48,7 +44,7 @@ class V61ContractTests(unittest.TestCase):
         self.assertEqual(versioning["architecture_baseline"], "V6.0")
         self.assertEqual(versioning["product_baseline"], "1.0.0rc1")
         self.assertEqual(versioning["architecture_target"], "V6.1")
-        self.assertEqual(versioning["implementation_target"], "1.0.0rc2")
+        self.assertEqual(versioning["implementation_target"], "1.0.0")
         self.assertEqual(versioning["graph_version"], "v6.1-editorial-tools-1")
         self.assertEqual(versioning["document_schema_version"], 3)
         self.assertEqual(versioning["document_contract_version"], "document-v3.1")

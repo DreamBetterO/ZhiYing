@@ -223,17 +223,27 @@ def plan_payload_batches(
     payload: CloudPayload,
     max_input_chars: int,
     max_output_tokens: int,
+    max_units_per_batch: int | None = None,
 ) -> list[PayloadBatch]:
     if max_input_chars <= 0 or max_output_tokens <= 0:
         raise CloudPayloadError("CloudPayload 输入/输出预算必须大于 0")
-    if payload.char_count <= max_input_chars and _estimated_output_tokens(payload) <= max_output_tokens:
+    unit_limit = None if max_units_per_batch is None else max(1, int(max_units_per_batch))
+    if (
+        payload.char_count <= max_input_chars
+        and _estimated_output_tokens(payload) <= max_output_tokens
+        and (unit_limit is None or len(payload.units) <= unit_limit)
+    ):
         return [PayloadBatch("batch_001", payload, payload.char_count, payload.allowed_ids)]
     batches: list[PayloadBatch] = []
     current: list[str] = []
     for unit in payload.units:
         candidate_ids = [*current, str(unit["id"])]
         candidate = _project_batch(payload, candidate_ids)
-        if candidate.char_count <= max_input_chars and _estimated_output_tokens(candidate) <= max_output_tokens:
+        if (
+            candidate.char_count <= max_input_chars
+            and _estimated_output_tokens(candidate) <= max_output_tokens
+            and (unit_limit is None or len(candidate_ids) <= unit_limit)
+        ):
             current = candidate_ids
             continue
         if not current:

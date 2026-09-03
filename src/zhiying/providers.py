@@ -16,6 +16,7 @@ from .utils import (
     cloud_request_limit,
     cloud_timeout_limit,
     ensure_not_cancelled,
+    repair_structured_text_controls,
 )
 
 # 稳定错误码
@@ -66,8 +67,9 @@ class ModelAttempt:
 
 
 class AllModelsFailed(RuntimeError):
-    def __init__(self, attempts: list[ModelAttempt]):
+    def __init__(self, attempts: list[ModelAttempt], usage: dict[str, int] | None = None):
         self.attempts = attempts
+        self.usage = dict(usage or {})
         summary = "; ".join(f"{item.model}: {item.error}" for item in attempts)
         super().__init__(f"所有候选模型均不可用：{summary}")
 
@@ -201,7 +203,8 @@ class FallbackChatClient:
         *,
         messages: list[dict[str, str]],
         temperature: float = 0.1,
-        max_tokens: int = 2500,
+        max_tokens: int | None = 2500,
+        json_mode: bool = True,
         validator: Callable[[dict[str, Any]], None] | None = None,
         on_attempt: Callable[[ModelAttempt], None] | None = None,
         request_budget: CloudRequestBudget | None = None,
@@ -217,14 +220,19 @@ class FallbackChatClient:
                 request_budget.claim(stage=stage, model=model)
             response_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
             try:
+                request_kwargs: dict[str, Any] = {
+                    "model": model,
+                    "messages": messages,
+                    "temperature": temperature,
+                    "extra_body": {"enable_thinking": False},
+                }
+                if json_mode:
+                    request_kwargs["response_format"] = {"type": "json_object"}
+                if max_tokens is not None:
+                    request_kwargs["max_tokens"] = int(max_tokens)
                 response = self._create_response(
                     cancel_check=cancel_check,
-                    model=model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    response_format={"type": "json_object"},
-                    extra_body={"enable_thinking": False},
+                    **request_kwargs,
                 )
                 usage = response.usage
                 response_usage = {
@@ -258,7 +266,9 @@ class FallbackChatClient:
 
                 parsed = _extract_json(content)
                 if validator is not None:
-                    validator(parsed)
+                    validated = validator(parsed)
+                    if validated is not None:
+                        parsed = validated
                 attempts.append(ModelAttempt(model=model, ok=True))
                 if request_budget is not None:
                     request_budget.record(stage=stage, attempt=attempts[-1], usage=response_usage)
@@ -277,7 +287,7 @@ class FallbackChatClient:
                     )
                 if on_attempt:
                     on_attempt(attempts[-1])
-        raise AllModelsFailed(attempts)
+        raise AllModelsFailed(attempts, usage_total)
 
 
 def test_openai_connection(*, api_key: str, base_url: str, timeout: float = 12.0) -> dict[str, int]:
@@ -295,6 +305,97 @@ def test_openai_connection(*, api_key: str, base_url: str, timeout: float = 12.0
     return {"latency_ms": max(0, int((time.monotonic() - started) * 1000)), "model_count": count}
 
 
+_AMBIGUOUS_JSON_LATEX_COMMANDS = {
+    "bar", "begin", "beta", "binom", "boldsymbol",
+    "frac",
+    "nabla", "neq", "nu",
+    "rho", "right",
+    "tan", "text", "theta", "times",
+}
+
+
+def _repair_json_latex_escapes(text: str) -> str:
+    r"""Escape model-emitted LaTeX slashes inside JSON strings only.
+
+    Models occasionally return prompt-requested JSON but write ``\sum`` instead
+    of JSON-safe ``\\sum``.  Preserve genuine JSON escapes while repairing both
+    invalid escapes and ambiguous LaTeX commands such as ``\frac``/``\right``.
+    """
+    repaired: list[str] = []
+    index = 0
+    in_string = False
+    while index < len(text):
+        char = text[index]
+        if char == '"':
+            in_string = not in_string
+            repaired.append(char)
+            index += 1
+            continue
+        if char != "\\" or not in_string or index + 1 >= len(text):
+            repaired.append(char)
+            index += 1
+            continue
+
+        next_char = text[index + 1]
+        if next_char in {'"', "\\", "/"}:
+            repaired.extend((char, next_char))
+            index += 2
+            continue
+        if next_char == "u" and index + 5 < len(text):
+            codepoint = text[index + 2:index + 6]
+            if all(item in "0123456789abcdefABCDEF" for item in codepoint):
+                repaired.append(text[index:index + 6])
+                index += 6
+                continue
+        if next_char in "bfnrt":
+            command_end = index + 1
+            while command_end < len(text) and text[command_end].isalpha():
+                command_end += 1
+            command = text[index + 1:command_end]
+            if command not in _AMBIGUOUS_JSON_LATEX_COMMANDS:
+                repaired.extend((char, next_char))
+                index += 2
+                continue
+        repaired.extend(("\\", "\\", next_char))
+        index += 2
+    return "".join(repaired)
+
+
+def _repair_json_trailing_commas(text: str) -> str:
+    """Remove commas immediately before a JSON container close, outside strings."""
+    repaired: list[str] = []
+    in_string = False
+    escaped = False
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if in_string:
+            repaired.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            index += 1
+            continue
+        if char == '"':
+            in_string = True
+            repaired.append(char)
+            index += 1
+            continue
+        if char == ",":
+            lookahead = index + 1
+            while lookahead < len(text) and text[lookahead].isspace():
+                lookahead += 1
+            if lookahead < len(text) and text[lookahead] in "]}":
+                index += 1
+                continue
+        repaired.append(char)
+        index += 1
+    return "".join(repaired)
+
+
 def _extract_json(text: str) -> dict[str, Any]:
     text = text.strip()
     if text.startswith("```"):
@@ -303,7 +404,16 @@ def _extract_json(text: str) -> dict[str, Any]:
     start, end = text.find("{"), text.rfind("}")
     if start < 0 or end < start:
         raise ValueError("response contains no JSON object")
-    result = json.loads(text[start:end + 1])
+    json_text = text[start:end + 1]
+    try:
+        parsed = json.loads(json_text)
+    except json.JSONDecodeError:
+        repaired = _repair_json_latex_escapes(json_text)
+        try:
+            parsed = json.loads(repaired)
+        except json.JSONDecodeError:
+            parsed = json.loads(_repair_json_trailing_commas(repaired))
+    result = repair_structured_text_controls(parsed)
     if not isinstance(result, dict):
         raise ValueError("response JSON is not an object")
     return result
@@ -311,7 +421,18 @@ def _extract_json(text: str) -> dict[str, Any]:
 
 def _safe_error(exc: Exception) -> str:
     if isinstance(exc, APIStatusError):
-        return f"HTTP {exc.status_code}"
+        body = getattr(exc, "body", None)
+        if isinstance(body, dict) and isinstance(body.get("error"), dict):
+            body = body["error"]
+        details: list[str] = []
+        if isinstance(body, dict):
+            allowed = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-[]")
+            for key in ("code", "param"):
+                value = str(body.get(key, "") or "")[:80]
+                if value and all(character in allowed for character in value):
+                    details.append(f"{key}={value}")
+        suffix = f" ({', '.join(details)})" if details else ""
+        return f"HTTP {exc.status_code}{suffix}"
     if isinstance(exc, APITimeoutError):
         return "timeout"
     if isinstance(exc, APIConnectionError):
@@ -387,7 +508,12 @@ class OpenAICloudJsonAdapter:
             result, model, attempts, usage = self._get_client().create_json(
                 messages=messages,
                 temperature=float(payload.get("temperature", 0.1)),
-                max_tokens=int(payload.get("max_tokens", self.max_tokens)),
+                max_tokens=(
+                    None
+                    if payload.get("omit_max_tokens")
+                    else int(payload.get("max_tokens", self.max_tokens))
+                ),
+                json_mode=not bool(payload.get("omit_response_format")),
                 validator=validator,
                 request_budget=self.budget,
                 stage=stage,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -158,6 +159,35 @@ class FileWorkspaceCacheTests(unittest.TestCase):
             )
             output.unlink()
             self.assertEqual(cache.decide(context, spec, fingerprint, {}).reason, CacheReason.OUTPUT_MISSING)
+
+    def test_structured_cloud_result_satisfies_cloud_cache_request(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _context, _artifact, _output, spec, fingerprint, cache = self._record(root)
+            record_path = cache.record_path(self._context(root), spec.step_id)
+            record = json.loads(record_path.read_text(encoding="utf-8"))
+            record["produced_capability"] = "structured_only"
+            record_path.write_text(json.dumps(record), encoding="utf-8")
+
+            decision = cache.decide(self._context(root, cloud=True), spec, fingerprint, {})
+
+            self.assertTrue(decision.hit)
+            self.assertEqual(decision.produced_capability, "structured_only")
+
+    def test_degraded_structured_result_does_not_satisfy_cloud_cache_request(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _context, _artifact, _output, spec, fingerprint, cache = self._record(root)
+            record_path = cache.record_path(self._context(root), spec.step_id)
+            record = json.loads(record_path.read_text(encoding="utf-8"))
+            record["produced_capability"] = "structured_only"
+            record["status"] = "degraded"
+            record_path.write_text(json.dumps(record), encoding="utf-8")
+
+            decision = cache.decide(self._context(root, cloud=True), spec, fingerprint, {})
+
+            self.assertFalse(decision.hit)
+            self.assertEqual(decision.reason, CacheReason.CAPABILITY_INSUFFICIENT)
 
     def test_corrupt_record_is_previous_run_incomplete(self) -> None:
         with TemporaryDirectory() as directory:

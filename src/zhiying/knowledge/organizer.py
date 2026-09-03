@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from ..media.transcript import merge_transcript_segments
 from .content_profile import CONTENT_PROFILES as _CONTENT_PROFILES, content_profile as _content_profile
@@ -26,7 +26,7 @@ from .schema import (
 )
 from .prompts import compose_course_ir_prompt
 
-_ORGANIZER_VERSION = 9
+_ORGANIZER_VERSION = 12
 
 
 def _has_plan_coverage(lesson_plan: LessonPlan, units: list[KnowledgeUnit]) -> bool:
@@ -41,6 +41,9 @@ def _validate_organizer_payload(
     parsed: dict[str, Any],
     expected_plan_ids: set[str],
     source_blocks: dict[str, list[str]],
+    source_ids_by_plan: Mapping[str, list[str]] | None = None,
+    claim_ids_by_plan: Mapping[str, list[str]] | None = None,
+    expected_plan_order: list[str] | None = None,
 ) -> None:
     sections = parsed.get("sections")
     if not isinstance(sections, list) or not sections:
@@ -54,16 +57,65 @@ def _validate_organizer_payload(
             raise ValueError("云端整理章节缺少 knowledge_points")
         points.extend(row for row in rows if isinstance(row, dict))
     plan_ids = [str(point.get("plan_id", "")).strip() for point in points]
+    if expected_plan_order and (
+        len(plan_ids) != len(expected_plan_ids) or set(plan_ids) != expected_plan_ids
+    ):
+        seen: set[str] = set()
+        accepted_points: list[dict[str, Any]] = []
+        repair_points: list[dict[str, Any]] = []
+        for point, plan_id in zip(points, plan_ids):
+            if plan_id in expected_plan_ids and plan_id not in seen:
+                seen.add(plan_id)
+                accepted_points.append(point)
+            else:
+                repair_points.append(point)
+        missing = [plan_id for plan_id in expected_plan_order if plan_id not in seen]
+        if len(repair_points) >= len(missing):
+            repaired_points = repair_points[:len(missing)]
+            for point, plan_id in zip(repaired_points, missing):
+                point["plan_id"] = plan_id
+            accepted_points.extend(repaired_points)
+            accepted_identity = {id(point) for point in accepted_points}
+            normalized_sections: list[dict[str, Any]] = []
+            for section in sections:
+                rows = section.get("knowledge_points", []) if isinstance(section, dict) else []
+                kept = [row for row in rows if isinstance(row, dict) and id(row) in accepted_identity]
+                if kept:
+                    section["knowledge_points"] = kept
+                    normalized_sections.append(section)
+            parsed["sections"] = normalized_sections
+            points = [
+                row
+                for section in normalized_sections
+                for row in section["knowledge_points"]
+            ]
+            plan_ids = [str(point.get("plan_id", "")).strip() for point in points]
     if len(plan_ids) != len(expected_plan_ids) or set(plan_ids) != expected_plan_ids:
-        raise ValueError("云端整理未逐项覆盖写作计划，或包含重复/额外 plan_id")
+        raise ValueError(
+            "云端整理未逐项覆盖写作计划，或包含重复/额外 plan_id："
+            f"expected={sorted(expected_plan_ids)}, actual={plan_ids}"
+        )
     valid_blocks = set(source_blocks)
     for point in points:
         plan_id = str(point.get("plan_id", "")).strip()
+        if claim_ids_by_plan is not None:
+            _repair_claim_references(point, plan_id, claim_ids_by_plan.get(plan_id, []))
+        if source_ids_by_plan is not None:
+            _repair_source_references(point, source_ids_by_plan.get(plan_id, []))
         if len(str(point.get("statement", "")).strip()) < 2:
             raise ValueError(f"云端整理 {plan_id} 缺少知识点标题")
         if len(str(point.get("explanation", "")).strip()) < 4:
             raise ValueError(f"云端整理 {plan_id} 缺少有效解释")
         refs = point.get("source_block_ids")
+        if (not isinstance(refs, list) or not refs) and source_ids_by_plan is not None:
+            canonical_refs = [
+                str(ref).strip()
+                for ref in source_ids_by_plan.get(plan_id, [])
+                if str(ref).strip() in valid_blocks
+            ]
+            if canonical_refs:
+                point["source_block_ids"] = list(dict.fromkeys(canonical_refs))
+                refs = point["source_block_ids"]
         if not isinstance(refs, list) or not refs:
             raise ValueError(f"云端整理 {plan_id} 缺少来源块")
         if any(str(ref).strip() not in valid_blocks for ref in refs):
@@ -73,6 +125,14 @@ def _validate_organizer_payload(
             raise ValueError(f"云端整理 {plan_id} 缺少 content_blocks")
         if any(not isinstance(block, dict) for block in content_blocks):
             raise ValueError(f"云端整理 {plan_id} 的 content_blocks 必须全部为对象")
+        for block in content_blocks:
+            text = re.sub(r"\s+", "", str(block.get("text", ""))).strip("，。；;：:、")
+            raw_items = block.get("items", [])
+            if text and isinstance(raw_items, list):
+                block["items"] = [
+                    item for item in raw_items
+                    if re.sub(r"\s+", "", str(item)).strip("，。；;：:、") != text
+                ]
         visual_bindings = point.get("visual_bindings", [])
         if not isinstance(visual_bindings, list) or any(not isinstance(item, dict) for item in visual_bindings):
             raise ValueError(f"云端整理 {plan_id} 的 visual_bindings 必须为对象列表")
@@ -92,6 +152,75 @@ def _validate_organizer_payload(
             for block in content_blocks
         ):
             raise ValueError(f"云端整理 {plan_id} 的 content_blocks 没有可渲染内容")
+
+
+def _repair_claim_references(value: Any, plan_id: str, canonical_ids: list[str]) -> None:
+    """修复模型保留语义序号但改写哈希的 claim 引用；无法对应的引用直接移除。"""
+    canonical = list(dict.fromkeys(str(item).strip() for item in canonical_ids if str(item).strip()))
+    canonical_set = set(canonical)
+    prefix = f"claim_{plan_id}_"
+    by_ordinal = {
+        claim_id[len(prefix):].split("_", 1)[0]: claim_id
+        for claim_id in canonical
+        if claim_id.startswith(prefix) and "_" in claim_id[len(prefix):]
+    }
+
+    def repair(identifier: Any) -> str:
+        raw = str(identifier or "").strip()
+        if raw in canonical_set:
+            return raw
+        if raw.startswith(prefix):
+            return by_ordinal.get(raw[len(prefix):].split("_", 1)[0], "")
+        return ""
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            for key, item in list(node.items()):
+                if key == "claim_ids" and isinstance(item, list):
+                    node[key] = list(dict.fromkeys(filter(None, (repair(row) for row in item))))
+                    continue
+                if key == "claim_id":
+                    fixed = repair(item)
+                    if fixed:
+                        node[key] = fixed
+                    else:
+                        node.pop(key, None)
+                    continue
+                walk(item)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(value)
+
+
+def _repair_source_references(value: Any, canonical_ids: list[str]) -> None:
+    """把模型漂移的来源标签收敛到当前知识点已授权的真实来源。"""
+    canonical = list(dict.fromkeys(str(item).strip() for item in canonical_ids if str(item).strip()))
+    canonical_set = set(canonical)
+
+    def repair(rows: Any) -> list[str]:
+        if not isinstance(rows, list):
+            return []
+        normalized = list(dict.fromkeys(
+            str(item).strip() for item in rows
+            if str(item).strip() in canonical_set
+        ))
+        # 只有模型确实给了引用、但引用全部漂移时才回填；保留原本有意为空的 model_aid 块。
+        return normalized or (list(canonical) if rows else [])
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            for key, item in list(node.items()):
+                if key in {"source_block_ids", "source_ids"}:
+                    node[key] = repair(item)
+                    continue
+                walk(item)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(value)
 
 
 def _segment_text_map(transcript: dict) -> dict[str, str]:
@@ -246,14 +375,24 @@ def _request_course_ir_organizing(
     course_ir = build_course_ir(lesson_plan, transcript, visual_evidence)
     payload = build_cloud_payload(course_ir)
     from ..providers import cloud_output_limit
+    from ..utils import cloud_optional_output_limit
     budget = settings.get("budget", {})
     max_chars = int(budget.get("max_input_chars", 60000))
     max_tokens = cloud_output_limit(settings)
     if content_level == "丰富":
         max_tokens = cloud_output_limit(settings, "rich_max_output_tokens", max_tokens)
+    request_max_tokens = cloud_optional_output_limit(
+        settings, "organizer_request_max_output_tokens", None,
+    )
     # Reserve room for the stable instruction/schema wrapper before batching.
     payload_char_budget = max(1000, max_chars - 7000)
-    batches = plan_payload_batches(payload, payload_char_budget, max_tokens)
+    max_units_per_batch = max(1, int(budget.get("organizer_max_units_per_batch", 1) or 1))
+    batches = plan_payload_batches(
+        payload,
+        payload_char_budget,
+        max_tokens,
+        max_units_per_batch=max_units_per_batch,
+    )
 
     decision_text = ""
     if lesson_plan.editorial_decision:
@@ -317,13 +456,43 @@ def _request_course_ir_organizing(
             source_id: source_blocks[source_id]
             for source_id in batch.allowed_ids.source_ids
         }
+        source_ids_by_plan = {
+            str(unit.get("id", "")): [
+                str(source_id) for source_id in unit.get("source_ids", [])
+                if str(source_id) in batch_source_blocks
+            ]
+            for unit in batch.payload.units
+            if str(unit.get("id", ""))
+        }
+        expected_plan_order = [
+            str(unit.get("id", "")) for unit in batch.payload.units if str(unit.get("id", ""))
+        ]
+        claim_ids_by_plan: dict[str, list[str]] = {}
+        for claim in batch.payload.claims:
+            plan_id = str(claim.get("unit_id", "") or "")
+            claim_id = str(claim.get("id", "") or "")
+            if plan_id and claim_id:
+                claim_ids_by_plan.setdefault(plan_id, []).append(claim_id)
 
         def validate(value: dict[str, Any]) -> None:
-            _validate_organizer_payload(value, expected_plan_ids, batch_source_blocks)
+            _validate_organizer_payload(
+                value,
+                expected_plan_ids,
+                batch_source_blocks,
+                source_ids_by_plan=source_ids_by_plan,
+                claim_ids_by_plan=claim_ids_by_plan,
+                expected_plan_order=expected_plan_order,
+            )
             validate_cloud_response(value, batch.allowed_ids)
 
+        request_payload = {
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.1,
+            "max_tokens": request_max_tokens or max_tokens,
+            "omit_max_tokens": request_max_tokens is None,
+        }
         parsed, request_info = cloud_port.request_json_with_info(
-            {"messages": [{"role": "user", "content": prompt}], "temperature": 0.1, "max_tokens": max_tokens},
+            request_payload,
             validator=validate,
             stage="organizing",
             cancel_check=cancel_check or (lambda: False),

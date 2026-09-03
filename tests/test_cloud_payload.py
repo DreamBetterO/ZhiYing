@@ -118,6 +118,20 @@ class CloudPayloadTests(unittest.TestCase):
             payload.allowed_ids.unit_ids,
         )
 
+    def test_batches_respect_configured_unit_count_limit(self) -> None:
+        plan, transcript, visuals = self._fixture()
+        payload = build_cloud_payload(build_course_ir(plan, transcript, visuals))
+
+        batches = plan_payload_batches(
+            payload,
+            max_input_chars=60000,
+            max_output_tokens=12000,
+            max_units_per_batch=2,
+        )
+
+        self.assertEqual(len(batches), 3)
+        self.assertTrue(all(len(batch.allowed_ids.unit_ids) <= 2 for batch in batches))
+
     def test_response_with_unknown_id_is_rejected(self) -> None:
         plan, transcript, visuals = self._fixture()
         payload = build_cloud_payload(build_course_ir(plan, transcript, visuals))

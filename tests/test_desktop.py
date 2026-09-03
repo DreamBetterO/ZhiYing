@@ -1,5 +1,6 @@
 import unittest
 from tempfile import TemporaryDirectory
+from unittest.mock import MagicMock, patch
 
 import yaml
 
@@ -25,6 +26,25 @@ from zhiying.desktop.view import PRIMARY_UI_ACTIONS, PRODUCT_DISPLAY_NAME, QUEUE
 
 
 class DesktopLogicTests(unittest.TestCase):
+    def test_protocol_registration_failure_does_not_block_desktop_startup(self) -> None:
+        from pathlib import Path
+        from zhiying.desktop import launch_desktop
+
+        with TemporaryDirectory() as directory:
+            config = AppConfig(Path(directory), {"paths": {"workspace_dir": "workspace"}})
+            root = MagicMock()
+            with (
+                patch.dict("sys.modules", {"torch": None}),
+                patch("tkinter.Tk", return_value=root),
+                patch("zhiying.infrastructure.playback.register_protocol", side_effect=PermissionError("denied")),
+                patch("zhiying.desktop.controller.DesktopController", return_value=MagicMock()),
+                patch("zhiying.desktop.DefaultProcessingService", return_value=MagicMock()),
+                patch("zhiying.desktop.view.DesktopView"),
+            ):
+                launch_desktop(config)
+
+        root.mainloop.assert_called_once_with()
+
     def test_primary_ui_keeps_all_product_actions_mounted(self) -> None:
         self.assertEqual(set(PRIMARY_UI_ACTIONS), {
             "add", "add_link", "toggle_all", "remove", "clear_selected_cache", "clear_cache",

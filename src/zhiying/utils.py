@@ -14,6 +14,21 @@ from pathlib import Path
 from typing import Any
 
 
+def repair_structured_text_controls(value: Any) -> Any:
+    """递归修复模型 JSON 将 LaTeX 转义解析成的 XML 非法控制字符。"""
+    if isinstance(value, dict):
+        return {key: repair_structured_text_controls(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [repair_structured_text_controls(item) for item in value]
+    if not isinstance(value, str):
+        return value
+    recovered = value.replace("\x08", r"\b").replace("\x0b", r"\v").replace("\x0c", r"\f")
+    return "".join(
+        char if char in "\t\n\r" or ord(char) >= 0x20 else f"\\x{ord(char):02x}"
+        for char in recovered
+    )
+
+
 def cloud_request_limit(settings: dict[str, Any]) -> int:
     """Resolve the configured per-video cloud call budget and optional env override."""
     budget = settings.get("budget", {}) if isinstance(settings, dict) else {}
@@ -42,6 +57,26 @@ def cloud_output_limit(
         return max(1, int(raw))
     except (TypeError, ValueError):
         return max(1, int(default))
+
+
+def cloud_optional_output_limit(
+    settings: dict[str, Any],
+    key: str,
+    default: int | None = None,
+) -> int | None:
+    """Resolve an optional provider hard cap; zero disables the API max_tokens field."""
+    budget = settings.get("budget", {}) if isinstance(settings, dict) else {}
+    configured = budget.get(key, default)
+    env_name = str(settings.get(f"{key}_env", "") or "") if isinstance(settings, dict) else ""
+    env_value = os.getenv(env_name) if env_name else None
+    raw = env_value if env_value not in (None, "") else configured
+    if raw in (None, ""):
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default if default is None else max(1, int(default))
+    return value if value > 0 else None
 
 
 def cloud_timeout_limit(

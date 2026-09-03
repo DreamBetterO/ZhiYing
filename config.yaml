@@ -75,11 +75,12 @@ desktop:
     opacity: 0.14
 source:
   enabled: true
-  download_dir: 视频
+  download_dir: D:\Study\实习\视频归纳\视频\test
   timeout_seconds: 30
   max_bytes: 2147483648
   format: bv*[height<=1080]+ba/b
   user_agent: ''
   cookies_file: ''
+  generic_impersonate: true
   allow_sites: []
   deny_sites: []

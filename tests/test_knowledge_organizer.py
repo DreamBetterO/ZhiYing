@@ -169,6 +169,151 @@ class OrganizerTests(unittest.TestCase):
                 {"block_0001": ["seg_00001"]},
             )
 
+    def test_cloud_organizer_repairs_missing_source_blocks_from_course_ir(self) -> None:
+        point = {
+            "plan_id": "plan_001",
+            "statement": "规则",
+            "explanation": "规则的来源内解释",
+            "content_blocks": [{"block_id": "content_001", "type": "paragraph", "text": "正文"}],
+        }
+        payload = {"sections": [{"title": "章节", "knowledge_points": [point]}]}
+
+        _validate_organizer_payload(
+            payload,
+            {"plan_001"},
+            {"block_0001": ["seg_00001"], "block_0002": ["seg_00002"]},
+            source_ids_by_plan={"plan_001": ["block_0002"]},
+        )
+
+        self.assertEqual(point["source_block_ids"], ["block_0002"])
+
+    def test_cloud_organizer_repairs_invalid_source_references_from_course_ir(self) -> None:
+        point = {
+            "plan_id": "plan_001",
+            "statement": "规则",
+            "explanation": "规则的来源内解释",
+            "source_block_ids": ["block_9999"],
+            "content_blocks": [{
+                "block_id": "content_001",
+                "type": "paragraph",
+                "origin": "audio_backed",
+                "text": "正文",
+                "source_ids": ["block_9999"],
+            }, {
+                "block_id": "content_002",
+                "type": "understanding_tip",
+                "origin": "model_aid",
+                "text": "辅助理解",
+                "source_ids": [],
+            }],
+        }
+        payload = {"sections": [{"title": "章节", "knowledge_points": [point]}]}
+
+        _validate_organizer_payload(
+            payload,
+            {"plan_001"},
+            {"block_0001": ["seg_00001"], "block_0002": ["seg_00002"]},
+            source_ids_by_plan={"plan_001": ["block_0002"]},
+        )
+
+        self.assertEqual(point["source_block_ids"], ["block_0002"])
+        self.assertEqual(point["content_blocks"][0]["source_ids"], ["block_0002"])
+        self.assertEqual(point["content_blocks"][1]["source_ids"], [])
+
+    def test_cloud_organizer_removes_identical_text_item_duplicate(self) -> None:
+        repeated = "第一步确认条件，第二步完成计算。"
+        point = {
+            "plan_id": "plan_001",
+            "statement": "规则",
+            "explanation": "规则的来源内解释",
+            "source_block_ids": ["block_0001"],
+            "content_blocks": [{
+                "block_id": "content_001", "type": "steps",
+                "text": repeated, "items": [repeated],
+            }],
+        }
+        payload = {"sections": [{"title": "章节", "knowledge_points": [point]}]}
+
+        _validate_organizer_payload(payload, {"plan_001"}, {"block_0001": ["seg_00001"]})
+
+        self.assertEqual(point["content_blocks"][0]["items"], [])
+
+    def test_cloud_organizer_repairs_claim_hash_without_discarding_valid_explanation(self) -> None:
+        point = {
+            "plan_id": "plan_007",
+            "statement": "对数复合函数求导",
+            "explanation": "先用链式法则，再对商式求导。",
+            "source_block_ids": ["block_0001"],
+            "content_blocks": [{
+                "block_id": "content_001", "type": "steps", "items": ["先求一阶导数"],
+                "claim_ids": ["claim_plan_007_003_wronghash"],
+            }],
+        }
+        payload = {"sections": [{"title": "章节", "knowledge_points": [point]}]}
+
+        _validate_organizer_payload(
+            payload,
+            {"plan_007"},
+            {"block_0001": ["seg_00001"]},
+            claim_ids_by_plan={"plan_007": ["claim_plan_007_003_c922d6"]},
+        )
+
+        self.assertEqual(
+            point["content_blocks"][0]["claim_ids"],
+            ["claim_plan_007_003_c922d6"],
+        )
+
+    def test_cloud_organizer_repairs_duplicate_plan_id_when_one_expected_id_is_missing(self) -> None:
+        def point(plan_id: str, statement: str) -> dict:
+            return {
+                "plan_id": plan_id, "statement": statement,
+                "explanation": f"{statement}的完整解释",
+                "source_block_ids": ["block_0001"],
+                "content_blocks": [{"block_id": f"b_{statement}", "type": "paragraph", "text": statement}],
+            }
+
+        first = point("plan_001", "第一点")
+        second = point("plan_001", "第二点")
+        payload = {"sections": [{"title": "章节", "knowledge_points": [first, second]}]}
+
+        _validate_organizer_payload(
+            payload,
+            {"plan_001", "plan_002"},
+            {"block_0001": ["seg_00001"]},
+            expected_plan_order=["plan_001", "plan_002"],
+        )
+
+        self.assertEqual([first["plan_id"], second["plan_id"]], ["plan_001", "plan_002"])
+
+    def test_cloud_organizer_discards_extra_points_when_all_plans_are_covered(self) -> None:
+        def point(plan_id: str, statement: str) -> dict:
+            return {
+                "plan_id": plan_id, "statement": statement,
+                "explanation": f"{statement}的来源内解释",
+                "source_block_ids": ["block_0001"],
+                "content_blocks": [{"block_id": f"b_{statement}", "type": "paragraph", "text": statement}],
+            }
+
+        expected_1 = point("plan_001", "第一点")
+        invented = point("plan_extra", "模型新增点")
+        expected_2 = point("plan_002", "第二点")
+        payload = {"sections": [{
+            "title": "章节",
+            "knowledge_points": [expected_1, invented, expected_2],
+        }]}
+
+        _validate_organizer_payload(
+            payload,
+            {"plan_001", "plan_002"},
+            {"block_0001": ["seg_00001"]},
+            expected_plan_order=["plan_001", "plan_002"],
+        )
+
+        self.assertEqual(
+            [item["plan_id"] for item in payload["sections"][0]["knowledge_points"]],
+            ["plan_001", "plan_002"],
+        )
+
     def test_cloud_organizer_validator_rejects_non_object_visual_bindings_cleanly(self) -> None:
         point = {
             "plan_id": "plan_001",

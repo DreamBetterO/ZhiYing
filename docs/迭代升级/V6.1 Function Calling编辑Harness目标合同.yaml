@@ -1,13 +1,15 @@
 schema_version: 1
 contract_id: v6-1-function-calling-editorial-harness
-status: approved_target_not_implemented
+status: implemented_and_validated
 approved_at: "2026-08-21 09:38 Asia/Shanghai"
+completed_at: "2026-09-03 19:28 Asia/Shanghai"
+accepted_run: "5e26b604aa034410be1055a72285bdb4"
 
 versioning:
   architecture_baseline: "V6.0"
   product_baseline: "1.0.0rc1"
   architecture_target: "V6.1"
-  implementation_target: "1.0.0rc2"
+  implementation_target: "1.0.0"
   release_target: "1.0.0"
   graph_version: "v6.1-editorial-tools-1"
   document_schema_version: 3
@@ -21,8 +23,8 @@ versioning:
 authority:
   orchestrator: LangGraph
   only_production_orchestrator: true
-  current_runtime_until_cutover: "V6.0 23-node GraphRuntime"
-  v6_1_documents_are_runtime_fact_before_cutover: false
+  current_runtime_until_cutover: "V6.1 23-node GraphRuntime"
+  v6_1_documents_are_runtime_fact_before_cutover: true
   node_transaction_owner: NodeExecutor
   artifact_owner: ArtifactStore
   cross_run_cache_owner: WorkspaceCache
@@ -30,7 +32,7 @@ authority:
 
 objectives:
   - "让 LLM 在证据与 RendererCapabilityManifest 内真正拥有文档规划、主动观察和局部修订权。"
-  - "正常短视频默认仅 Blueprint + Writer 两次云调用，异常纠错、观察和修订按问题触发。"
+  - "编辑阶段默认 Blueprint + Writer；知识整理按 unit 有界分批，全部调用共享每视频上限，异常纠错和修订按问题触发。"
   - "Function Calling 不可用时先降级结构化云端，云端不可用时运行完整本地确定性编辑链。"
   - "Document v3.1 由 Markdown、Word、PDF 原生消费，生产不再转回 Document v2。"
   - "内容、意图、来源、公式、视觉、页面、跨格式和降级状态均有硬质量门。"
@@ -675,6 +677,7 @@ migration:
   checkpoint_cross_graph_version_migration: false
   rollback_baseline: "V6.0 / 1.0.0rc1"
   v6_1_candidate_version: "1.0.0rc2"
+  active_product_version: "1.0.0"
 
 diagnostics:
   required_fields:
@@ -817,7 +820,7 @@ authorizations:
 definition_of_done:
   - "EditorialAgentSubgraph is the only production document editorial path."
   - "Function Calling, structured cloud and pure local paths pass the same output contract."
-  - "Normal short video meets the two-call target; conditional calls remain bounded."
+  - "Editorial calls use Blueprint + Writer while knowledge units are bounded per unit; all conditional calls remain within the per-video budget."
   - "No production v3_to_v2 rendering remains."
   - "Forbidden legacy visible sections are not injected."
   - "Confirmed math equations map to Word OMML."
@@ -828,4 +831,4 @@ definition_of_done:
   - "Checkpoint/cache replay produces zero duplicate cost for successful cloud/tool turns."
   - "Diagnostics identify owner, error code, revision and suggested rerun node."
   - "All targeted, golden, fault, UI and complete offline acceptance tests pass."
-  - "Product reaches 1.0.0rc2; formal 1.0.0 still requires user release confirmation."
+  - "Product runs as formal 1.0.0 and V6.1 completion is confirmed by the user."

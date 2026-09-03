@@ -150,7 +150,13 @@ class FileWorkspaceCache:
             else "offline"
         )
         produced = str(value.get("produced_capability", "offline"))
-        if requested == "cloud" and produced != "cloud":
+        if requested == "cloud" and str(value.get("status", "")) == "degraded":
+            return CacheDecision(
+                False,
+                CacheReason.CAPABILITY_INSUFFICIENT,
+                changed_components=("status",),
+            )
+        if requested == "cloud" and produced not in {"cloud", "tool_native", "structured_only"}:
             return CacheDecision(False, CacheReason.CAPABILITY_INSUFFICIENT, changed_components=("capability",))
         try:
             artifacts = tuple(_artifact_from_dict(item) for item in value.get("outputs", []))

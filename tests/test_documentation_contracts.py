@@ -16,15 +16,17 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class DocumentationContractTests(unittest.TestCase):
-    def test_desktop_launcher_uses_activated_conda_python_for_v6_runtime(self) -> None:
+    def test_desktop_launcher_is_environment_neutral_and_starts_the_ui(self) -> None:
         launcher_path = ROOT / "启动桌面版.cmd"
         launcher_path.read_bytes().decode("ascii")
         launcher = launcher_path.read_text(encoding="ascii").lower()
 
-        self.assertIn("conda activate imaget10", launcher)
+        self.assertIn(".venv\\scripts\\python.exe", launcher)
+        self.assertIn("py -3", launcher)
         self.assertIn("python -m zhiying desktop", launcher)
-        self.assertIn("import langgraph", launcher)
-        self.assertNotIn(".venv\\scripts", launcher)
+        self.assertNotIn("conda", launcher)
+        self.assertNotIn("imaget10", launcher)
+        self.assertNotIn("import langgraph", launcher)
 
     def test_pipeline_catalog_matches_registered_step_specs(self) -> None:
         value = yaml.safe_load((ROOT / "docs/architecture/pipeline-steps.yaml").read_text(encoding="utf-8"))

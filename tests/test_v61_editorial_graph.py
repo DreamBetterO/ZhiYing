@@ -21,6 +21,7 @@ from zhiying.editorial.writer import write_chapters_in_batches
 from zhiying.execution.tool_calling import StageBudget, ToolCallRecord, ToolTurn, build_stage_budget
 from zhiying.knowledge.editorial import brief_from_text
 from zhiying.knowledge.schema import ChapterPlan, LessonPlan, UnitPlan
+from zhiying.providers import AllModelsFailed, ModelAttempt
 
 FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "v61"
 
@@ -313,6 +314,53 @@ class EditorialGraphTests(unittest.TestCase):
             self.assertEqual(document["contract_version"], "document-v3.1", name)
             validate_document_v31(document)
             self.assertEqual(document["provenance"]["blueprint"], name)
+
+    def test_structured_blueprint_without_id_stays_on_cloud_path(self) -> None:
+        payload = _blueprint_payload()
+        payload.pop("blueprint_id")
+
+        class BlueprintThenWriterPort:
+            def request_json(self, request, *, validator, stage, cancel_check):
+                if stage == "blueprint":
+                    return validator(payload)
+                return validator({"chapters": request["draft_chapters"]})
+
+        result, _ = self._run("structured_only", json_port=BlueprintThenWriterPort())
+        self.assertEqual(result["terminal_status"], "succeeded")
+        self.assertEqual(result["effective_capability"], "structured_only")
+        self.assertRegex(result["accepted_blueprint"]["blueprint_id"], r"^bp_cloud_[0-9a-f]{12}$")
+
+    def test_structured_blueprint_without_chapter_id_stays_on_cloud_path(self) -> None:
+        payload = _blueprint_payload()
+        payload["chapters"][0].pop("chapter_id")
+
+        class BlueprintThenWriterPort:
+            def request_json(self, request, *, validator, stage, cancel_check):
+                if stage == "blueprint":
+                    return validator(payload)
+                return validator({"chapters": request["draft_chapters"]})
+
+        result, _ = self._run("structured_only", json_port=BlueprintThenWriterPort())
+        self.assertEqual(result["terminal_status"], "succeeded")
+        self.assertEqual(result["effective_capability"], "structured_only")
+        self.assertEqual(result["accepted_blueprint"]["chapters"][0]["chapter_id"], "chapter_001")
+
+    def test_failed_structured_writer_keeps_attempts_and_token_usage(self) -> None:
+        class BlueprintThenFailingWriterPort:
+            def request_json_with_info(self, request, *, validator, stage, cancel_check):
+                if stage == "blueprint":
+                    return validator(_blueprint_payload()), {
+                        "model": "blueprint-model",
+                        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+                    }
+                raise AllModelsFailed(
+                    [ModelAttempt("writer-model", False, "schema mismatch")],
+                    {"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30},
+                )
+
+        result, _ = self._run("structured_only", json_port=BlueprintThenFailingWriterPort())
+        self.assertEqual(result["model_chain"], ["blueprint-model", "writer-model"])
+        self.assertEqual(result["usage"]["total_tokens"], 45)
 
     def test_writer_batches_cache_reuses_chapters(self) -> None:
         blueprint = DocumentBlueprint.from_dict(_blueprint_payload())

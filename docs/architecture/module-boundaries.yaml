@@ -1,4 +1,12 @@
 schema_version: 1
+architecture_version: V6.1
+status: implemented_and_validated
+validated_at: "2026-09-03 19:28 Asia/Shanghai"
+cross_module_contracts:
+  - "knowledge.organizer 只规范化 CloudPayload/CourseIR 授权范围内的 plan/source/claim 引用"
+  - "editorial.agent 不接受云端重写本地组件拓扑，只消费允许的内容变更"
+  - "execution.cache 在 cloud 授权运行中拒绝复用 status=degraded 的云端结果"
+  - "documents 原生消费 Document v3.1；Markdown/Word/PDF 不经 v3_to_v2 生产降级"
 modules:
   - id: application
     owner: zhiying.application.processing

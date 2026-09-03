@@ -152,6 +152,7 @@ def run_editorial_session(
             "document_title": context.source.display_title or context.source.video_id,
             "title": context.source.display_title or context.source.video_id,
             "duration_label": f"{int(duration) // 3600:02d}:{int(duration) % 3600 // 60:02d}:{int(duration) % 60:02d}",
+            "duration_seconds": duration,
             "source_video": str(manifest.get("filename", "")),
         },
         transcript_digest=str(overlay.get("transcript_digest", "")),
@@ -279,7 +280,7 @@ class DocumentBlueprintStep:
     """
 
     spec = StepSpec(
-        "document.blueprint", 4,
+        "document.blueprint", 17,
         dependencies=(
             "knowledge.plan", "knowledge.selfcheck", "knowledge.units", "visual.evidence",
             "editorial.policy", "evidence.reconcile", "transcript.normalize", "source.probe",
@@ -297,7 +298,7 @@ class DocumentBlueprintStep:
 
     def fingerprint(self, context, inputs):
         brief = _brief(context)
-        return _material(inputs, content_level=context.policy.content_level, brief_sha256=brief.sha256, implementation=4)
+        return _material(inputs, content_level=context.policy.content_level, brief_sha256=brief.sha256, implementation=17)
 
     def execute(self, context, inputs, staging):
         from ...editorial.blueprint import validate_blueprint

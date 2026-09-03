@@ -5,6 +5,7 @@ import json
 import tempfile
 import unittest
 import zipfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from PIL import Image
@@ -113,6 +114,44 @@ class NativeWordTests(unittest.TestCase):
             render_docx_v31(source, word, project_root=root, cancel_check=lambda: False)
             self.assertEqual(count_word_omml(word), equations)
 
+    def test_word_repairs_json_escape_control_characters_and_is_valid_ooxml(self) -> None:
+        document = _v31_document()
+        document["components"][1]["text"] = "组合数 $\x08inom{n}{k}$"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "document-v3.json"
+            source.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+            word = root / "lesson.docx"
+            render_docx_v31(source, word, project_root=root, cancel_check=lambda: False)
+            with zipfile.ZipFile(word) as archive:
+                for name in archive.namelist():
+                    if name.endswith(".xml"):
+                        ET.fromstring(archive.read(name))
+                document_xml = archive.read("word/document.xml").decode("utf-8")
+        self.assertNotIn("\x08", document_xml)
+        self.assertIn("binom", document_xml)
+
+    def test_word_renders_inline_markdown_emphasis_and_math(self) -> None:
+        document = _v31_document()
+        document["components"][1]["text"] = r"计算 **第一项 $C_{20}^{20}\cdot x^2$** 后再化简。"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "document-v3.json"
+            source.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+            word = root / "lesson.docx"
+            render_docx_v31(source, word, project_root=root, cancel_check=lambda: False)
+            with zipfile.ZipFile(word) as archive:
+                document_xml = archive.read("word/document.xml").decode("utf-8")
+
+        self.assertNotIn("**", document_xml)
+        self.assertNotIn("$C_", document_xml)
+        self.assertGreaterEqual(len(__import__("re").findall(r"<m:oMath>", document_xml)), 2)
+        self.assertRegex(document_xml, r"<w:b(?:/| [^>]*)>")
+        from zhiying.editorial.quality import audit_render_outputs
+        report = audit_render_outputs(document, docx=word)
+        self.assertEqual(report["status"], "valid")
+        self.assertEqual(report["statistics"]["inline_math_expressions"], 1)
+
 
 class NativePdfTests(unittest.TestCase):
     def test_pdf_builtin_fallback_renders_pages(self) -> None:
@@ -124,6 +163,21 @@ class NativePdfTests(unittest.TestCase):
             self.assertGreater(output.stat().st_size, 0)
             reader = PdfReader(str(output))
             self.assertGreaterEqual(len(reader.pages), 1)
+
+    def test_pdf_builtin_fallback_renders_inline_markup_as_readable_text(self) -> None:
+        from pypdf import PdfReader
+        document = _v31_document()
+        document["components"][1]["text"] = r"计算 **第一项 $C_{20}^{20}\cdot x^2$**，并化简 $\frac{2^{20}}{4}$。"
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "lesson.pdf"
+            render_pdf_fallback_v31(document, output, cancel_check=lambda: False)
+            text = "\n".join(page.extract_text() or "" for page in PdfReader(str(output)).pages)
+
+        self.assertNotIn("**", text)
+        self.assertNotIn("$C_", text)
+        self.assertNotIn(r"\cdot", text)
+        self.assertIn("·", text)
+        self.assertIn("(2^20)/(4)", text.replace(" ", ""))
 
 
 class ProductionImageChainTests(unittest.TestCase):

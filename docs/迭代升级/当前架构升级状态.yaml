@@ -1,6 +1,6 @@
 change_id: v6-1-function-calling-editorial-harness
-phase: cp61_7_offline_golden_ui_acceptance
-status: cp61_7_in_progress
+phase: completed
+status: implemented_and_validated
 approved_at: "2026-08-21 09:38 Asia/Shanghai"
 cp61_0_completed_at: "2026-08-21 10:55 Asia/Shanghai"
 cp61_1_completed_at: "2026-08-21 12:10 Asia/Shanghai"
@@ -9,12 +9,15 @@ cp61_3_completed_at: "2026-08-21 13:50 Asia/Shanghai"
 cp61_4_completed_at: "2026-08-21 15:20 Asia/Shanghai"
 cp61_5_completed_at: "2026-08-21 14:46 Asia/Shanghai"
 cp61_6_completed_at: "2026-08-21 15:00 Asia/Shanghai"
+cp61_7_completed_at: "2026-09-03 19:28 Asia/Shanghai"
+cp61_8_completed_at: "2026-09-03 19:28 Asia/Shanghai"
+completed_at: "2026-09-03 19:28 Asia/Shanghai"
 
 baseline:
   product_version: "1.0.0"
   active_architecture: "V6.1 LangGraph 23-node full-pipeline runtime with EditorialAgentSubgraph and Document v3.1"
-  last_completed_change: zhiying_ui_copy_and_v1_0_0
-  tests_last_confirmed: 623
+  last_completed_change: v6_1_cloud_stability_and_source_reference_normalization
+  tests_last_confirmed: 674
   dirty_worktree: "保留用户/前序 Agent 已有改动；实施前必须重新记录基线"
 
 target:
@@ -34,15 +37,15 @@ closed_decisions:
   - "主图决定阶段、预算、降级、重试、质量门与终态；LLM只决定文档语义和阶段内工具调用。"
   - "Function Calling 使用受限、分阶段工具集；禁止任意文件、Shell、网络、MCP、图片上传和无限循环。"
   - "能力链固定为 tool_native → structured_only → local_deterministic；无需新本地文本模型即可完整产出。"
-  - "正常短视频默认 Blueprint + Writer 两次云调用；观察、局部修订和证据纠错只按失败门触发。"
+  - "编辑阶段默认 Blueprint + Writer；知识整理按 unit 有界分批；观察、局部修订和证据纠错只按失败门触发并共享总预算。"
   - "Markdown、Word、PDF 原生消费 Document v3.1；生产不再 v3 → v2，历史 v2 只读。"
   - "允许降级产物自动输出，但必须标记 degraded、实际模型链、原因和未满足质量项。"
   - "云端图片默认禁止，仅保留未来独立能力接口；MCP、多Agent、Web服务与通用插件不进入V6.1。"
-  - "用户已于 2026-08-24 确认产品正式版本为 1.0.0；版本确认不替代 CP61-7 内容审阅和 CP61-8 真实链路授权门。"
+  - "用户已于 2026-08-24 确认产品正式版本为 1.0.0，并于 2026-09-03 确认 CP61-7/CP61-8 与 V6.1 整体验收完成。"
 
 active_runtime_warning:
-  - "V6.1 CP61-5 已切换生产 EditorialAgentSubgraph 与 Document v3.1 原生三端路径；当前产品版本为 1.0.0。"
-  - "两份高数审阅成品仍待用户确认，CP61-7 保持 in_progress；不得因正式版本号而把剩余质量门记为完成。"
+  - "V6.1 已完成并经用户确认；生产路径为 EditorialAgentSubgraph、Document v3.1 与原生三端渲染，当前产品版本为 1.0.0。"
+  - "云端知识整理采用单知识单元有界分批；来源与组件结构必须收敛到本地权威合同，禁止因模型 ID 漂移整段降级。"
   - "active docs/architecture 已切换为 GraphRuntime；不得恢复旧 PipelineRunner 双执行路径。"
 
 namespace_validation:
@@ -264,17 +267,24 @@ zhiying_release_local_review:
     - "ZhiYing 1.0.0 已进入 main 与同版本 GitHub Release；下一次构建和发布重新走授权门"
     - "Git 只跟踪 release 文档/清单；release/output 只供本机检查并被忽略"
 
-next:
-  - "CP61-7 最新自动化 Gate 已通过 602 项离线测试（5 项预期失败）；图片证据到 Markdown/Word/PDF 的生产插入链路已补齐；等待用户人工确认两份高数审阅 PDF 的内容方向。"
-  - "用户确认后标记 CP61-7 completed；CP61-8 真实云能力/短视频 UI 等价验收仍需单独说明数据、端点、模型与预算并获授权。"
-  - "真实云工具能力已分两次逐次授权探测：deepseek-v4-flash-0731 被端点拒绝；glm-5.2 成功返回 get_renderer_capabilities 原生工具调用，真实用量 597 tokens。"
-  - "默认模型首位与能力注册已切到 glm-5.2/tool_native；下一次真实课程请求仍需重新披露并逐次确认。"
-  - "长视频重跑、模型/依赖变更和便携构建继续分别等待授权。"
-  - "离线验收期间检测到高数-定积分定义 Workspace 被独立新运行更新；特征测试已改读不可变 CP61-0 黄金清单，不再依赖可变 Workspace/Output。"
+completion_validation:
+  written_at: "2026-09-03 19:28 Asia/Shanghai"
+  approved_by_user: true
+  accepted_workspace: "workspace/BV1U5411V7zP"
+  accepted_run: "5e26b604aa034410be1055a72285bdb4"
+  cloud_result: "succeeded；knowledge.units=cloud；3 chapters=structured_only；degradation=[]；quality=valid"
+  cloud_usage: {prompt_tokens: 18263, completion_tokens: 20676, total_tokens: 38939}
+  stable_contracts:
+    - "organizer 默认每批一个知识单元；单视频总调用数仍有界"
+    - "organizer API 硬输出上限 0 表示不发送 max_tokens，正整数可配置"
+    - "plan/source/claim/component ID 只在授权域内规范化"
+    - "本地蓝图是组件拓扑权威；云端只修改允许的内容字段"
+    - "degraded 云端缓存不能满足新的 cloud 请求"
+  validation: "674 total；665 normal passes；1 skipped；5 expected failures；3 unrelated existing release-baseline failures；compileall/pip check/git diff check passed"
 
-blockers:
-  - "无产品方案待决策项；源码实施已授权。"
-  - "CP61-6 已完成并通过 598 项离线测试；当前无离线实施阻塞。"
-  - "CP61-7 自动化验收已通过；人工内容方向确认尚未完成，因此不得提前进入 CP61-8 或提升版本。"
-  - "glm-5.2 已通过一次最小原生工具探针；尚未验证真实课程 Blueprint/Writer 两阶段质量与稳定性。"
-  - "模型下载/变更、依赖安装/重装、真实云、长视频和便携构建继续受独立授权门控制。"
+next:
+  - "V6.1 已完成；后续只处理新的独立需求或回归问题，不再保留 CP61 待完成项。"
+  - "新的真实云端课程、模型/依赖变更、长视频重跑和便携构建仍需分别授权。"
+  - "既有 3 项发行基线测试失败另立任务处理：CONTRIBUTING.md 缺失、README 编码/标题基线、旧模型断言。"
+
+blockers: []

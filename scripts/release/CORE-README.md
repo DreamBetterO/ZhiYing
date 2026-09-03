@@ -5,10 +5,12 @@
 ## 第一次使用
 
 1. 不要只复制 EXE，请保留解压后的完整目录。
-2. 按 [`docs/DOWNLOADS.md`](docs/DOWNLOADS.md) 下载模型和工具。
-3. 将 `models` 和 `tools` 放在 `ZhiYing.exe` 同一层。
-4. 双击 `doctor.cmd` 检查配置。
-5. 双击 `ZhiYing.exe` 启动知影。
+2. 双击 `ZhiYing.exe` 启动知影。
+3. 准备处理视频时，再按 [`docs/DOWNLOADS.md`](docs/DOWNLOADS.md) 下载模型和工具。
+4. 将 `models` 和 `tools` 放在 `ZhiYing.exe` 同一层。
+5. 双击 `doctor.cmd` 检查配置是否完整。
+
+缺少模型、PyTorch 推理环境或媒体工具不影响打开软件，只会让对应的视频处理能力暂时不可用。
 
 详细步骤见 [`docs/QUICK_START.md`](docs/QUICK_START.md)。
 

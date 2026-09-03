@@ -599,7 +599,7 @@ class RenderWordStep:
         self.markdown_artifact = ArtifactId("render.markdown.draft", (f"state/render/{_render_output_name(self.output_artifact, 0, '.md')}",))
         self.word_artifact = ArtifactId("render.word.draft", (f"state/render/{_render_output_name(self.output_artifact, 1, '.docx')}",))
         self.spec = StepSpec(
-            "render.word", 3, dependencies=("document.assemble", "document.validate", "render.markdown"),
+            "render.word", 4, dependencies=("document.assemble", "document.validate", "render.markdown"),
             inputs=(DOCUMENT_V3, DOCUMENT_VALIDATION, self.markdown_artifact), outputs=(self.word_artifact,),
             config_keys=("render",), remote_cost=RemoteCost.LOCAL_HEAVY,
             owner="zhiying.execution.steps.coarse", tests=("tests/test_coarse_pipeline.py",),
@@ -630,7 +630,7 @@ class RenderPdfStep:
         self.word_artifact = ArtifactId("render.word.draft", (f"state/render/{_render_output_name(self.output_artifact, 1, '.docx')}",))
         self.pdf_artifact = ArtifactId("render.pdf.draft", (f"state/render/{_render_output_name(self.output_artifact, 2, '.pdf')}",))
         self.spec = StepSpec(
-            "render.pdf", 4, dependencies=("document.assemble", "document.validate", "render.word"),
+            "render.pdf", 6, dependencies=("document.assemble", "document.validate", "render.word"),
             inputs=(DOCUMENT_V3, DOCUMENT_VALIDATION, self.word_artifact), outputs=(self.pdf_artifact,),
             config_keys=("render",), remote_cost=RemoteCost.LOCAL_HEAVY,
             owner="zhiying.execution.steps.coarse", tests=("tests/test_coarse_pipeline.py",),
@@ -667,7 +667,7 @@ class RenderVerifyStep:
         self.word_artifact = ArtifactId("render.word.draft", (f"state/render/{_render_output_name(self.output_artifact, 1, '.docx')}",))
         self.pdf_artifact = ArtifactId("render.pdf.draft", (f"state/render/{_render_output_name(self.output_artifact, 2, '.pdf')}",))
         self.spec = StepSpec(
-            "render.verify", 2,
+            "render.verify", 3,
             dependencies=("document.assemble", "render.markdown", "render.word", "render.pdf"),
             inputs=(DOCUMENT_V3, self.markdown_artifact, self.word_artifact, self.pdf_artifact),
             outputs=(self.output_artifact,),

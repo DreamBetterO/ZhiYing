@@ -62,6 +62,5 @@ class DesktopSettingsTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "不是有效目录"):
                 save_source_download_dir(config, root / "不存在")
 
-
 if __name__ == "__main__":
     unittest.main()

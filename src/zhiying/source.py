@@ -50,6 +50,7 @@ DEFAULT_TIMEOUT_SECONDS = 30.0
 MAX_RETRIES = "10"
 FRAGMENT_RETRIES = "10"
 SOCKET_TIMEOUT = "30"
+GENERIC_EXTRACTOR_ARGS = "generic:impersonate"
 
 _BV_PATTERN = re.compile(r"(BV[0-9A-Za-z]{10})")
 _AV_PATTERN = re.compile(r"(?:^|[\s/])(av\d+)")
@@ -104,6 +105,20 @@ def host_of(url: str) -> str:
     return (urlparse(url).hostname or "").lower()
 
 
+def _cookie_args(options: Mapping[str, Any]) -> list[str]:
+    """构造 yt-dlp Cookie 文件参数。"""
+    cookies_file = str(options.get("cookies_file") or "").strip()
+    if cookies_file:
+        return ["--cookies", cookies_file]
+    return []
+
+
+def _generic_extractor_args(options: Mapping[str, Any]) -> list[str]:
+    if options.get("generic_impersonate", True):
+        return ["--extractor-args", GENERIC_EXTRACTOR_ARGS]
+    return []
+
+
 def _match_deny(host: str, deny_sites: Sequence[str]) -> str | None:
     for site in deny_sites:
         site = str(site or "").strip().lower()
@@ -130,6 +145,8 @@ def classify_ytdlp_error(stderr_text: str) -> tuple[str, str]:
         return SOURCE_DRM, "该内容含 DRM/付费保护，无法下载"
     if "http error 412" in lowered or "precondition failed" in lowered or "429" in lowered or "too many requests" in lowered:
         return DOWNLOAD_TIMEOUT, "站点临时风控或请求过于频繁，请稍后重试"
+    if "http error 403" in lowered or "cloudflare anti-bot challenge" in lowered:
+        return DOWNLOAD_TIMEOUT, "站点拒绝了自动下载请求；请稍后重试，或配置可用的站点登录状态"
     if "timed out" in lowered or "connection" in lowered or "couldn't connect" in lowered or "resolve" in lowered:
         return DOWNLOAD_TIMEOUT, "无法连接视频站点，请检查网络后重试"
     return SOURCE_UNAVAILABLE, "链接失效或视频已下架，请检查链接是否正确"
@@ -271,6 +288,8 @@ class YtDlpSourceAdapter:
             raise
         except Exception as exc:
             code, message = classify_ytdlp_error(str(exc))
+            if code == DOWNLOAD_TIMEOUT and (host == "bilibili.com" or host.endswith(".bilibili.com") or host == "b23.tv"):
+                message = "B站拒绝了当前网络的下载请求；请切换代理节点或网络后重试"
             raise SourceError(code, message, details={"url": normalized}) from exc
 
         try:
@@ -377,9 +396,8 @@ class YtDlpSourceAdapter:
 
     def _preflight_command(self, url: str, options: Mapping[str, Any]) -> list[str]:
         command = [self.tool, "--dump-json", "--no-warnings", "--no-playlist"]
-        cookies = str(options.get("cookies_file") or "").strip()
-        if cookies:
-            command += ["--cookies", cookies]
+        command += _generic_extractor_args(options)
+        command += _cookie_args(options)
         user_agent = str(options.get("user_agent") or "").strip()
         if user_agent:
             command += ["--user-agent", user_agent]
@@ -398,12 +416,11 @@ class YtDlpSourceAdapter:
             "--no-warnings",
             "--newline",
         ]
+        command += _generic_extractor_args(options)
         max_bytes = options.get("max_bytes")
         if max_bytes:
             command += ["--max-filesize", str(int(max_bytes))]
-        cookies = str(options.get("cookies_file") or "").strip()
-        if cookies:
-            command += ["--cookies", cookies]
+        command += _cookie_args(options)
         user_agent = str(options.get("user_agent") or "").strip()
         if user_agent:
             command += ["--user-agent", user_agent]

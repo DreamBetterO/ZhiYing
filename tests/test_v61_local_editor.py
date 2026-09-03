@@ -10,6 +10,7 @@ from zhiying.editorial.document import validate_document_v31
 from zhiying.editorial.evidence import EvidenceCorrectionOverlay, detect_local_corrections, transcript_digest
 from zhiying.editorial.intent import compile_editorial_policy
 from zhiying.editorial.local import (
+    _contains_known_asr_error,
     build_local_blueprint,
     compose_local_document,
     local_deterministic_repair,
@@ -44,6 +45,10 @@ def _plan_from_fixture(fixture: dict) -> LessonPlan:
 
 
 class LocalEditorTests(unittest.TestCase):
+    def test_contextual_asr_rule_does_not_reject_normal_stage_wording(self) -> None:
+        self.assertFalse(_contains_known_asr_error("上涨阶段应关注趋势确认"))
+        self.assertTrue(_contains_known_asr_error("第一类阶段需要核对原视频"))
+
     def test_local_blueprint_respects_forbidden_legacy_sections(self) -> None:
         fixture = _load_fixture("math_concept.json")
         policy = compile_editorial_policy(brief_from_text(
@@ -154,6 +159,34 @@ class LocalEditorTests(unittest.TestCase):
         self.assertIn("第二步完成换元", text)
         self.assertGreaterEqual(len(_collect(document["components"], "callout")), 2)
         self.assertGreaterEqual(len(_collect(document["components"], "list")), 1)
+
+    def test_content_block_does_not_render_identical_text_and_single_item_twice(self) -> None:
+        fixture = _load_fixture("math_example.json")
+        plan = _plan_from_fixture(fixture)
+        repeated = "第一步确认条件，第二步完成计算。"
+        units = [{
+            "unit_id": "unit_0001", "plan_id": "plan_001", "title": "计算步骤",
+            "definition_or_conclusion": repeated,
+            "source_refs": {"segment_ids": ["seg_00001"]},
+            "content_blocks": [{
+                "block_id": "b1", "type": "steps", "text": repeated, "items": [repeated],
+            }],
+        }]
+        document = compose_local_document(
+            blueprint=build_local_blueprint(
+                plan, compile_editorial_policy(brief_from_text("例题加思路")),
+            ),
+            units=units,
+            overlay=EvidenceCorrectionOverlay(
+                version=1, transcript_digest=transcript_digest(fixture["transcript"]), corrections=[],
+            ),
+            plan=plan,
+            visual_evidence=[],
+            metadata={"video_id": "deduplicated-block"},
+        )
+
+        rendered = json.dumps(document["components"], ensure_ascii=False)
+        self.assertEqual(rendered.count(repeated), 1)
 
     def test_image_component_from_selected_visual_evidence(self) -> None:
         fixture = _load_fixture("strong_visual.json")

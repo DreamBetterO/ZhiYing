@@ -42,23 +42,38 @@ class ReleaseDistributionTests(unittest.TestCase):
         self.assertIn("docs/DOWNLOADS.md", core_readme)
         self.assertNotIn("ZhiYing-Releases", core_readme)
 
-    def test_root_readme_explains_release_and_upload_boundaries(self) -> None:
+    def test_root_readme_is_a_portable_github_product_page(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         for heading in (
-            "## 项目概览",
-            "## 下载与发行",
             "## 核心能力",
-            "## 使用流程",
-            "## 从源码运行",
+            "## 性能与消耗参考",
+            "## 快速开始",
+            "## 开发",
             "## 项目结构",
-            "## 文档导航",
-            "## 参与贡献",
-            "## 许可证",
+            "## 文档",
+            "## 许可与联系",
         ):
             self.assertIn(heading, readme)
-        self.assertIn("release/output/", readme)
-        self.assertIn("不会提交", readme)
+        self.assertIn("高质量、可回溯的影像知识点整理平台", readme)
+        self.assertIn("17 分钟", readme)
+        self.assertIn("13 万", readme)
+        self.assertIn("python -m venv .venv", readme)
+        self.assertIn("python.exe -m pip install -e .", readme)
+        self.assertIn("python.exe -m zhiying desktop --config config.yaml", readme)
+        self.assertIn("启动桌面版.cmd", readme)
+        self.assertIn("模型或工具不完整也不影响打开界面", readme)
         self.assertIn("release/DOWNLOADS.md", readme)
+        self.assertIn("docs/screenshot/首页.png", readme)
+        self.assertNotIn("ImageT10", readme)
+        self.assertNotIn("requirements.txt", readme)
+        self.assertNotIn("Document v3.1", readme)
+        self.assertNotIn("D:/Study/", readme)
+        local_links = re.findall(r"!?\[[^]]*\]\(([^)]+)\)", readme)
+        for target in local_links:
+            if target.startswith(("http://", "https://", "#")):
+                continue
+            relative_target = target.split("#", 1)[0]
+            self.assertTrue((ROOT / relative_target).exists(), target)
 
     def test_publication_policy_uses_release_assets_for_the_core_zip(self) -> None:
         policy = (RELEASE_SCRIPTS / "PUBLISHING.md").read_text(encoding="utf-8")
@@ -98,6 +113,7 @@ class ReleaseDistributionTests(unittest.TestCase):
         readme = (RELEASE_ROOT / "README.md").read_text(encoding="utf-8")
         for required in ("下载", "解压", "ZhiYing.exe", "模型与工具", "遇到问题"):
             self.assertIn(required, readme)
+        self.assertIn("不影响打开软件", readme)
         for internal_term in (
             "ready_for_local_review",
             "published=false",
@@ -110,6 +126,7 @@ class ReleaseDistributionTests(unittest.TestCase):
         core_readme = (RELEASE_SCRIPTS / "CORE-README.md").read_text(encoding="utf-8")
         self.assertIn("ZhiYing.exe", core_readme)
         self.assertIn("ZhiYing-Console.exe", core_readme)
+        self.assertIn("不影响打开软件", core_readme)
         self.assertNotIn("核对 [`docs/manifests/components.json`]", core_readme)
 
     def test_public_project_declares_mit_license(self) -> None:
@@ -120,7 +137,6 @@ class ReleaseDistributionTests(unittest.TestCase):
         self.assertIn('license = { file = "LICENSE" }', pyproject)
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("MIT License", readme)
-        self.assertTrue((ROOT / "CONTRIBUTING.md").is_file())
         self.assertTrue((ROOT / "SECURITY.md").is_file())
 
         self.assertFalse((RELEASE_ROOT / "Join-ReleaseParts.ps1").exists())

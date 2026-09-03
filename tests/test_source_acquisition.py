@@ -153,6 +153,7 @@ class ClassificationTests(unittest.TestCase):
             "ERROR: Video unavailable. This video is not available in your country": (SOURCE_REGION_LOCKED, "地区/版权限制"),
             "ERROR: This video is DRM protected": (SOURCE_DRM, "DRM/付费保护"),
             "ERROR: [generic] Timed out": (DOWNLOAD_TIMEOUT, "无法连接视频站点"),
+            "ERROR: HTTP Error 403: Forbidden": (DOWNLOAD_TIMEOUT, "拒绝了自动下载请求"),
         }
         for text, (expected_code, expected_hint) in cases.items():
             with self.subTest(text=text[:40]):
@@ -188,6 +189,8 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(candidate["best_format"]["height"], 720)
         self.assertFalse(candidate["is_live"])
         self.assertFalse(candidate["drm"])
+        self.assertIn("--extractor-args", runner.calls[0])
+        self.assertIn("generic:impersonate", runner.calls[0])
 
     def test_preflight_invalid_input(self) -> None:
         adapter = self._adapter(FakeYtDlpRunner())

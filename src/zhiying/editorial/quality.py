@@ -131,22 +131,60 @@ def audit_render_outputs(
     from ..documents.render_v31 import count_word_omml
 
     issues: list[dict[str, Any]] = []
+    def count_inline_math(text: str) -> int:
+        source = str(text or "")
+        count = 0
+        index = 0
+        while index < len(source):
+            bold_at = source.find("**", index)
+            math_at = source.find("$", index)
+            candidates = [value for value in (bold_at, math_at) if value >= 0]
+            if not candidates:
+                break
+            marker_at = min(candidates)
+            if marker_at == bold_at:
+                end = source.find("**", marker_at + 2)
+                if end < 0:
+                    break
+                count += count_inline_math(source[marker_at + 2:end])
+                index = end + 2
+                continue
+            delimiter = "$$" if source.startswith("$$", marker_at) else "$"
+            end = source.find(delimiter, marker_at + len(delimiter))
+            if end < 0:
+                break
+            if source[marker_at + len(delimiter):end].strip():
+                count += 1
+            index = end + len(delimiter)
+        return count
+
+    equation_components = 0
+    inline_math_expressions = 0
+    for component in walk_components(document.get("components", [])):
+        component_type = component.get("type")
+        if component_type == "equation":
+            equation_components += 1
+        elif component_type in {"paragraph", "callout"}:
+            inline_math_expressions += count_inline_math(str(component.get("text", "")))
+        elif component_type == "list":
+            inline_math_expressions += sum(
+                count_inline_math(str(item)) for item in component.get("items", [])
+            )
     stats = {
-        "equation_components": sum(
-            1 for component in walk_components(document.get("components", []))
-            if component.get("type") == "equation"
-        ),
+        "equation_components": equation_components,
+        "inline_math_expressions": inline_math_expressions,
+        "expected_word_omml": equation_components + inline_math_expressions,
     }
 
     omml_count = None
     if docx is not None and docx.is_file() and docx.stat().st_size > 0:
         omml_count = count_word_omml(docx)
         stats["word_omml"] = omml_count
-        if omml_count != stats["equation_components"]:
+        if omml_count != stats["expected_word_omml"]:
             issues.append({
                 "code": "MATH_OMML_MISMATCH", "severity": "error",
                 "owner_component": "render.word", "detail": (
-                    f"Word OMML({omml_count}) != equation 组件数({stats['equation_components']})"
+                    f"Word OMML({omml_count}) != 预期公式数({stats['expected_word_omml']})"
                 ),
             })
 

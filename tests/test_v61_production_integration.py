@@ -30,10 +30,12 @@ class _JsonPort:
     def __init__(self, blueprint):
         self.blueprint = blueprint
         self.calls = 0
+        self.writer_payloads = []
 
     def request_json(self, payload, *, validator, stage, **_kwargs):
         self.calls += 1
         if stage == "writer":
+            self.writer_payloads.append(payload)
             return validator({"chapters": payload["draft_chapters"]})
         return validator(self.blueprint)
 
@@ -101,7 +103,7 @@ class V61ProductionIntegrationTests(unittest.TestCase):
             "overlay": {"version": 1, "transcript_digest": "sha256:test", "corrections": []},
             "visual_evidence": [], "policy": policy,
             "transcript": {"segments": [{"segment_id": "seg_1", "text": "定义正文"}]},
-            "manifest": {"duration_seconds": 1}, "blueprint": blueprint,
+            "manifest": {"duration_seconds": 120}, "blueprint": blueprint,
         }
 
     def test_production_editorial_session_offline_constructs_no_cloud_port(self) -> None:
@@ -135,6 +137,66 @@ class V61ProductionIntegrationTests(unittest.TestCase):
         self.assertEqual(result["provenance"]["blueprint"], "structured_only")
         self.assertEqual(ports.calls, ["cloud"])
         self.assertEqual(json_port.calls, 2)
+
+    def test_short_video_uses_cloud_blueprint_without_redundant_cloud_writer(self) -> None:
+        from zhiying.execution.steps.editorial_steps import run_editorial_session
+
+        data = self._editorial_inputs()
+        data["manifest"]["duration_seconds"] = 33
+        json_port = _JsonPort(data["blueprint"])
+        ports = _Ports({"cloud": json_port})
+        context = SimpleNamespace(
+            policy=SimpleNamespace(cloud_authorized=True), services=ports,
+            options=SimpleNamespace(knowledge={}),
+            source=SimpleNamespace(video_id="lesson", display_title="课程"),
+        )
+
+        result = run_editorial_session(
+            context, **{key: value for key, value in data.items() if key != "blueprint"},
+        )
+
+        self.assertEqual(result["terminal_status"], "succeeded")
+        self.assertEqual(json_port.calls, 1)
+        self.assertEqual(json_port.writer_payloads, [])
+        self.assertEqual(result["provenance"]["writer_strategy"], "short_video_local")
+
+    def test_structured_writer_sends_each_chapter_with_dynamic_output_budget(self) -> None:
+        from zhiying.execution.steps.editorial_steps import run_editorial_session
+
+        data = self._editorial_inputs()
+        data["plan"]["chapters"].append({
+            "chapter_id": "chapter_002", "title": "性质", "source_segment_ids": ["seg_2"],
+            "unit_plans": [{
+                "plan_id": "plan_002", "title": "性质", "role": "core",
+                "knowledge_types": ["concept"],
+            }],
+        })
+        data["units"].append({
+            "unit_id": "unit_002", "plan_id": "plan_002", "type": "concept",
+            "title": "性质", "definition_or_conclusion": "性质正文",
+            "source_refs": {"segment_ids": ["seg_2"]},
+        })
+        data["blueprint"]["chapters"].append({
+            "chapter_id": "chapter_002", "title": "性质", "mode": "concept",
+            "unit_refs": ["plan_002"], "component_intents": ["definition"],
+            "layout_hint": "full_width", "depth": "standard", "target_chars": 360,
+        })
+        json_port = _JsonPort(data["blueprint"])
+        ports = _Ports({"cloud": json_port})
+        context = SimpleNamespace(
+            policy=SimpleNamespace(cloud_authorized=True), services=ports,
+            options=SimpleNamespace(knowledge={}),
+            source=SimpleNamespace(video_id="lesson", display_title="课程"),
+        )
+
+        result = run_editorial_session(
+            context, **{key: value for key, value in data.items() if key != "blueprint"},
+        )
+
+        self.assertEqual(result["terminal_status"], "succeeded")
+        self.assertEqual(json_port.calls, 3)
+        self.assertEqual([len(item["draft_chapters"]) for item in json_port.writer_payloads], [1, 1])
+        self.assertTrue(all(item["omit_max_tokens"] for item in json_port.writer_payloads))
 
     def test_production_editorial_session_tool_native_uses_restricted_tool_port(self) -> None:
         from zhiying.execution.steps.editorial_steps import run_editorial_session

@@ -13,7 +13,7 @@ import os
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
-from ..utils import ensure_not_cancelled, run_cancellable
+from ..utils import ensure_not_cancelled, repair_structured_text_controls, run_cancellable
 
 from ..editorial.document import validate_document_v31, walk_components
 
@@ -169,7 +169,13 @@ def render_docx_v31(
 ) -> Path:
     script = Path(__file__).resolve().parents[3] / "scripts" / "renderers" / "render_docx_v31.mjs"
     figures_path = output.with_suffix(".figures.json")
+    safe_document_path = output.with_suffix(".render-safe.json")
     figures_path.parent.mkdir(parents=True, exist_ok=True)
+    document = json.loads(document_json.read_text(encoding="utf-8"))
+    safe_document_path.write_text(
+        json.dumps(repair_structured_text_controls(document), ensure_ascii=False),
+        encoding="utf-8",
+    )
     figures_path.write_text(
         json.dumps({key: dict(value) for key, value in dict(figure_map or {}).items()}, ensure_ascii=False),
         encoding="utf-8",
@@ -177,7 +183,7 @@ def render_docx_v31(
     try:
         run_cancellable(
             [
-                "node", str(script), str(document_json), str(output),
+                "node", str(script), str(safe_document_path), str(output),
                 str(project_root.resolve()), str(figures_path),
             ],
             cancel_check=cancel_check or (lambda: False),
@@ -185,10 +191,33 @@ def render_docx_v31(
         )
     finally:
         figures_path.unlink(missing_ok=True)
+        safe_document_path.unlink(missing_ok=True)
     if not output.is_file() or output.stat().st_size == 0:
         raise RuntimeError(f"Word v3.1 渲染输出缺失：{output.name}")
     _normalize_docx_for_replay(output)
+    _validate_docx_package(output)
     return output
+
+
+def _validate_docx_package(output: Path) -> None:
+    """验证 Word 包及其中所有 XML，避免把不可打开的半成品标记为成功。"""
+    import xml.etree.ElementTree as ET
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(output, "r") as archive:
+            corrupt = archive.testzip()
+            if corrupt:
+                raise RuntimeError(f"Word 包含损坏条目：{corrupt}")
+            required = {"[Content_Types].xml", "_rels/.rels", "word/document.xml"}
+            missing = sorted(required.difference(archive.namelist()))
+            if missing:
+                raise RuntimeError(f"Word 包缺少必要条目：{', '.join(missing)}")
+            for name in archive.namelist():
+                if name.endswith(".xml"):
+                    ET.fromstring(archive.read(name))
+    except (zipfile.BadZipFile, ET.ParseError, OSError) as exc:
+        raise RuntimeError(f"Word 文档结构无效：{exc}") from exc
 
 
 def _normalize_docx_for_replay(output: Path) -> None:
@@ -312,6 +341,95 @@ def render_pdf_fallback_v31(
     def escape(text: str) -> str:
         return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
+    def latex_to_readable(text: str) -> str:
+        import re
+
+        symbols = {
+            "cdot": "·", "times": "×", "le": "≤", "leq": "≤", "ge": "≥", "geq": "≥",
+            "neq": "≠", "sum": "Σ", "prod": "Π", "infty": "∞", "to": "→", "pm": "±",
+            "ln": "ln", "exp": "exp", "left": "", "right": "",
+        }
+
+        def read_group(source: str, start: int) -> tuple[str, int] | None:
+            if start >= len(source) or source[start] != "{":
+                return None
+            depth = 0
+            for position in range(start, len(source)):
+                if source[position] == "{":
+                    depth += 1
+                elif source[position] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        return source[start + 1:position], position + 1
+            return None
+
+        source = str(text)
+        result: list[str] = []
+        index = 0
+        while index < len(source):
+            if source[index] == "\\":
+                command = re.match(r"\\([A-Za-z]+)", source[index:])
+                if command:
+                    name = command.group(1)
+                    next_index = index + len(name) + 1
+                    if name == "frac":
+                        numerator = read_group(source, next_index)
+                        denominator = read_group(source, numerator[1]) if numerator else None
+                        if numerator and denominator:
+                            result.append(
+                                f"({latex_to_readable(numerator[0])})/({latex_to_readable(denominator[0])})"
+                            )
+                            index = denominator[1]
+                            continue
+                    result.append(symbols.get(name, name))
+                    index = next_index
+                    continue
+                if source.startswith(r"\,", index):
+                    result.append(" ")
+                    index += 2
+                    continue
+            if source[index] not in "{}":
+                result.append(source[index])
+            index += 1
+        return "".join(result)
+
+    def inline_markup(text: str, *, bold: bool = False) -> str:
+        source = str(text or "")
+        parts: list[str] = []
+        index = 0
+
+        def formatted(value: str) -> str:
+            escaped = escape(value)
+            return f"<b>{escaped}</b>" if bold and escaped else escaped
+
+        while index < len(source):
+            bold_at = source.find("**", index)
+            math_at = source.find("$", index)
+            candidates = [value for value in (bold_at, math_at) if value >= 0]
+            if not candidates:
+                parts.append(formatted(source[index:]))
+                break
+            marker_at = min(candidates)
+            parts.append(formatted(source[index:marker_at]))
+            if marker_at == bold_at:
+                end = source.find("**", marker_at + 2)
+                if end < 0:
+                    parts.append(formatted(source[marker_at:]))
+                    break
+                parts.append(inline_markup(source[marker_at + 2:end], bold=True))
+                index = end + 2
+                continue
+            delimiter = "$$" if source.startswith("$$", marker_at) else "$"
+            end = source.find(delimiter, marker_at + len(delimiter))
+            if end < 0:
+                parts.append(formatted(source[marker_at:]))
+                break
+            latex = source[marker_at + len(delimiter):end].strip()
+            readable = escape(latex_to_readable(latex))
+            parts.append(f"<b>{readable}</b>" if bold and readable else readable)
+            index = end + len(delimiter)
+        return "".join(parts)
+
     def walk(components: Iterable[Mapping[str, Any]], level: int = 2) -> None:
         for component in components:
             ctype = component.get("type")
@@ -321,12 +439,12 @@ def render_pdf_fallback_v31(
                 story.append(Paragraph(escape(_component_text(component)), style))
             elif ctype == "paragraph":
                 if component.get("text"):
-                    story.append(Paragraph(escape(component["text"]), body))
+                    story.append(Paragraph(inline_markup(component["text"]), body))
             elif ctype == "list":
                 for item in component.get("items", []):
-                    story.append(Paragraph(f"•  {escape(item)}", body))
+                    story.append(Paragraph(f"•  {inline_markup(item)}", body))
             elif ctype == "equation":
-                story.append(Paragraph(f"[公式] {escape(component.get('latex', ''))}", body))
+                story.append(Paragraph(f"[公式] {escape(latex_to_readable(component.get('latex', '')))}", body))
             elif ctype == "image":
                 entry = figure_map.get(str(component.get("visual_id", "")))
                 image_path = Path(str(entry.get("path", ""))) if entry else None
@@ -342,7 +460,7 @@ def render_pdf_fallback_v31(
                     story.append(Paragraph(escape(component["caption"]), caption))
             elif ctype == "callout":
                 if component.get("text"):
-                    story.append(Paragraph(escape(component["text"]), callout))
+                    story.append(Paragraph(inline_markup(component["text"]), callout))
             elif ctype == "page_break":
                 story.append(Spacer(1, 6 * mm))
             elif ctype == "container":

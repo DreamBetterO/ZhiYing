@@ -1,16 +1,36 @@
 @echo off
+setlocal
 cd /d "%~dp0"
-call conda activate ImageT10
-if errorlevel 1 (
-  echo [ZhiYing] Cannot activate conda environment ImageT10.
-  pause
-  exit /b 1
-)
+
 set "PYTHONPATH=%~dp0src;%PYTHONPATH%"
-python -c "import langgraph; import langgraph.checkpoint.sqlite" 2>nul
+
+if exist ".venv\Scripts\python.exe" (
+  ".venv\Scripts\python.exe" -m zhiying desktop --config "%~dp0config.yaml"
+  goto :finished
+)
+
+where py >nul 2>nul
+if not errorlevel 1 (
+  py -3 -m zhiying desktop --config "%~dp0config.yaml"
+  goto :finished
+)
+
+where python >nul 2>nul
+if not errorlevel 1 (
+  python -m zhiying desktop --config "%~dp0config.yaml"
+  goto :finished
+)
+
+echo [ZhiYing] Python 3.11 or newer was not found.
+echo Install Python, then follow the source setup steps in README.md.
+pause
+exit /b 1
+
+:finished
 if errorlevel 1 (
-  echo [ZhiYing] ImageT10 is missing V6 runtime dependencies. Install project dependencies and retry.
+  echo.
+  echo [ZhiYing] Startup failed. Install the project dependencies shown in README.md and retry.
   pause
   exit /b 1
 )
-python -m zhiying desktop --config config.yaml
+endlocal

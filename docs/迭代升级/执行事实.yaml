@@ -1,6 +1,109 @@
 purpose: "供执行 Agent 按需检索；不是用户版本时间线"
 schema_version: 1
 
+v6_1_structured_drift_repair_2026_09_03:
+  written_at: "2026-09-03 14:09 Asia/Shanghai"
+  status: implemented_offline_validated
+  diagnosed_run:
+    workspace: "workspace/［高等数学怎么办_高等数学］莱布尼茨公式的运用-3f25372637fa"
+    run_id: "a19a8553c4b9492681324f03da295001"
+    findings:
+      - "knowledge.units 再次因云端 plan_id 未逐项覆盖而整批回退离线，证明问题是结构化模型轻微漂移被过严校验放大，而非单个 claim 特例"
+      - "document quality gate 只验证结构与来源，没有阻止离线回退后的 ASR 口语噪声成为讲解正文"
+      - "Writer 在省略 max_tokens 后仍被端点以 invalid_parameter_error 拒绝，JSON Object response_format 是剩余兼容变量"
+  delivered:
+    - "当返回知识点数量与计划一致时，保留唯一合法 plan_id，并把重复或越界 plan_id 按缺失计划顺序确定性恢复；错误信息同时记录 expected/actual"
+    - "Writer 使用普通 JSON 提示，不再发送 response_format；响应仍经本地 JSON 解析、组件 ID 校验和来源恢复"
+    - "knowledge.units 实现版本提升至 6，document.blueprint 提升至 9，使目标 Workspace 的版本 5/8 缓存自动失效"
+  validation:
+    focused: "95 tests OK"
+    unittest: "657 tests；648 passed，1 skipped，5 expected failures；3 项既有发行基线失败"
+    compileall: passed
+    pip_check: "No broken requirements found；既有 ~ransformers invalid distribution warning"
+    git_diff_check: "passed；仅既有 LF/CRLF warning"
+  boundaries:
+    cloud_requests: 0
+    model_or_dependency_changes: 0
+
+v6_1_bilibili_explanation_quality_repair_2026_09_03:
+  written_at: "2026-09-03 13:58 Asia/Shanghai"
+  status: implemented_offline_validated
+  diagnosed_run:
+    workspace: "workspace/BV1U5411V7zP"
+    run_id: "3a076ee4fbdd4c65b9fd5c5aad733503"
+    findings:
+      - "knowledge.units 云端结果因一个被模型改写末位哈希的 claim_id 整批拒绝：返回 claim_plan_007_003_b2d840，CourseIR 权威值为 claim_plan_007_003_b2d845"
+      - "整批回退离线后直接使用 ASR 口语文本，产生 n解导数、java、long、if x、魅求导等错误讲解"
+      - "Writer 三章均因结构化 JSON 请求同时发送 max_tokens 而被百炼返回 invalid_parameter_error"
+  delivered:
+    - "按 plan_id 与 claim 序号确定性恢复被模型改写的 claim 哈希；无法对应的越界 claim 引用移除，不再丢弃整批有效讲解"
+    - "Writer JSON Object 请求通过适配器彻底省略 max_tokens，保留超时、调用次数和模型自身输出上限"
+    - "knowledge.units 实现版本提升至 5，document.blueprint 实现版本提升至 8，目标 Workspace 的旧缓存将自动失效"
+  validation:
+    workspace_replay: "claim_plan_007_003_b2d840 -> claim_plan_007_003_b2d845"
+    focused: "93 tests OK"
+    unittest: "655 tests；646 passed，1 skipped，5 expected failures；3 项既有发行基线失败"
+    compileall: passed
+    pip_check: "No broken requirements found；既有 ~ransformers invalid distribution warning"
+    git_diff_check: "passed；仅既有 LF/CRLF warning"
+  boundaries:
+    cloud_requests: 0
+    model_or_dependency_changes: 0
+
+v6_1_short_video_writer_degradation_repair_2026_09_03:
+  written_at: "2026-09-03 11:24 Asia/Shanghai"
+  status: implemented_offline_validated
+  diagnosed_run:
+    workspace: "workspace/human-in-the-loop-bc23e82ae13d"
+    run_id: "cfca13740923499a8a4704782dcded64"
+    finding: "动态输出额度与逐章请求均已生效，但 33 秒视频仅有 264 字有效证据，冗余章节云端润色仍立即返回 HTTP 400"
+  delivered:
+    - "writer 云请求不再携带不可变 source_refs、source_segment_ids、links 或 video-study:// 本地回看地址；候选返回后按 component_id 确定性恢复"
+    - "60 秒以内短视频由云端完成知识提炼和 Blueprint 后直接本地确定性组章，通过质量门即成功，不再发起冗余章节云请求"
+    - "APIStatusError 日志保留供应商安全 code/param，不记录响应 message、请求正文或秘密"
+    - "document.blueprint 实现版本提升至 7，使旧降级缓存自动失效"
+  validation:
+    focused: "64 tests OK"
+    unittest: "653 tests；644 passed，1 skipped，5 expected failures；3 项既有发行基线失败"
+    compileall: passed
+    pip_check: "No broken requirements found；既有 ~ransformers invalid distribution warning"
+    git_diff_check: "passed；仅既有 LF/CRLF warning"
+    cache_invalidation: "目标 Workspace 缓存实现版本为 5，新版本为 7，下一次运行判定 STEP_VERSION_CHANGED"
+  known_baseline_failures:
+    - "缺少 CONTRIBUTING.md"
+    - "README 中文编码/标题断言"
+    - "默认模型断言仍期望 glm-5.2，而当前用户配置为 qwen3.7-flash-2026-07-15"
+  boundaries:
+    cloud_requests: 0
+    model_or_dependency_changes: 0
+
+v6_1_writer_http_400_repair_2026_09_03:
+  written_at: "2026-09-03 10:39 Asia/Shanghai"
+  status: implemented_offline_validated
+  diagnosed_run:
+    workspace: "workspace/agent-bc23e82ae13d"
+    run_id: "cbca50004a0b4529873789b00c27ec23"
+    finding: "知识规划、知识单元与文档蓝图云端请求成功；章节编辑请求约 3185 字符却固定申请 12000 输出 Token，兼容端点立即返回 HTTP 400，导致 document.write 降级"
+  delivered:
+    - "章节编辑输出额度根据紧凑请求体动态估算，并受运行配置 max_output_tokens 上限约束；该样本由固定 12000 调整为 4608"
+    - "多章节文档改为逐章云端编辑；单章失败只回退该章并记录 chapter_id，不再拖累所有章节"
+    - "document.blueprint 实现版本由 4 提升至 5，确保旧降级缓存不会掩盖修复"
+  validation:
+    focused: "56 tests OK"
+    unittest: "651 tests；642 passed，1 skipped，5 expected failures；3 项既有发行基线失败"
+    compileall: passed
+    pip_check: "No broken requirements found；既有 ~ransformers invalid distribution warning"
+    git_diff_check: "passed；仅既有 LF/CRLF warning"
+  known_baseline_failures:
+    - "缺少 CONTRIBUTING.md"
+    - "README 中文编码/标题断言"
+    - "默认模型断言仍期望 glm-5.2，而当前用户配置为 qwen3.7-flash-2026-07-15"
+  boundaries:
+    cloud_requests: 0
+    model_or_dependency_changes: 0
+    long_video_reruns: 0
+    portable_builds: 0
+
 zhiying_ui_copy_and_v1_0_0_2026_08_24:
   written_at: "2026-08-24 14:02 Asia/Shanghai"
   status: completed
@@ -1278,3 +1381,159 @@ v4_1_delivery_2026_08_14:
         source_video_ids: ["test4-1-da2230dd85c7", "test4-2-c380e216e27c"]
         source_links: 15
       result: "输出感知分批、跨视频精炼、来源回填与最终渲染全链路通过"
+
+v6_1_cloud_structure_cache_render_repair_2026_09_03:
+  status: "implemented_and_cloud_validated"
+  written_at: "2026-09-03T14:55:45+08:00"
+  sample: "workspace/［高等数学怎么办_高等数学］莱布尼茨公式的运用-3f25372637fa"
+  root_causes:
+    - "FallbackChatClient 执行语义校验后丢弃校验器返回的规范化对象，导致修复只通过校验却未进入文档"
+    - "Writer 只校验组件 ID 集合而未固定树形拓扑，端点结构漂移可把章节容器误放入 children"
+    - "cloud 缓存请求未把 structured_only/tool_native 视为已满足，导致有效云端结果被重复请求"
+    - "Word/PDF 行内 Markdown 与 LaTeX 缺少完整渲染及对应质量计数"
+  implementation:
+    - "JSON 提取支持修复普通 JSON 中未转义的常用 LaTeX 反斜杠"
+    - "保留语义校验器返回值；章节结构以本地蓝图恢复父子关系、类型、语义角色和顺序"
+    - "云端能力缓存兼容 cloud、tool_native 与 structured_only"
+    - "Word 行内粗体和公式转为 TextRun/OMML；PDF 行内标记与嵌套分式转为可读文本"
+    - "渲染质量门同时统计组件公式和行内公式，避免有效 OMML 被误判为降级"
+  cloud_validation:
+    accepted_run: "49281576c18c4a2d85af90f2d2c511e9"
+    result: "succeeded；3 个章节均为 structured_only；无 degradation_reasons"
+    usage: "10482 tokens"
+    cached_final_run: "799b71ebf99c4a989bea450c2c8fdc2e"
+    cached_result: "succeeded；23 个步骤命中缓存；本轮无云端请求；7.819 秒"
+  artifact_validation:
+    duplicate_substantial_component_texts: 0
+    images: 2
+    source_references: 6
+    word: "DOCX ZIP/OOXML 可读，28 个段落、3 个媒体文件；行内公式使用 OMML"
+    pdf: "2 页；逐页渲染复核无裁切、重叠和裸露 Markdown/LaTeX 标记"
+  validation:
+    focused: "相关新增回归测试通过"
+    unittest: "665 total；656 normal passes；1 skipped；5 expected failures；3 unrelated existing failures"
+    compileall: "passed"
+    pip_check: "No broken requirements found；既有 ~ransformers warning 保留"
+    git_diff_check: "passed；仅 LF/CRLF warning"
+  existing_failures:
+    - "CONTRIBUTING.md 缺失"
+    - "README 中文编码/标题发行基线不匹配"
+    - "模型能力旧测试仍要求 glm-5.2，而当前保存模型为 qwen3.7-flash-2026-07-15"
+  boundaries:
+    - "未读取或输出 .env；未下载或更改模型；未构建便携包"
+    - "历史 Workspace 与失败运行记录均保留"
+
+v6_1_actual_ui_degradation_final_repair_2026_09_03:
+  status: "implemented_and_cloud_validated"
+  written_at: "2026-09-03T15:36:10+08:00"
+  sample: "workspace/［高等数学怎么办_高等数学］莱布尼茨公式的运用-3f25372637fa"
+  reported_run: "9fe99def04744b06923c6f3ab18803ce"
+  root_causes:
+    - "知识整理把多个计划放入一次请求时，端点会遗漏部分 plan_id；原逻辑把整批视为失败并降级"
+    - "请求硬输出上限可能产生 finish_reason=length；取消硬上限后仍需控制单次任务复杂度"
+    - "Writer 可能返回额外、改名或缺失的 component_id，以及带尾逗号的近似 JSON"
+    - "带 degraded 状态的旧 structured_only 缓存曾可满足新的 cloud 请求，导致降级结果被复用"
+  implementation:
+    - "知识整理默认每批一个知识单元，单次任务复杂度由本地批量配置控制"
+    - "organizer_request_max_output_tokens=0 时不向接口发送硬 max_tokens；正整数可从配置或环境变量调整"
+    - "组织器保留期望 plan_id 并丢弃多余结果；Writer 仅把已知组件内容作为云端修改，缺失组件沿用本地内容"
+    - "本地权威拓扑固定 component_id、类型、语义角色、父子关系和顺序"
+    - "JSON 提取可修复字符串外的尾逗号；云端授权请求拒绝复用 degraded 缓存"
+  cloud_validation:
+    accepted_run: "0c1d5c375c9b4e72aa735917e5562e63"
+    result: "succeeded；knowledge.units 与两个章节均为云端结构输出；无 degradation_reasons"
+    elapsed_seconds: 151.891
+    usage:
+      prompt_tokens: 14702
+      completion_tokens: 18552
+      total_tokens: 33254
+    cached_final_run: "9f9c357341644f3cbfe3c0de18fc0f5f"
+    cached_result: "succeeded；23 个步骤命中缓存；0 云端 token；内部耗时 0.532 秒"
+  artifact_validation:
+    quality_status: "valid"
+    quality_issues: 0
+    images: 3
+    source_references: 6
+    render_verify: "succeeded"
+    pdf_backend: "built_in_v31"
+  validation:
+    focused: "66 tests passed"
+    unittest: "673 total；664 normal passes；1 skipped；5 expected failures；3 unrelated existing failures"
+    compileall: "passed"
+    pip_check: "No broken requirements found；既有 ~ransformers warning 保留"
+    git_diff_check: "passed；仅 LF/CRLF warning"
+  existing_failures:
+    - "CONTRIBUTING.md 缺失"
+    - "README 中文编码/标题发行基线不匹配"
+    - "模型能力旧测试仍要求 glm-5.2，而当前保存模型为 qwen3.7-flash-2026-07-15"
+  boundaries:
+    - "沿用用户已授权的同一视频、端点和保存模型进行实际云端验证"
+    - "未读取或输出 .env；未下载或更改模型；未构建便携包"
+    - "历史 Workspace、失败运行和既有用户改动均保留"
+
+v6_1_bv_source_reference_drift_repair_2026_09_03:
+  status: "implemented_and_cloud_validated"
+  written_at: "2026-09-03T16:22:57+08:00"
+  sample: "workspace/BV1U5411V7zP"
+  reported_run: "3346bf5f9aa04921bf836da8d5bec843"
+  root_cause:
+    step_id: "knowledge.units"
+    event_code: "course_ir_offline_fallback"
+    detail: "云端为 plan_001 返回了输入集合之外的来源块编号；旧校验器把来源标签漂移视为整批失败，转为本地 CourseIR 并把运行标记为 degraded"
+  implementation:
+    - "来源引用只允许收敛到当前 plan 在 CourseIR 中已授权的真实 source_ids"
+    - "有效引用保留、无效引用剔除；引用全部漂移时回填该 plan 的权威来源"
+    - "递归修复 knowledge point 与 content block 的 source_block_ids/source_ids"
+    - "原本有意为空的 model_aid 来源保持为空，不伪造证据"
+    - "knowledge.units 步骤与 organizer 实现版本提升到 12，使旧降级缓存失效"
+  cloud_validation:
+    accepted_run: "5e26b604aa034410be1055a72285bdb4"
+    result: "succeeded；knowledge.units=cloud；3 个章节=structured_only；无 degradation_summary、degradation_reasons 或 error_codes"
+    elapsed_seconds: 282.688
+    usage:
+      prompt_tokens: 18263
+      completion_tokens: 20676
+      total_tokens: 38939
+    model: "qwen3.7-flash-2026-07-15"
+    endpoint: "阿里云 OpenAI-compatible 已配置端点"
+    image_uploads: 0
+  artifact_validation:
+    quality_status: "valid"
+    quality_issues: 0
+    images: "0；本次两个视觉证据候选均为 no_match，因此按证据门槛不插图，非插入链路失败"
+    source_references: 6
+    docx: "14897 bytes；ZIP/OOXML 结构有效"
+    pdf: "155918 bytes；PDF 文件头有效；built_in_v31"
+    markdown: "6111 bytes"
+  validation:
+    focused: "67 tests passed"
+    unittest: "674 total；665 normal passes；1 skipped；5 expected failures；3 unrelated existing failures"
+    compileall: "passed"
+    pip_check: "No broken requirements found；既有 ~ransformers warning 保留"
+    git_diff_check: "passed；仅 LF/CRLF warning"
+  existing_failures:
+    - "CONTRIBUTING.md 缺失"
+    - "README 中文编码/标题发行基线不匹配"
+    - "模型能力旧测试仍要求 glm-5.2，而当前保存模型为 qwen3.7-flash-2026-07-15"
+  boundaries:
+    - "真实云端请求经用户逐次明确授权；未上传图片"
+    - "未读取或输出 .env；未下载或更改模型；未构建便携包"
+    - "失败运行与历史 Workspace 保留用于审计"
+
+v6_1_completion_approved_2026_09_03:
+  status: "completed_and_user_approved"
+  written_at: "2026-09-03T19:28:23+08:00"
+  version: "V6.1"
+  product_version: "1.0.0"
+  approval: "用户认可本轮修改，并明确要求作为 V6.1 升级写入问题记录和架构文档"
+  completed_checkpoints: [CP61-0, CP61-1, CP61-2, CP61-3, CP61-4, CP61-5, CP61-6, CP61-7, CP61-8]
+  accepted_workspace: "workspace/BV1U5411V7zP"
+  accepted_run: "5e26b604aa034410be1055a72285bdb4"
+  validation: "run=succeeded；degradation=[]；quality=valid；674 tests total；compileall/pip check/git diff check passed"
+  architecture_contracts:
+    - "LangGraph 23 节点是唯一生产编排"
+    - "知识整理按 unit 有界分批，API 输出硬上限可关闭或配置"
+    - "云端 ID 只在 CourseIR/CloudPayload 授权域内规范化"
+    - "本地 DocumentBlueprint 固定组件拓扑，云端只修改允许内容"
+    - "degraded 云缓存不满足新的 cloud 请求"
+    - "Document v3.1 原生渲染 Markdown/Word/PDF"

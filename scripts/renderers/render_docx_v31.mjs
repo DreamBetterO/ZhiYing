@@ -116,6 +116,46 @@ function parseLatex(latex) {
   return nodes;
 }
 
+function parseInline(text, options = {}) {
+  const source = String(text || "");
+  const nodes = [];
+  let index = 0;
+  const pushText = (value) => {
+    if (value) nodes.push(new TextRun({ text: value, ...options }));
+  };
+  while (index < source.length) {
+    const boldAt = source.indexOf("**", index);
+    const mathAt = source.indexOf("$", index);
+    const candidates = [boldAt, mathAt].filter((value) => value >= 0);
+    if (!candidates.length) {
+      pushText(source.slice(index));
+      break;
+    }
+    const markerAt = Math.min(...candidates);
+    pushText(source.slice(index, markerAt));
+    if (markerAt === boldAt) {
+      const end = source.indexOf("**", markerAt + 2);
+      if (end < 0) {
+        pushText(source.slice(markerAt));
+        break;
+      }
+      nodes.push(...parseInline(source.slice(markerAt + 2, end), { ...options, bold: true }));
+      index = end + 2;
+      continue;
+    }
+    const delimiter = source.startsWith("$$", markerAt) ? "$$" : "$";
+    const end = source.indexOf(delimiter, markerAt + delimiter.length);
+    if (end < 0) {
+      pushText(source.slice(markerAt));
+      break;
+    }
+    const latex = source.slice(markerAt + delimiter.length, end).trim();
+    if (latex) nodes.push(new MathBlock({ children: parseLatex(latex) }));
+    index = end + delimiter.length;
+  }
+  return nodes;
+}
+
 // ---------------------------------------------------------------------------
 // 组件树 -> docx children
 // ---------------------------------------------------------------------------
@@ -154,14 +194,14 @@ function renderComponent(component) {
       return;
     }
     case "paragraph":
-      if (component.text) children.push(new Paragraph({ style: "PointBody", children: [new TextRun(String(component.text))] }));
+      if (component.text) children.push(new Paragraph({ style: "PointBody", children: parseInline(component.text) }));
       return;
     case "list":
       for (const item of component.items || []) {
         children.push(new Paragraph({
           style: "PointBody",
           numbering: { reference: "knowledge-bullets", level: 0 },
-          children: [new TextRun(String(item))],
+          children: parseInline(item),
         }));
       }
       return;
@@ -207,7 +247,7 @@ function renderComponent(component) {
       if (component.text) children.push(new Paragraph({
         style: "LeadCallout",
         border: { left: { style: BorderStyle.SINGLE, size: 12, color: TIP_BORDER, space: 8 } },
-        children: [new TextRun(String(component.text))],
+        children: parseInline(component.text),
       }));
       return;
     case "source_reference":

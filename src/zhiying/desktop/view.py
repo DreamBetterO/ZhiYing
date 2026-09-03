@@ -349,7 +349,7 @@ class DesktopView:
                 return "break"
             try:
                 self.controller.add_url(url)
-            except (ValueError, RuntimeError) as exc:
+            except (OSError, ValueError, RuntimeError) as exc:
                 messagebox.showwarning("无法添加", str(exc), parent=dialog)
                 return "break"
             hint.set("已加入队列：下载完成后会显示“已就绪”，勾选后点击“生成本地文档”即可开始")
@@ -375,6 +375,7 @@ class DesktopView:
                 messagebox.showwarning("无法保存地址", str(exc), parent=dialog)
 
         ttk.Button(left_buttons, text="修改保存地址", command=choose_save_dir).pack(side="left")
+
 
         buttons = ttk.Frame(frame, style="Card.TFrame")
         buttons.pack(side="right", anchor="e", pady=(12, 0))

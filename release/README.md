@@ -1,4 +1,4 @@
-# 知影windows 发行版
+# 知影 Windows 发行版
 
 知影可以把本地视频或视频链接整理成 Markdown、Word 和 PDF 学习文档。
 
@@ -6,9 +6,11 @@
 
 1. 下载 `ZhiYing-Core-<版本>-win-x64.zip`。
 2. 将 ZIP **完整解压**到一个单独文件夹，不要只复制 EXE。
-3. 按[模型与工具下载说明](DOWNLOADS.md)补齐所需组件。
-4. 双击 `doctor.cmd` 检查配置。
-5. 检查通过后，双击 `ZhiYing.exe` 启动。
+3. 双击 `ZhiYing.exe` 启动知影。
+4. 准备处理视频时，再按[模型与工具下载说明](DOWNLOADS.md)补齐所需组件。
+5. 双击 `doctor.cmd` 可以检查配置是否完整。
+
+缺少模型、PyTorch 推理环境或媒体工具不影响打开软件，只会让对应的视频处理能力暂时不可用。
 
 第一次安装建议继续阅读[快速开始](QUICK_START.md)。
 

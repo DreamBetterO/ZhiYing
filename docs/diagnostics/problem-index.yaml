@@ -60,3 +60,16 @@ cache_reasons:
   OUTPUT_MISSING: "缓存记录存在但产物缺失"
   OUTPUT_CORRUPT: "产物摘要或结构校验失败"
   PREVIOUS_RUN_INCOMPLETE: "缓存记录不完整或损坏"
+runtime_events:
+  course_ir_offline_fallback:
+    owner: zhiying.knowledge.organizer
+    step_id: knowledge.units
+    first_artifact: knowledge.units
+    tests: [tests/test_knowledge_organizer.py, tests/test_cloud_payload.py]
+    safe_rerun_from: knowledge.units
+    policy: "先在当前 plan 的 CourseIR 授权集合内规范化 plan/source/claim 引用；无法安全恢复时才降级"
+  run_degraded:
+    owner: zhiying.execution.graph_runtime
+    step_id: run
+    safe_rerun_from: "诊断报告指出的首个 degraded step"
+    policy: "不得只看 editorial.session；必须同时检查所有 step_state 与 notable_events"

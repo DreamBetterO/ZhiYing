@@ -1,6 +1,21 @@
 schema_version: 1
 source_of_truth: zhiying.execution.graph_runtime:GraphRuntime
 contract_test: tests/test_documentation_contracts.py
+architecture_version: V6.1
+status: implemented_and_validated
+validated_at: "2026-09-03 19:28 Asia/Shanghai"
+runtime_contracts:
+  cloud_organizer:
+    batching: "默认每批一个知识单元；organizer_max_units_per_batch 可调"
+    output_limit: "organizer_request_max_output_tokens=0 时不发送 API max_tokens；正整数为显式硬上限"
+    identity_boundary: "plan/source/claim ID 只能收敛到当前 CloudPayload/CourseIR 授权集合"
+    failure_policy: "无法安全规范化时才降级，不因可恢复的标签漂移放弃整批"
+  editorial_writer:
+    topology_authority: "本地 DocumentBlueprint"
+    cloud_mutation_scope: "只修改已知组件内容；缺失保留本地内容，多余组件丢弃"
+  cloud_cache:
+    accepted_capabilities: [cloud, tool_native, structured_only]
+    reject_when_status: degraded
 steps:
   - {id: source.probe, owner: zhiying.execution.steps.coarse, depends_on: [], inputs: [], outputs: [source.manifest], error_prefix: SOURCE, tests: [tests/test_coarse_pipeline.py]}
   - {id: audio.extract, owner: zhiying.execution.steps.coarse, depends_on: [source.probe], inputs: [source.manifest], outputs: [audio.flac], error_prefix: AUDIO, tests: [tests/test_coarse_pipeline.py]}
