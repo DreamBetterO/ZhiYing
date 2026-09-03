@@ -115,7 +115,7 @@ release/           发行版安装与组件说明
 docs/              产品和开发文档
 ```
 
-`models/`、`tools/`、`workspace/` 和 `output/` 保存本机组件或运行结果，不属于源码提交内容。
+
 
 ## 文档
 
@@ -132,7 +132,5 @@ docs/              产品和开发文档
 ## 许可与联系
 
 项目源码采用 [MIT License](LICENSE)。模型、媒体工具和其他第三方组件遵循各自的许可证。
-
-问题和建议可以通过 GitHub Issues 提交；安全问题请按照 [SECURITY.md](SECURITY.md) 私下报告。
 
 技术交流：fangxiang202009@yeah.net
