@@ -63,7 +63,7 @@ class ReleaseDistributionTests(unittest.TestCase):
         self.assertIn("启动桌面版.cmd", readme)
         self.assertIn("模型或工具不完整也不影响打开界面", readme)
         self.assertIn("release/DOWNLOADS.md", readme)
-        self.assertIn("docs/screenshot/首页.png", readme)
+        self.assertIn("docs/screenshot/主页.gif", readme)
         self.assertNotIn("ImageT10", readme)
         self.assertNotIn("requirements.txt", readme)
         self.assertNotIn("Document v3.1", readme)
