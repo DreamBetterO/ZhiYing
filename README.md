@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776AB)](#从源码启动)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-![知影桌面端界面](docs/screenshot/首页.png)
+![知影](docs\screenshot\主页.gif)
 
 知影将课程、讲座、教程等视频整理成结构清晰的学习资料。它不只转写语音，还会结合画面和时间位置提炼知识点，最终生成可阅读、可编辑、可返回原视频核对的 Markdown、Word 和 PDF 文档。
 
